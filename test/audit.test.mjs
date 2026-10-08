@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPart, approvalOf, isLocalHost } from '../src/audit.mjs';
 import { mcpStatus } from '../src/environment.mjs';
-import { parseHead, parseReflog, historyState, createGitProbe } from '../src/git.mjs';
+import { parseHead, parseReflog, historyState, isSafeLocalPath, createGitProbe } from '../src/git.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -146,10 +146,14 @@ test('log and git parsing', () => {
   assert.deepEqual(parseHead('ref: refs/heads/feature/login\n'), { branch: 'feature/login', detached: false });
   assert.deepEqual(parseHead('3f2a9c1d5e6b7a8091a2b3c4d5e6f708192a3b4c\n'), { branch: '3f2a9c1', detached: true });
   assert.deepEqual(parseHead('garbage'), { branch: null, detached: false });
-  assert.equal(historyState({ head: 'abc', reflogHash: 'ABC' }), 'ok');
-  assert.equal(historyState({ head: 'abc', reflogHash: 'def' }), 'mismatch');
-  assert.equal(historyState({ head: 'abc', reflogHash: null }), 'missing');
-  assert.equal(historyState({ head: null, reflogHash: null }), 'ok', 'a repository with no commits yet');
+  const state = (head, last, intact = true, unborn = false) => historyState({ head, reflog: { last, intact }, unborn });
+  assert.equal(state('abc', 'abc'), 'ok');
+  assert.equal(state('abc', 'def'), 'mismatch');
+  assert.equal(state('abc', 'abc', false), 'mismatch', 'a gap in the reflog');
+  assert.equal(state(null, 'abc'), 'mismatch', 'the current commit could not be determined');
+  assert.equal(state('abc', null), 'missing');
+  assert.equal(state(null, null), 'missing', 'no reflog and no readable commit is not "fine"');
+  assert.equal(state(null, null, true, true), 'ok', 'only a repository with no branch yet is');
   const zero = '0'.repeat(40);
   const a = 'a'.repeat(40);
   const b = 'b'.repeat(40);
@@ -159,10 +163,65 @@ test('log and git parsing', () => {
     `${a} ${b} Sam <s@example.test> 1800000100 +0700\tcommit: second`,
     `${b} ${a} Sam <s@example.test> 1800000200 +0700\treset: moving to HEAD~1`,
   ].join('\n');
-  assert.deepEqual(parseReflog(reflog), [
-    { hash: 'bbbbbbb', at: 1_800_000_100_000, subject: 'second' },
-    { hash: 'aaaaaaa', at: 1_800_000_000_000, subject: 'first: with colon' },
-  ]);
+  assert.deepEqual(parseReflog(reflog), {
+    commits: [
+      { hash: 'bbbbbbb', at: 1_800_000_100_000, subject: 'second' },
+      { hash: 'aaaaaaa', at: 1_800_000_000_000, subject: 'first: with colon' },
+    ],
+    last: a,
+    intact: true,
+  });
+  // Cutting a line out of the middle leaves a gap the next entry gives away.
+  const lines = reflog.split('\n');
+  assert.equal(parseReflog([lines[0], lines[1], lines[3]].join('\n')).intact, false);
+  assert.equal(parseReflog(`${reflog}\nnot a reflog line`).intact, false);
+});
+
+test('paths found inside a repository are not followed off the machine or out of a repository', async () => {
+  for (const path of ['\\\\evil.example\\share\\.git', '//evil.example/share/.git', '\\\\.\\pipe\\x', '\\\\?\\C:\\x', '/dev/zero', '/proc/self/environ', 'relative/path', '', 'C:\\repo\\.git\\NUL', '/repo/.git/COM1']) {
+    assert.equal(isSafeLocalPath(path), false, path);
+  }
+  assert.equal(isSafeLocalPath(tmpdir()), true);
+
+  const root = mkdtempSync(join(tmpdir(), 'ocm-ptr-'));
+  try {
+    // A real repository to aim at, and "projects" whose .git file points at things it must not.
+    const real = join(root, 'real');
+    mkdirSync(join(real, '.git', 'worktrees', 'wt', 'logs'), { recursive: true });
+    mkdirSync(join(real, '.git', 'refs', 'heads'), { recursive: true });
+    const hash = 'c'.repeat(40);
+    writeFileSync(join(real, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    writeFileSync(join(real, '.git', 'refs', 'heads', 'feature'), `${hash}\n`);
+    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'HEAD'), 'ref: refs/heads/feature\n');
+    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'commondir'), '../..\n');
+    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'logs', 'HEAD'), `${'0'.repeat(40)} ${hash} Sam <s@example.test> 1800000000 +0000\tcommit (initial): in worktree\n`);
+
+    const project = (name, pointer) => {
+      mkdirSync(join(root, name));
+      writeFileSync(join(root, name, '.git'), `gitdir: ${pointer}\n`);
+      return join(root, name);
+    };
+    const worktree = project('worktree', join(real, '.git', 'worktrees', 'wt'));
+    const toPlainDir = project('to-plain-dir', real);
+    const toShare = project('to-share', '\\\\evil.example\\share\\.git\\worktrees\\x');
+    const toSlashShare = project('to-slash-share', '//evil.example/share/.git/worktrees/x');
+    const toMissing = project('to-missing', join(root, 'nowhere', '.git', 'worktrees', 'x'));
+
+    // HEAD naming a ref outside refs/: must not be read as a file path.
+    const escape = join(root, 'escape');
+    mkdirSync(join(escape, '.git'), { recursive: true });
+    writeFileSync(join(root, 'secret.txt'), `${hash}\n`);
+    writeFileSync(join(escape, '.git', 'HEAD'), 'ref: refs/../../../secret.txt\n');
+
+    const probe = createGitProbe();
+    await probe.refresh([worktree, toPlainDir, toShare, toSlashShare, toMissing, escape, '\\\\evil.example\\share\\project']);
+    const info = probe.get(worktree);
+    assert.deepEqual([info.branch, info.history, info.commits[0].subject], ['feature', 'ok', 'in worktree']);
+    for (const refused of [toPlainDir, toShare, toSlashShare, toMissing, '\\\\evil.example\\share\\project']) assert.equal(probe.get(refused), null, refused);
+    assert.deepEqual([probe.get(escape).branch, probe.get(escape).history], [null, 'missing'], 'the ref outside refs/ was not resolved');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('environment notifications fire once when something goes down', () => {
