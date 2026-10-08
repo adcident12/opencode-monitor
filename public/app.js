@@ -186,7 +186,9 @@ function workSection(s) {
   if (files.count) parts.push(el('span', '', t('work.files', { n: files.count })));
   if (git?.commitCount) parts.push(el('span', '', t('work.commits', { n: git.commitCount })));
   // "0 commits" would be a claim; say the record is unreliable instead.
-  if (git && git.history !== 'ok') parts.push(el('span', 'tag warn', t('work.historyUnreliable')));
+  if (git?.history === 'pending') parts.push(el('span', 'tag', t('work.checking')));
+  else if (git?.history === 'unreadable') parts.push(el('span', 'tag warn', t('work.gitUnreadable')));
+  else if (git && git.history !== 'ok') parts.push(el('span', 'tag warn', t('work.historyUnreliable')));
   if (!parts.length) return null;
 
   const body = el('div', 'more-body');
@@ -198,7 +200,7 @@ function workSection(s) {
     body.append(list);
   }
   if (warnUnknownBranch) body.append(el('p', 'warn-text', t('work.unknownBranch')));
-  if (git && git.history !== 'ok') body.append(el('p', 'warn-text', t(`work.history.${git.history}`)));
+  if (git && git.history !== 'ok' && git.history !== 'pending') body.append(el('p', 'warn-text', t(`work.history.${git.history}`)));
   if (git?.commits.length) {
     body.append(el('div', 'box-label', t('work.commitsSince')));
     const list = el('ul', 'plain');

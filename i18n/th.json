@@ -88,6 +88,9 @@
   "work.historyUnreliable": "บันทึก commit เชื่อไม่ได้",
   "work.history.missing": "Repository นี้ไม่มี reflog จึงแสดงรายการ commit ไม่ได้ ซึ่งไม่ได้แปลว่าไม่มี commit เพราะ reflog ถูกลบหรือปิดได้",
   "work.history.mismatch": "Reflog ไม่ตรงกับ commit ปัจจุบัน รายการ commit ด้านล่างจึงอาจไม่ครบ มีการเปลี่ยนประวัติโดยไม่ถูกบันทึก",
+  "work.checking": "กำลังตรวจ git…",
+  "work.gitUnreadable": "อ่านสถานะ git ไม่ได้",
+  "work.history.unreadable": "ที่นี่มี repository แต่อ่าน branch และ commit อย่างปลอดภัยไม่ได้ (โครงสร้างผิดปกติ มี link อยู่ใน .git หรืออ่านไฟล์ไม่สำเร็จ) จึงไม่รู้อะไรเกี่ยวกับมันเลย และไม่ถือว่าปกติ",
 
   "review.title": "ควรตรวจ",
   "review.count.risky": "เสี่ยง {n}",

@@ -88,6 +88,9 @@
   "work.historyUnreliable": "commit record unreliable",
   "work.history.missing": "This repository has no reflog, so commits cannot be listed. That is not the same as no commits: the reflog can be deleted or switched off.",
   "work.history.mismatch": "The reflog does not match the current commit, so the commit list below may be incomplete. History was changed without being recorded.",
+  "work.checking": "checking git…",
+  "work.gitUnreadable": "git state unreadable",
+  "work.history.unreadable": "There is a repository here, but its branch and commits could not be read safely (an unusual layout, a link inside .git, or a read that failed). Nothing about it is known, so nothing is assumed to be fine.",
 
   "review.title": "To review",
   "review.count.risky": "{n} risky",

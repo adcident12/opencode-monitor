@@ -2,52 +2,80 @@
 // the background.
 //
 // A project directory is not trusted: the agent can write anything inside it, .git included.
-// Two consequences shape this file.
+// Three consequences shape this file.
 //
 // 1. git is never executed. git runs programs named in a repository's config (filters,
 //    fsmonitor, gpg.program, remote helpers). Instead two plain files are read: HEAD for the
 //    branch and logs/HEAD (the reflog) for commits made in this clone. That is also why
 //    uncommitted changes are not shown: working that out needs git.
 //
-// 2. Paths found inside the repository are not followed blindly. A `.git` file or a
-//    `commondir` file can name any path; on Windows a network path there would make this
-//    process authenticate to a remote machine, and a device or pipe would hang it. Every
-//    path is checked as text first, and only regular files of bounded size are read.
+// 2. Nothing inside the repository decides where we read. Every file is reached by walking
+//    down from a directory we already hold, one name at a time, checking each step without
+//    following it: a link or junction anywhere on the way is refused, so a `.git/logs` that
+//    points at a network share or a device is never opened. Names are fixed by this file
+//    or validated one segment at a time; text from the repository is never used as a path,
+//    except the worktree pointer, which gets the same step-by-step walk from the drive root.
+//
+// 3. Not being able to read is a state of its own. "No repository here", "could not be read"
+//    and "read fine" are kept apart, and results that have gone stale are reported as
+//    unreadable, so a failure can never look like a clean repository.
 //
 // What this cannot be: an integrity check. Whoever can write the reflog can write a
-// consistent fake one. The checks below catch a reflog that is missing, cut, or stale, so
-// that "no record" is never shown as "no commits"; they do not prove the record is honest.
+// consistent fake one. The checks catch a reflog that is missing, cut, or stale; they do
+// not prove the record is honest.
 import { lstat, open, readdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 
 const REFLOG_TAIL_BYTES = 256 * 1024;
 const SMALL_FILE_BYTES = 64 * 1024;
 const PACKED_REFS_BYTES = 8 * 1024 * 1024;
 const MAX_COMMITS = 50;
+const INSPECT_TIMEOUT_MS = 5000;
 const HASH = '[0-9a-f]{40}(?:[0-9a-f]{24})?';
+const DEVICE_NAME = /^(?:CON|PRN|AUX|NUL|COM[0-9\u00b9\u00b2\u00b3]|LPT[0-9\u00b9\u00b2\u00b3]|CONIN\$|CONOUT\$)(?:\..*)?$/i;
 
-/** Network shares, device namespaces, and kernel filesystems are never touched. */
-export function isSafeLocalPath(path) {
-  if (typeof path !== 'string' || !path || path.includes('\0')) return false;
-  if (/^[\\/]{2}/.test(path)) return false; // \\server\share, //server/share, \\?\, \\.\
-  if (/^\/(?:dev|proc|sys)(?:\/|$)/.test(path)) return false;
-  // Windows device names are special in every directory: C:\x\NUL, COM1, ...
-  if (/(?:^|[\\/])(?:CON|PRN|AUX|NUL|COM\d|LPT\d)(?:\.[^\\/]*)?$/i.test(path)) return false;
-  return isAbsolute(path);
+class Unreadable extends Error {}
+
+/** One path component we are willing to step into or open. */
+export function isSafeSegment(name) {
+  if (typeof name !== 'string' || !name || name === '.' || name === '..') return false;
+  // Separators, drive or stream markers, wildcards, control characters.
+  if (/[\\/:*?"<>|\u0000-\u001f]/.test(name)) return false;
+  // Windows strips trailing dots and spaces, turning "NUL." or "aux " into device names.
+  if (/[. ]$/.test(name)) return false;
+  return !DEVICE_NAME.test(name);
 }
 
-const isInside = (parent, child) => {
-  const rel = relative(parent, child);
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-};
+/** An absolute path on a local disk: no network share, no device namespace. */
+export function isSafeLocalPath(path) {
+  if (typeof path !== 'string' || !path || !isAbsolute(path)) return false;
+  if (/^[\\/]{2}/.test(path)) return false; // \\server\share, //server/share, \\?\, \\.\
+  if (/^\/(?:dev|proc|sys)(?:\/|$)/.test(path)) return false;
+  const { root } = parse(path);
+  if (!(root === '/' || /^[A-Za-z]:[\\/]$/.test(root))) return false;
+  return path.slice(root.length).split(/[\\/]+/).filter(Boolean).every(isSafeSegment);
+}
 
-// Reads a regular file (not a link, pipe, or device) of at most `max` bytes; from the end
-// if it is longer and `tail` is set. null for anything else.
-async function readPlain(path, max, { tail = false } = {}) {
-  if (!isSafeLocalPath(path)) return null;
+// Walks from `root` down through `names` without following anything: every step must be a
+// real directory, never a link. Returns the final path, or null if any step is refused.
+async function descend(root, names) {
+  let current = root;
+  for (const name of names) {
+    if (!isSafeSegment(name)) return null;
+    const info = await lstat(current).catch(() => null);
+    if (!info?.isDirectory()) return null;
+    current = join(current, name);
+  }
+  return current;
+}
+
+// Reads a regular file under `root` (not a link, pipe, or device) of at most `max` bytes,
+// or its last `max` bytes when `tail` is set. null when it is absent or refused.
+async function readUnder(root, names, max, { tail = false } = {}) {
+  const path = await descend(root, names);
+  if (!path) return null;
   const info = await lstat(path).catch(() => null);
-  if (!info?.isFile()) return null;
-  if (info.size > max && !tail) return null;
+  if (!info?.isFile() || (info.size > max && !tail)) return null;
   const file = await open(path, 'r').catch(() => null);
   if (!file) return null;
   try {
@@ -65,36 +93,53 @@ async function readPlain(path, max, { tail = false } = {}) {
   }
 }
 
-const isPlainDir = async path => isSafeLocalPath(path) && Boolean((await lstat(path).catch(() => null))?.isDirectory());
+// A directory reached from the drive root without passing through any link.
+async function isPlainDirFromRoot(path) {
+  if (!isSafeLocalPath(path)) return false;
+  const { root } = parse(path);
+  const names = path.slice(root.length).split(/[\\/]+/).filter(Boolean);
+  const reached = await descend(root, names);
+  return Boolean(reached) && Boolean((await lstat(reached).catch(() => null))?.isDirectory());
+}
 
-// The repository may be a parent of the session's directory.
+/**
+ * Finds the git directory for a project directory, which may sit below the repository root.
+ * @returns {Promise<string|null>} null when there is no repository; throws Unreadable when
+ *   there is one but it is laid out in a way this file refuses to follow.
+ */
 async function gitDirOf(dir) {
-  if (!isSafeLocalPath(dir)) throw new Error('not a local path');
+  if (!isSafeLocalPath(dir)) throw new Unreadable('not a local path');
   for (let current = resolve(dir); ; current = dirname(current)) {
     const dotGit = join(current, '.git');
     const info = await lstat(dotGit).catch(() => null);
     if (info?.isDirectory()) return dotGit;
     if (info?.isFile()) {
       // Worktrees and submodules have a .git file pointing at <repo>/.git/worktrees/<name>
-      // or <repo>/.git/modules/<name>. Anything else it might point at is refused.
-      const pointer = /^gitdir:\s*(.+)$/m.exec((await readPlain(dotGit, SMALL_FILE_BYTES)) ?? '')?.[1]?.trim();
-      const target = pointer && (isAbsolute(pointer) ? resolve(pointer) : resolve(current, pointer));
-      if (!target || !/[\\/]\.git[\\/](?:worktrees|modules)[\\/][^\\/]+/.test(target) || !(await isPlainDir(target))) {
-        throw new Error('unsupported .git pointer');
-      }
+      // or <repo>/.git/modules/<name>. Nothing else is accepted as a target.
+      const pointer = /^gitdir:\s*(.+)$/m.exec((await readUnder(current, ['.git'], SMALL_FILE_BYTES)) ?? '')?.[1]?.trim();
+      if (!pointer || /^[\\/]{2}/.test(pointer)) throw new Unreadable('unsupported .git pointer');
+      const target = isAbsolute(pointer) ? resolve(pointer) : resolve(current, pointer);
+      const names = target.split(/[\\/]+/);
+      const shape = names.at(-3) === '.git' && (names.at(-2) === 'worktrees' || names.at(-2) === 'modules');
+      if (!shape || !(await isPlainDirFromRoot(target))) throw new Unreadable('unsupported .git pointer');
       return target;
     }
-    if (info || dirname(current) === current) throw new Error('not a repository');
+    if (info) throw new Unreadable('.git is neither a directory nor a file');
+    if (dirname(current) === current) return null;
   }
 }
 
-// Where branches live: the git dir itself, or for a worktree the main repository's .git,
-// named by `commondir`. Only a parent of the git dir that is itself a ".git" is accepted.
+// Where branches live: the git dir itself, or for a worktree the main repository's .git.
+// git writes "../.." into `commondir` for that; any other content is refused, not guessed at.
 async function commonDirOf(gitDir) {
-  const text = (await readPlain(join(gitDir, 'commondir'), SMALL_FILE_BYTES))?.trim();
-  if (!text) return gitDir;
-  const common = resolve(gitDir, text);
-  return common.endsWith(`${sep}.git`) && isInside(common, gitDir) && (await isPlainDir(common)) ? common : gitDir;
+  const text = (await readUnder(gitDir, ['commondir'], SMALL_FILE_BYTES))?.trim();
+  if (text == null) {
+    if (await lstat(join(gitDir, 'commondir')).catch(() => null)) throw new Unreadable('commondir is not a plain file');
+    return gitDir;
+  }
+  const common = resolve(gitDir, '..', '..');
+  if (resolve(gitDir, text) !== common || !common.endsWith(`${sep}.git`)) throw new Unreadable('unexpected commondir');
+  return common;
 }
 
 export function parseHead(text) {
@@ -136,32 +181,43 @@ export function parseReflog(text) {
   return { commits: commits.reverse().slice(0, MAX_COMMITS), last, intact };
 }
 
-// Is there any branch at all? Used to tell a brand-new repository from one whose refs
-// cannot be read.
+// Is there any branch at all? Tells a brand-new repository from one whose refs cannot be
+// read. Anything unclear counts as "yes", which leads to "unreliable", not to "fine".
 async function hasAnyBranch(commonDir) {
-  const packed = await readPlain(join(commonDir, 'packed-refs'), PACKED_REFS_BYTES);
-  if (packed == null ? (await lstat(join(commonDir, 'packed-refs')).catch(() => null)) != null : new RegExp(`^${HASH} refs/heads/`, 'mi').test(packed)) return true;
-  const walk = async (path, depth) => {
+  const packed = await readUnder(commonDir, ['packed-refs'], PACKED_REFS_BYTES);
+  if (packed != null) {
+    if (new RegExp(`^${HASH} refs/heads/`, 'mi').test(packed)) return true;
+  } else if (await lstat(join(commonDir, 'packed-refs')).catch(() => null)) {
+    return true;
+  }
+  const walk = async (names, depth) => {
+    const path = await descend(commonDir, names);
+    // A step that was refused (a link, say) or cannot be examined is not "empty".
+    if (!path) return true;
+    const info = await lstat(path).catch(() => null);
+    if (!info) return depth > 0; // a new repository always has refs/heads itself
+    if (!info.isDirectory()) return true;
     for (const entry of await readdir(path, { withFileTypes: true }).catch(() => [])) {
-      if (entry.isFile() || entry.isSymbolicLink()) return true;
-      if (entry.isDirectory() && depth < 8 && (await walk(join(path, entry.name), depth + 1))) return true;
+      if (!entry.isDirectory() || depth >= 8) return true;
+      if (await walk([...names, entry.name], depth + 1)) return true;
     }
     return false;
   };
-  return walk(join(commonDir, 'refs', 'heads'), 0);
+  return walk(['refs', 'heads'], 0);
 }
 
 // The commit HEAD points at now, read from the ref files. null when it cannot be determined.
 async function headHash(gitDir, commonDir, headText) {
   const direct = new RegExp(`^${HASH}$`, 'i').exec(headText.trim())?.[0];
   if (direct) return direct.toLowerCase();
-  const ref = /^ref:\s*(refs\/[\w./-]+)\s*$/m.exec(headText)?.[1];
-  if (!ref || ref.split('/').some(part => part === '..' || part === '.' || part === '')) return null;
+  const ref = /^ref:\s*(refs\/\S+)\s*$/m.exec(headText)?.[1];
+  const names = ref?.split('/');
+  if (!names || !names.every(isSafeSegment)) return null;
   for (const base of new Set([gitDir, commonDir])) {
-    const loose = (await readPlain(join(base, ...ref.split('/')), SMALL_FILE_BYTES))?.trim();
+    const loose = (await readUnder(base, names, SMALL_FILE_BYTES))?.trim();
     if (loose && new RegExp(`^${HASH}$`, 'i').test(loose)) return loose.toLowerCase();
   }
-  const packed = (await readPlain(join(commonDir, 'packed-refs'), PACKED_REFS_BYTES)) ?? '';
+  const packed = (await readUnder(commonDir, ['packed-refs'], PACKED_REFS_BYTES)) ?? '';
   for (const line of packed.split('\n')) {
     if (line.endsWith(` ${ref}`) && new RegExp(`^${HASH} `, 'i').test(line)) return line.slice(0, line.indexOf(' ')).toLowerCase();
   }
@@ -183,36 +239,61 @@ export function historyState({ head, reflog, unborn }) {
   return head === reflog.last ? 'ok' : 'mismatch';
 }
 
-export function createGitProbe({ enabled = true, everyMs = 15_000 } = {}) {
-  const cache = new Map(); // directory -> info | null (not a repository we can read)
+/** What is shown when a repository exists but could not be read: nothing is claimed. */
+export const UNREADABLE = Object.freeze({ branch: null, detached: false, commits: [], history: 'unreadable' });
+
+async function inspect(dir) {
+  const gitDir = await gitDirOf(dir);
+  if (!gitDir) return null;
+  const headText = await readUnder(gitDir, ['HEAD'], SMALL_FILE_BYTES);
+  if (headText == null) throw new Unreadable('no readable HEAD');
+  const commonDir = await commonDirOf(gitDir);
+  const reflog = parseReflog((await readUnder(gitDir, ['logs', 'HEAD'], REFLOG_TAIL_BYTES, { tail: true })) ?? '');
+  const head = await headHash(gitDir, commonDir, headText);
+  const parsed = parseHead(headText);
+  // "No commits yet" is only believed for a well-formed HEAD in a repository with no branch.
+  const unborn = !head && Boolean(parsed.branch) && !parsed.detached && !(await hasAnyBranch(commonDir));
+  return { ...parsed, commits: reflog.commits, history: historyState({ head, reflog, unborn }) };
+}
+
+export function createGitProbe({ enabled = true, everyMs = 15_000, now = () => Date.now() } = {}) {
+  const cache = new Map(); // directory -> { at, info } where info is null for "no repository"
   let last = 0;
   let busy = false;
 
-  async function inspect(dir) {
-    const gitDir = await gitDirOf(dir);
-    const headText = await readPlain(join(gitDir, 'HEAD'), SMALL_FILE_BYTES);
-    if (headText == null) throw new Error('no HEAD');
-    const commonDir = await commonDirOf(gitDir);
-    const reflog = parseReflog((await readPlain(join(gitDir, 'logs', 'HEAD'), REFLOG_TAIL_BYTES, { tail: true })) ?? '');
-    const head = await headHash(gitDir, commonDir, headText);
-    const parsed = parseHead(headText);
-    // "No commits yet" is only believed for a well-formed HEAD in a repository with no branch.
-    const unborn = !head && Boolean(parsed.branch) && !parsed.detached && !(await hasAnyBranch(commonDir));
-    return { ...parsed, commits: reflog.commits, history: historyState({ head, reflog, unborn }) };
-  }
-
   async function refresh(dirs) {
-    if (!enabled || busy || Date.now() - last < everyMs) return;
+    if (!enabled || busy || now() - last < everyMs) return;
     busy = true;
     try {
       const wanted = new Set(dirs.filter(Boolean));
-      await Promise.all([...wanted].map(async dir => cache.set(dir, await inspect(dir).catch(() => null))));
+      await Promise.all([...wanted].map(async dir => {
+        let timer;
+        const timeout = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Unreadable('timed out')), INSPECT_TIMEOUT_MS);
+        });
+        // Any failure, expected or not, is "unreadable". Only a clean walk to the drive
+        // root without finding .git is "no repository".
+        const info = await Promise.race([inspect(dir), timeout]).catch(() => UNREADABLE);
+        clearTimeout(timer);
+        cache.set(dir, { at: now(), info });
+      }));
       for (const dir of cache.keys()) if (!wanted.has(dir)) cache.delete(dir);
     } finally {
-      last = Date.now();
+      last = now();
       busy = false;
     }
   }
 
-  return { refresh, get: dir => cache.get(dir) ?? null };
+  /**
+   * @returns {object|null|undefined} repository info; null when the directory is not in a
+   *   repository; undefined when it has not been looked at yet. A result that has not been
+   *   refreshed for several intervals is no longer trusted and comes back as UNREADABLE.
+   */
+  function get(dir) {
+    const entry = cache.get(dir);
+    if (!entry) return undefined;
+    return now() - entry.at > everyMs * 4 ? UNREADABLE : entry.info;
+  }
+
+  return { refresh, get };
 }

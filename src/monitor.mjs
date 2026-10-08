@@ -118,7 +118,10 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   // What the agent did to the project: files it touched, and the state of the repository.
   function workOf(session, digest) {
     const recent = [...digest.files].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([file]) => shortPath(file, session.directory));
-    const info = git?.get(session.directory) ?? null;
+    // null: git reading is off, or the directory is not in a repository.
+    // undefined: not looked at yet; shown as "checking", never as a clean result.
+    const found = !git || !cfg.work.git ? null : git.get(session.directory);
+    const info = found === undefined ? { branch: null, detached: false, commits: [], history: 'pending' } : found;
     const commits = info ? info.commits.filter(c => c.at >= session.time_created) : [];
     const changed = digest.files.size > 0 || commits.length > 0;
     const onProtected = Boolean(info?.branch) && !info.detached && cfg.work.protectedBranches.includes(info.branch);
@@ -127,7 +130,8 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       git: info && {
         branch: info.branch ? show(info.branch, 80) : null,
         detached: info.detached,
-        // 'ok' | 'missing' | 'mismatch': whether the commit list below can be trusted.
+        // 'ok', or why the commit list below cannot be trusted:
+        // 'missing' | 'mismatch' | 'unreadable' | 'pending'.
         history: info.history,
         commitCount: commits.length,
         commits: commits.slice(0, 5).map(c => ({ hash: c.hash, at: c.at, subject: show(c.subject, 120) })),
@@ -135,7 +139,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       // Changes landing straight on a branch you probably meant to protect.
       warnProtected: onProtected && changed,
       // Not knowing the branch is not the same as being on a safe one.
-      warnUnknownBranch: Boolean(info) && !info.branch && changed,
+      warnUnknownBranch: Boolean(info) && !info.branch && info.history !== 'pending' && changed,
     };
   }
 

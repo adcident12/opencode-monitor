@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPart, approvalOf, isLocalHost } from '../src/audit.mjs';
 import { mcpStatus } from '../src/environment.mjs';
-import { parseHead, parseReflog, historyState, isSafeLocalPath, createGitProbe } from '../src/git.mjs';
+import { parseHead, parseReflog, historyState, isSafeLocalPath, isSafeSegment, createGitProbe, UNREADABLE } from '../src/git.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { parseMcpLine } from '../src/logtail.mjs';
 import { createNotifier } from '../src/notify.mjs';
 
@@ -178,12 +178,17 @@ test('log and git parsing', () => {
 });
 
 test('paths found inside a repository are not followed off the machine or out of a repository', async () => {
-  for (const path of ['\\\\evil.example\\share\\.git', '//evil.example/share/.git', '\\\\.\\pipe\\x', '\\\\?\\C:\\x', '/dev/zero', '/proc/self/environ', 'relative/path', '', 'C:\\repo\\.git\\NUL', '/repo/.git/COM1']) {
+  for (const path of ['\\\\evil.example\\share\\.git', '//evil.example/share/.git', '\\\\.\\pipe\\x', '\\\\?\\C:\\x', '/dev/zero', '/proc/self/environ', 'relative/path', '', 'C:repo', tmpdir() + sep + 'NUL', tmpdir() + sep + 'x' + sep + 'COM1.txt']) {
     assert.equal(isSafeLocalPath(path), false, path);
   }
   assert.equal(isSafeLocalPath(tmpdir()), true);
+  for (const name of ['', '.', '..', 'a/b', 'a\\b', 'C:', 'file::$DATA', 'NUL', 'nul.txt', 'COM1', 'LPT9', 'CONIN$', 'aux', 'NUL.', 'aux ', 'trailing.', 'q?', 'tab\tname']) {
+    assert.equal(isSafeSegment(name), false, JSON.stringify(name));
+  }
+  for (const name of ['HEAD', 'refs', 'feature-1', 'release_2.4', 'console', 'com10x', '.git']) assert.equal(isSafeSegment(name), true, name);
 
-  const root = mkdtempSync(join(tmpdir(), 'ocm-ptr-'));
+  // realpath: on macOS the temp directory itself sits behind a link, which is refused by design.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ocm-ptr-')));
   try {
     // A real repository to aim at, and "projects" whose .git file points at things it must not.
     const real = join(root, 'real');
@@ -213,12 +218,40 @@ test('paths found inside a repository are not followed off the machine or out of
     writeFileSync(join(root, 'secret.txt'), `${hash}\n`);
     writeFileSync(join(escape, '.git', 'HEAD'), 'ref: refs/../../../secret.txt\n');
 
-    const probe = createGitProbe();
-    await probe.refresh([worktree, toPlainDir, toShare, toSlashShare, toMissing, escape, '\\\\evil.example\\share\\project']);
+    // A repository whose .git/logs is a link to a directory holding a tidy, fake reflog,
+    // and one whose .git/refs is a link. Neither link may be followed.
+    const decoy = join(root, 'decoy');
+    mkdirSync(join(decoy, 'heads'), { recursive: true });
+    writeFileSync(join(decoy, 'HEAD'), `${'0'.repeat(40)} ${hash} Sam <s@example.test> 1800000000 +0000\tcommit (initial): from the decoy\n`);
+    writeFileSync(join(decoy, 'heads', 'main'), `${hash}\n`);
+    const linked = join(root, 'linked');
+    mkdirSync(join(linked, '.git'), { recursive: true });
+    writeFileSync(join(linked, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    symlinkSync(decoy, join(linked, '.git', 'logs'), 'junction');
+    symlinkSync(decoy, join(linked, '.git', 'refs'), 'junction');
+
+    const plain = join(root, 'no-repo-here');
+    mkdirSync(plain);
+
+    let clock = 1_000_000;
+    const probe = createGitProbe({ everyMs: 15_000, now: () => clock });
+    const share = '\\\\evil.example\\share\\project';
+    assert.equal(probe.get(worktree), undefined, 'not looked at yet is its own answer');
+    await probe.refresh([worktree, toPlainDir, toShare, toSlashShare, toMissing, escape, linked, plain, share]);
+
     const info = probe.get(worktree);
     assert.deepEqual([info.branch, info.history, info.commits[0].subject], ['feature', 'ok', 'in worktree']);
-    for (const refused of [toPlainDir, toShare, toSlashShare, toMissing, '\\\\evil.example\\share\\project']) assert.equal(probe.get(refused), null, refused);
+    // Refused layouts are "unreadable", which the page shows as a warning; never "no repository".
+    for (const refused of [toPlainDir, toShare, toSlashShare, toMissing, share]) assert.equal(probe.get(refused), UNREADABLE, refused);
     assert.deepEqual([probe.get(escape).branch, probe.get(escape).history], [null, 'missing'], 'the ref outside refs/ was not resolved');
+    assert.deepEqual([probe.get(linked).history, probe.get(linked).commits.length], ['missing', 0], 'links inside .git were not followed, and that is not reported as fine');
+    // Only a directory with no .git anywhere above it is "no repository"... unless the temp
+    // directory itself happens to live inside one, in which case it is simply not null.
+    if (probe.get(plain) !== null) assert.ok(probe.get(plain).history);
+
+    // A result nobody has refreshed for a long time is no longer vouched for.
+    clock += 15_000 * 4 + 1;
+    assert.equal(probe.get(worktree), UNREADABLE);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
