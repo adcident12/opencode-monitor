@@ -150,5 +150,7 @@
   "notify.env.mcp": "MCP server {name} ล่ม",
   "notify.env.model": "Model server {name} ไม่ตอบ",
   "notify.env.service": "Service {name} ล่ม",
-  "notify.env.body": "Agent อาจทำงานต่อโดยไม่มีมัน ลองเปิด monitor ดู"
+  "notify.env.body": "Agent อาจทำงานต่อโดยไม่มีมัน ลองเปิด monitor ดู",
+  "notify.test.title": "ทดสอบ opencode-monitor",
+  "notify.test.body": "ถ้าเห็นข้อความนี้ แปลว่าการแจ้งเตือนมาถึงคุณแล้ว"
 }

@@ -12,7 +12,7 @@ import { createEnvironment } from './environment.mjs';
 import { createGitProbe } from './git.mjs';
 import { createProcessProbe } from './process.mjs';
 import { createMonitor } from './monitor.mjs';
-import { createNotifier } from './notify.mjs';
+import { createNotifier, testNotify } from './notify.mjs';
 import { loadTranslator } from './format.mjs';
 
 const HOST = '127.0.0.1'; // Not configurable on purpose: the page shows what your agent is doing.
@@ -37,6 +37,13 @@ export async function main(argv) {
   }
 
   const cfg = loadConfig(args);
+  if (args.testNotify) {
+    for (const [channel, outcome] of await testNotify(cfg.notify, loadTranslator(cfg.lang))) console.log(`${channel}: ${outcome}`);
+    if (process.platform === 'win32' && cfg.notify.desktop) {
+      console.log('No pop-up on Windows? Check Do not disturb / Focus, and look in the notification centre (Win+N).');
+    }
+    return;
+  }
   if (args.sample) {
     // The sample directory carries its own fake OpenCode config; never mix in the real one.
     cfg.opencodeConfigDir = cfg.dataDir;

@@ -150,5 +150,7 @@
   "notify.env.mcp": "MCP server {name} is down",
   "notify.env.model": "Model server {name} is not answering",
   "notify.env.service": "Service {name} is down",
-  "notify.env.body": "The agent may keep going without it. Check the monitor."
+  "notify.env.body": "The agent may keep going without it. Check the monitor.",
+  "notify.test.title": "opencode-monitor test",
+  "notify.test.body": "If you can read this, notifications reach you."
 }

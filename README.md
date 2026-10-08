@@ -36,6 +36,7 @@ node server.mjs --sample
 | `--sample` | Use generated fake data |
 | `--no-notify` | No desktop or Discord notifications |
 | `--assume-running` | Skip the check for a live OpenCode process |
+| `--test-notify` | Send one test notification on each configured channel, then exit |
 
 ## What the states mean
 

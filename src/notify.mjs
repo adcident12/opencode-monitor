@@ -15,9 +15,11 @@ $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powersh
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
 `;
 
-export function desktopNotify(title, body) {
+/** @param {(err: Error|null) => void} [onDone] called with the outcome, for --test-notify */
+export function desktopNotify(title, body, onDone) {
   const done = err => {
-    if (err && !desktopNotify.warned) {
+    onDone?.(err ?? null);
+    if (err && !onDone && !desktopNotify.warned) {
       desktopNotify.warned = true;
       console.warn(`Desktop notification failed (${err.code ?? err.message}); further failures are not reported.`);
     }
@@ -46,9 +48,31 @@ export async function discordNotify(webhookUrl, content, mention = '') {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) console.warn(`Discord webhook answered HTTP ${res.status}.`);
+    return res.ok ? null : `HTTP ${res.status}`;
   } catch (err) {
     console.warn(`Discord notification failed: ${err.name}`);
+    return err.name;
   }
+}
+
+/** Sends one test message through every configured channel and reports each outcome. */
+export async function testNotify(cfg, t) {
+  const title = t('notify.test.title');
+  const body = t('notify.test.body');
+  const results = [];
+  if (cfg.desktop) {
+    const err = await new Promise(resolve => desktopNotify(title, body, resolve));
+    results.push(['desktop', err ? `failed (${err.code ?? err.message})` : 'sent']);
+  } else {
+    results.push(['desktop', 'off in config']);
+  }
+  if (cfg.discord.webhookUrl) {
+    const err = await discordNotify(cfg.discord.webhookUrl, [cfg.discord.mention, `**${title}**`, body].filter(Boolean).join('\n'), cfg.discord.mention);
+    results.push(['Discord', err ? `failed (${err})` : 'sent']);
+  } else {
+    results.push(['Discord', 'no webhookUrl in config']);
+  }
+  return results;
 }
 
 /**
