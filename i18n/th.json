@@ -78,7 +78,7 @@
   "work.title": "งานที่ทำ",
   "work.branch": "branch {branch}",
   "work.files": "แตะ {n} ไฟล์",
-  "work.protected": "Agent กำลังแก้ไฟล์บน {branch} โดยตรง",
+  "work.protected": "Session นี้ทำงานบน {branch} โดยตรง การแก้ไขผ่านคำสั่ง shell ไม่ถูกนับในจำนวนไฟล์ด้านบน",
   "work.recentFiles": "ไฟล์ล่าสุดที่ agent แตะ",
   "work.detached": "detached ที่ {branch}",
   "work.branchUnknown": "ไม่ทราบ branch",

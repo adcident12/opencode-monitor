@@ -75,7 +75,7 @@ With `notify.environment` on, you are notified once when any of these goes down.
 
 Each session card has two fold-out sections.
 
-**Work** shows the files the agent touched and the git branch the project is on. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
+**Work** shows the files the agent touched and the git branch the project is on. It warns whenever the session is on a protected branch (`main` or `master` by default), whether or not any file change was detected: the file count only covers the edit tools, not changes made through shell commands.
 
 **To review** is a hint list, not a security control. It lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
 

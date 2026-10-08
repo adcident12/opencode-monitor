@@ -78,7 +78,7 @@
   "work.title": "Work",
   "work.branch": "branch {branch}",
   "work.files": "{n} files touched",
-  "work.protected": "The agent is changing files directly on {branch}.",
+  "work.protected": "This session is working directly on {branch}. Changes made through shell commands are not counted in the files above.",
   "work.recentFiles": "Latest files touched by the agent",
   "work.detached": "detached at {branch}",
   "work.branchUnknown": "branch unknown",

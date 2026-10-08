@@ -157,6 +157,23 @@ test('review: an earlier dangerous command is not hidden behind later harmless o
   }
 });
 
+test('work: the branch warnings do not depend on detecting a file change', () => {
+  const withGit = info => createMonitor({
+    db, log: createLogTail(join(dir, 'data', 'log', 'opencode.log')), cfg: DEFAULTS,
+    redact: createRedactor(), modelLimits: new Map(), probe: { running: true }, git: { get: () => info },
+  })(NOW).sessions.find(s => s.title.startsWith('Rename UserCard')).work;
+
+  // This session used no edit tool at all; it could still have changed files through a shell.
+  assert.equal(withGit({ branch: 'main', detached: false, state: 'ok' }).files.count, 0);
+  assert.equal(withGit({ branch: 'main', detached: false, state: 'ok' }).warnProtected, true);
+  assert.equal(withGit({ branch: 'feature/x', detached: false, state: 'ok' }).warnProtected, false);
+  assert.deepEqual([withGit({ branch: null, detached: false, state: 'unreadable' }).warnUnknownBranch, withGit({ branch: null, detached: false, state: 'ok' }).warnUnknownBranch], [true, true]);
+  // Not looked at yet: shown as "checking", neither a warning nor a clean result.
+  const pending = withGit(undefined);
+  assert.deepEqual([pending.git.state, pending.warnProtected, pending.warnUnknownBranch], ['pending', false, false]);
+  assert.equal(withGit(null).git, null, 'not in a repository');
+});
+
 test('work: files the agent touched', () => {
   const work = byTitle('Clean up the release branch').work;
   assert.deepEqual(work.files, { count: 1, recent: ['src/release.ts'] });

@@ -122,7 +122,6 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     // undefined: not looked at yet; shown as "checking", never as a clean result.
     const found = !git || !cfg.work.git ? null : git.get(session.directory);
     const info = found === undefined ? { branch: null, detached: false, state: 'pending' } : found;
-    const changed = digest.files.size > 0;
     const onProtected = Boolean(info?.branch) && !info.detached && cfg.work.protectedBranches.includes(info.branch);
     return {
       files: { count: digest.files.size, recent },
@@ -131,10 +130,12 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
         detached: info.detached,
         state: info.state, // 'ok' | 'unreadable' | 'pending'
       },
-      // Changes landing straight on a branch you probably meant to protect.
-      warnProtected: onProtected && changed,
+      // The session is on a branch you probably meant to protect. Not tied to the files
+      // counted above: those only cover the edit tools, and a change made through a shell
+      // command (sed, git commit, a script) would otherwise slip past the warning.
+      warnProtected: onProtected,
       // Not knowing the branch is not the same as being on a safe one.
-      warnUnknownBranch: Boolean(info) && !info.branch && info.state !== 'pending' && changed,
+      warnUnknownBranch: Boolean(info) && !info.branch && info.state !== 'pending',
     };
   }
 
