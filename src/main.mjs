@@ -1,7 +1,7 @@
 // Wires everything together and serves the page on 127.0.0.1.
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { createStatic } from './static.mjs';
 import { createHistory } from './history.mjs';
 import { ROOT, HELP, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
@@ -17,11 +17,6 @@ import { loadTranslator } from './format.mjs';
 
 const HOST = '127.0.0.1'; // Not configurable on purpose: the page shows what your agent is doing.
 
-const STATIC = {
-  '/': ['public/index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
-  '/style.css': ['public/style.css', 'text/css; charset=utf-8'],
-};
 
 export async function main(argv) {
   const args = parseArgs(argv);
@@ -85,6 +80,7 @@ export async function main(argv) {
   tick();
   setInterval(tick, cfg.pollMs);
 
+  const lookup = createStatic(ROOT);
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
@@ -104,18 +100,21 @@ export async function main(argv) {
       req.on('close', () => clients.delete(res));
     } else if (path === '/api/history') {
       res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.list()));
-    } else if (path === '/favicon.ico') {
-      res.writeHead(204, headers).end();
     } else {
-      const i18n = /^\/i18n\/([a-z]{2,3})\.json$/.exec(path);
-      const [file, type] = i18n ? [`i18n/${i18n[1]}.json`, 'application/json; charset=utf-8'] : STATIC[path] ?? [];
-      try {
-        if (!file) throw new Error('not found');
-        const body = await readFile(join(ROOT, file));
-        res.writeHead(200, { ...headers, 'content-type': type, 'content-security-policy': "default-src 'self'" }).end(body);
-      } catch {
+      const found = await lookup(path).catch(() => null);
+      if (!found) {
         res.writeHead(404, headers).end('Not found');
+        return;
       }
+      // Built assets have content hashes in their names and may be cached; the rest may not.
+      const cache = path.startsWith('/_next/static/') ? 'public, max-age=31536000, immutable' : 'no-store';
+      res.writeHead(200, {
+        ...headers,
+        'cache-control': cache,
+        'content-type': found.type,
+        'referrer-policy': 'no-referrer',
+        ...(found.csp ? { 'content-security-policy': found.csp } : {}),
+      }).end(found.body);
     }
   });
 

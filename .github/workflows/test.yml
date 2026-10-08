@@ -24,3 +24,23 @@ jobs:
       - run: node --version
       # Prints each failing test as an error annotation, so the cause shows on the run page.
       - run: node scripts/ci-test.mjs
+
+  # The page in public/ is built from dashboard/ and committed. This checks that the source
+  # still builds and passes its checks; it does not replace what is committed.
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx next build

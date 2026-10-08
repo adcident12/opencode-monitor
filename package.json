@@ -12,6 +12,6 @@
   "scripts": {
     "start": "node server.mjs",
     "sample": "node server.mjs --sample",
-    "test": "node --test"
+    "test": "node --test \"test/*.test.mjs\""
   }
 }

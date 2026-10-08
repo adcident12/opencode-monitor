@@ -74,6 +74,7 @@
   "env.mcp.tip.failed": "OpenCode logged this server failing, and none of its tools has worked since.",
   "env.mcp.tip.ok": "One of this server's tools completed recently.",
   "env.mcp.tip.unknown": "No failure logged and no tool of this server used in the sessions shown, so there is nothing to judge by.",
+  "env.title": "What the agent depends on",
 
   "work.title": "Work",
   "work.branch": "branch {branch}",
@@ -122,6 +123,18 @@
   "approval.asked": "you were asked, then it ran",
   "approval.rule": "allowed by a rule, no prompt",
   "approval.refused": "you refused",
+
+  "theme.label": "Theme",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.system": "Match system",
+
+  "section.working": "Working ({n})",
+  "section.rest": "Finished and idle ({n})",
+
+  "timer.waiting": "waiting for you",
+  "timer.stuck": "without progress",
+  "timer.error": "since it failed",
 
   "tab.now": "Now",
   "tab.history": "History",

@@ -6,7 +6,7 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 
 - **Read-only.** It reads what OpenCode already stores on disk and changes nothing in OpenCode.
 - **Local.** Binds to `127.0.0.1` only. No telemetry. Nothing leaves your machine unless you configure a Discord webhook.
-- **No install step.** One Node script and one HTML page, built-in Node modules only.
+- **No install step.** The server uses built-in Node modules only, and the page comes pre-built. npm is needed only to change the page (see [dashboard/](dashboard/README.md)).
 - **Secrets are hidden by default** before anything is displayed or sent.
 
 ## Run it
@@ -170,12 +170,14 @@ src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications
 src/process.mjs         is OpenCode running
 src/opencode-config.mjs model limits, MCP names, model server addresses
-public/                 the page
+public/                 the page, built from dashboard/ (do not edit by hand)
+dashboard/              source of the page: Next.js, Tailwind CSS, shadcn/ui
+src/static.mjs          serves public/ with a strict Content-Security-Policy
 i18n/                   UI and notification strings (en, th)
 scripts/make-sample.mjs fake data for --sample and the tests
 ```
 
-To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the values, and add the code to the `<select>` in `public/index.html` and `LANGS` in `public/app.js`.
+To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the values, add the code to `LANGUAGES` in `dashboard/lib/i18n.tsx`, and rebuild the page (`npm run build` in `dashboard/`).
 
 ```sh
 npm test

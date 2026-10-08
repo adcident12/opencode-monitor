@@ -27,7 +27,7 @@ function get(path, host = `127.0.0.1:${PORT}`) {
     const req = request({ host: '127.0.0.1', port: PORT, path, headers: { host } }, res => {
       let body = '';
       res.on('data', chunk => (body += chunk));
-      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], body }));
+      res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], csp: res.headers['content-security-policy'], body }));
     });
     req.on('error', reject);
     req.end();
@@ -60,10 +60,19 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     const page = await get('/');
     assert.equal(page.status, 200);
     assert.match(page.type, /text\/html/);
-    for (const path of ['/app.js', '/style.css', '/i18n/en.json', '/i18n/th.json']) assert.equal((await get(path)).status, 200, path);
+    for (const path of ['/i18n/en.json', '/i18n/th.json']) assert.equal((await get(path)).status, 200, path);
+    // Every script and stylesheet the page refers to is served.
+    const assets = [...page.body.matchAll(/(?:src|href)="(\/_next\/[^"?]+)/g)].map(m => m[1]);
+    assert.ok(assets.length > 3);
+    for (const path of new Set(assets)) assert.equal((await get(path)).status, 200, path);
 
-    assert.equal((await get('/i18n/../config.json')).status, 404);
-    assert.equal((await get('/config.json')).status, 404);
+    // The page's policy allows its own inline scripts by hash and nothing inline beyond that.
+    assert.match(page.csp, /script-src 'self'( 'sha256-[^']+')+;/);
+    assert.ok(!/script-src[^;]*unsafe-inline/.test(page.csp));
+
+    for (const path of ['/i18n/../config.json', '/config.json', '/../config.json', '/%2e%2e/config.json', '/_next/..%2f..%2fconfig.json', '/..%5cconfig.json', '/server.mjs', '/src/main.mjs']) {
+      assert.equal((await get(path)).status, 404, path);
+    }
     assert.equal((await get('/', 'evil.example')).status, 403);
   } finally {
     child.kill();

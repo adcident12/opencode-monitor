@@ -74,6 +74,7 @@
   "env.mcp.tip.failed": "OpenCode บันทึกว่า server นี้ล้มเหลว และหลังจากนั้นยังไม่มี tool ของมันทำงานสำเร็จ",
   "env.mcp.tip.ok": "มี tool ของ server นี้ทำงานสำเร็จเมื่อไม่นานมานี้",
   "env.mcp.tip.unknown": "ไม่มีบันทึกว่าล้มเหลว และ session ที่แสดงอยู่ยังไม่ได้ใช้ tool ของ server นี้ จึงยังตัดสินไม่ได้",
+  "env.title": "สิ่งที่ agent ต้องใช้",
 
   "work.title": "งานที่ทำ",
   "work.branch": "branch {branch}",
@@ -122,6 +123,18 @@
   "approval.asked": "ถามคุณแล้ว และคำสั่งได้รัน",
   "approval.rule": "กฎอนุญาตเอง ไม่ได้ถาม",
   "approval.refused": "คุณปฏิเสธ",
+
+  "theme.label": "ธีม",
+  "theme.light": "สว่าง",
+  "theme.dark": "มืด",
+  "theme.system": "ตามระบบ",
+
+  "section.working": "กำลังทำงาน ({n})",
+  "section.rest": "เสร็จแล้วและไม่ได้ทำงาน ({n})",
+
+  "timer.waiting": "รอคุณมาแล้ว",
+  "timer.stuck": "ไม่มีความคืบหน้า",
+  "timer.error": "ตั้งแต่ล้มเหลว",
 
   "tab.now": "ตอนนี้",
   "tab.history": "ประวัติ",

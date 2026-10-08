@@ -1,0 +1,157 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-plex-sans), var(--font-plex-thai), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), var(--font-plex-thai), ui-monospace, "Cascadia Code", Menlo, monospace;
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* One colour per agent state, each with a quiet tint for backgrounds. */
+  --color-waiting: var(--waiting);
+  --color-waiting-soft: var(--waiting-soft);
+  --color-stuck: var(--stuck);
+  --color-stuck-soft: var(--stuck-soft);
+  --color-error: var(--error);
+  --color-error-soft: var(--error-soft);
+  --color-working: var(--working);
+  --color-working-soft: var(--working-soft);
+  --color-finished: var(--finished);
+  --color-finished-soft: var(--finished-soft);
+  --color-idle: var(--idle);
+  --color-idle-soft: var(--idle-soft);
+  --color-canvas: var(--canvas);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light: cool graphite on blue-grey paper. */
+:root {
+  --canvas: oklch(0.972 0.006 250);
+  --background: oklch(0.972 0.006 250);
+  --foreground: oklch(0.24 0.025 260);
+  --card: oklch(0.995 0.002 250);
+  --card-foreground: oklch(0.24 0.025 260);
+  --popover: oklch(0.995 0.002 250);
+  --popover-foreground: oklch(0.24 0.025 260);
+  --primary: oklch(0.3 0.04 262);
+  --primary-foreground: oklch(0.98 0.004 250);
+  --secondary: oklch(0.935 0.01 255);
+  --secondary-foreground: oklch(0.3 0.04 262);
+  --muted: oklch(0.935 0.01 255);
+  --muted-foreground: oklch(0.5 0.025 258);
+  --accent: oklch(0.93 0.012 255);
+  --accent-foreground: oklch(0.3 0.04 262);
+  --destructive: oklch(0.56 0.2 22);
+  --border: oklch(0.895 0.012 255);
+  --input: oklch(0.88 0.014 255);
+  --ring: oklch(0.58 0.15 258);
+  --radius: 0.7rem;
+
+  --waiting: oklch(0.6 0.15 68);
+  --waiting-soft: oklch(0.955 0.045 80);
+  --stuck: oklch(0.58 0.18 42);
+  --stuck-soft: oklch(0.95 0.035 45);
+  --error: oklch(0.55 0.2 20);
+  --error-soft: oklch(0.95 0.03 18);
+  --working: oklch(0.55 0.16 258);
+  --working-soft: oklch(0.95 0.03 255);
+  --finished: oklch(0.55 0.12 160);
+  --finished-soft: oklch(0.955 0.03 160);
+  --idle: oklch(0.55 0.02 258);
+  --idle-soft: oklch(0.94 0.008 255);
+}
+
+/* Dark: deep blue-slate, not black, so the state colours keep their warmth. */
+.dark {
+  --canvas: oklch(0.2 0.018 262);
+  --background: oklch(0.2 0.018 262);
+  --foreground: oklch(0.93 0.008 255);
+  --card: oklch(0.24 0.02 262);
+  --card-foreground: oklch(0.93 0.008 255);
+  --popover: oklch(0.26 0.02 262);
+  --popover-foreground: oklch(0.93 0.008 255);
+  --primary: oklch(0.88 0.03 255);
+  --primary-foreground: oklch(0.22 0.025 262);
+  --secondary: oklch(0.3 0.022 262);
+  --secondary-foreground: oklch(0.93 0.008 255);
+  --muted: oklch(0.29 0.02 262);
+  --muted-foreground: oklch(0.7 0.02 258);
+  --accent: oklch(0.31 0.024 262);
+  --accent-foreground: oklch(0.93 0.008 255);
+  --destructive: oklch(0.7 0.17 22);
+  --border: oklch(0.33 0.022 262);
+  --input: oklch(0.36 0.024 262);
+  --ring: oklch(0.7 0.13 258);
+
+  --waiting: oklch(0.82 0.14 78);
+  --waiting-soft: oklch(0.32 0.05 75);
+  --stuck: oklch(0.76 0.15 48);
+  --stuck-soft: oklch(0.31 0.05 45);
+  --error: oklch(0.74 0.16 20);
+  --error-soft: oklch(0.31 0.06 20);
+  --working: oklch(0.76 0.12 255);
+  --working-soft: oklch(0.31 0.05 258);
+  --finished: oklch(0.76 0.12 160);
+  --finished-soft: oklch(0.3 0.04 160);
+  --idle: oklch(0.7 0.02 258);
+  --idle-soft: oklch(0.29 0.015 262);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss02";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* The only animation not caused by the user: a slow breath on states that are live. */
+@keyframes breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+@utility animate-breathe {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-breathe {
+    animation: none;
+  }
+}
