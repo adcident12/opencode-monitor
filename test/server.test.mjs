@@ -41,7 +41,8 @@ test('server: sample mode serves the page, the state, and the history; refuses f
   child.stderr.on('data', chunk => (output += chunk));
   try {
     const deadline = Date.now() + 60_000; // shared CI runners can be slow to start a process
-    while (!output.includes(`:${PORT}`)) {
+    // Startup prints several lines that can arrive in separate chunks; "notifications:" is the last.
+    while (!output.includes('notifications:')) {
       assert.ok(child.exitCode == null && Date.now() < deadline, `server did not start:\n${output}`);
       await new Promise(resolve => setTimeout(resolve, 100));
     }
