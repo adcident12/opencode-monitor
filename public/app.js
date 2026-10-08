@@ -222,13 +222,20 @@ function reviewSection(s) {
     head.append(
       el('span', 'tag', t(`rule.${item.rule}`, { host: item.host ?? '' })),
       item.count > 1 ? el('span', 'times', `×${item.count}`) : '',
-      el('span', `approval a-${item.approval}`, t(`approval.${item.approval}`)),
-      ticking('review-time', 'time.ago', item.at),
     );
-    row.append(head, el('code', '', item.text));
+    // How the calls got through: "you were asked, then it ran ×5 · allowed by a rule, no prompt ×3".
+    for (const how of ['refused', 'asked', 'rule']) {
+      const n = item.approvals[how];
+      if (n) head.append(el('span', `approval a-${how}`, t(`approval.${how}`) + (item.count > 1 ? ` ×${n}` : '')));
+    }
+    head.append(ticking('review-time', 'time.ago', item.at));
+    row.append(head);
+    if (item.count > 1) row.append(el('div', 'box-label', t('review.latest')));
+    row.append(el('code', '', item.text));
     list.append(row);
   }
   body.append(list);
+  body.append(el('p', 'reason', t('review.note')));
   if (s.review.more > 0) body.append(el('p', 'reason', t('review.more', { n: s.review.more })));
   return section(`${s.id}:review`, 'review-section', [el('span', 'more-title', t('review.title')), ...parts], body);
 }

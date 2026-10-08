@@ -1,6 +1,11 @@
 // Pure rules that flag tool calls worth a second look: destructive commands, processes left
-// in the background, things sent off the machine, and secrets touched. Pattern-based, so it
-// points at candidates; it does not prove anything happened or that anything was missed.
+// in the background, things sent off the machine, and secrets touched.
+//
+// This is a hint list, not a security control. It matches text; it does not parse or run
+// the shell, so a command can always be written in a way these patterns do not see
+// (variables, substitutions, scripts on disk, another interpreter). Nothing may rely on an
+// empty result to mean "nothing risky happened". What blocks commands is OpenCode's own
+// permission system; this only helps a person decide where to look afterwards.
 
 export const FLAG_KINDS = ['risky', 'secret_value', 'secret_file', 'outbound', 'background'];
 
@@ -15,9 +20,14 @@ export function isLocalHost(host) {
 const SEG = String.raw`[^|;&\n]*`;
 
 const RISKY = [
-  ['delete_recursive', new RegExp(String.raw`\brm\s+(?:-\w+\s+)*-\w*[rR]\w*\b|\bRemove-Item\b${SEG}-Recurse|\b(?:rmdir|rd)\s+/s\b|\bdel\s+/s\b|\brimraf\b`, 'i')],
-  ['kill_process', /\b(?:Stop-Process|taskkill|pkill|killall)\b|\bkill\s+-(?:9|KILL)\b/i],
-  ['git_force_push', new RegExp(String.raw`\bgit\b${SEG}\bpush\b${SEG}(?:--force\b|--force-with-lease|\s-f\b)`)],
+  ['delete_recursive', new RegExp(
+    String.raw`\brm\s+(?:-[\w-]+\s+)*(?:-\w*[rR]\w*|--recursive)\b` +
+    // PowerShell: Remove-Item and its aliases, with -Recurse abbreviated any way PowerShell accepts
+    String.raw`|\b(?:Remove-Item|ri|rm|del|erase|rmdir|rd)\b${SEG}\s-r(?:e(?:c(?:u(?:r(?:s(?:e)?)?)?)?)?)?\b` +
+    String.raw`|\b(?:rmdir|rd|del|erase)\s+(?:/\w\s+)*/s\b|\brimraf\b|\bfind\b${SEG}(?:\s-delete\b|-exec\s+rm\b)|\brmtree\b|\brmSync\b`, 'i')],
+  ['kill_process', /\b(?:Stop-Process|spps|taskkill|pkill|killall)\b|\bkill\s+-(?:9|KILL|s\s+(?:9|KILL))\b|\|\s*kill\b|\bwmic\s+process\b[^|;&\n]*\bdelete\b/i],
+  // --force/-f, --mirror, deleting a remote branch, or a +refspec, which forces without any flag
+  ['git_force_push', new RegExp(String.raw`\bgit\b${SEG}\bpush\b${SEG}(?:--force\b|--force-with-lease|\s-\w*f\w*\b|--mirror\b|--delete\b|\s-d\b|\s\+[\w./-]+|\s:[\w./-]+)`)],
   ['git_discard', new RegExp(String.raw`\bgit\b${SEG}\b(?:reset\s+--hard|clean\s+-\w*f|checkout\s+(?:--\s+)?\.(?:\s|$)|restore\s+\.(?:\s|$)|branch\s+-D\b|stash\s+(?:drop|clear))`)],
   ['db_destructive', /\b(?:drop\s+(?:table|database|schema)|truncate\s+table)\b|\bdelete\s+from\s+[\w."`]+\s*(?:;|"|'|$)|\bmigrate\s+reset\b|--force-reset\b/i],
   ['docker_destructive', new RegExp(String.raw`\bdocker\b${SEG}\b(?:system|volume|image|container|builder)\s+prune\b|\bdocker\s+volume\s+rm\b|\bcompose\b${SEG}\bdown\b${SEG}(?:\s-v\b|--volumes)`)],
@@ -29,10 +39,13 @@ const RISKY = [
 
 // A command built at run time cannot be judged by reading it. Say so instead of staying quiet.
 const HIDDEN = /\beval\s|\b(?:iex|Invoke-Expression)\b|-(?:EncodedCommand|enc|ec)\s+[A-Za-z0-9+/=]{16,}|\bbase64\s+(?:-d|--decode)\b|\bFromBase64String\b|\b(?:sh|bash|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-\w+\s+)*(?:-c|\/c|-Command)\s+["']?\$\(|\|\s*(?:sh|bash|zsh)\b|\bxargs\s+(?:-\S+\s+)*(?:sh|bash|rm)\b|\$\{?IFS\b/i;
+// A variable in command position ($RM -rf x, & $tool args): the program run is not in the text.
+const VARIABLE_COMMAND = /(?:^|[;&|\n]\s*|&\s+)\$\{?[A-Za-z_]\w*\}?[ \t]+[-\w"'./~]/m;
 
-// The shell drops quotes, carets and backslash escapes before running a word, so
-// r"m" -rf, 'rm' -rf and r\m -rf are all rm -rf. Rules are tried on this form as well.
-const unquote = cmd => cmd.replace(/["'`^]|\\(?=[A-Za-z-])/g, '');
+// The shell joins continued lines and drops quotes, carets and backslash escapes before
+// running a word, so r"m" -rf, 'rm' -rf and r\m -rf are all rm -rf. Rules are tried on
+// this form as well as on the text as written.
+const unquote = cmd => cmd.replace(/[\\`^]\r?\n\s*/g, '').replace(/["'`^]|\\(?=[A-Za-z-])/g, '');
 
 const BACKGROUND =/\bStart-Process\b|\bStart-Job\b|\bnohup\s|\bstart\s+\/b\b|[^&|]&\s*$|\bup\s+(?:-[\w-]+\s+)*(?:-d|--detach)\b/im;
 
@@ -65,7 +78,7 @@ export function classifyPart(part, hasSecret = () => false) {
     const plain = unquote(cmd);
     const matches = pattern => pattern.test(cmd) || pattern.test(plain);
     for (const [rule, pattern] of RISKY) if (matches(pattern)) add('risky', rule);
-    if (HIDDEN.test(cmd) && !flags.some(f => f.rule === 'pipe_to_shell')) add('risky', 'hidden_command');
+    if ((HIDDEN.test(cmd) || VARIABLE_COMMAND.test(cmd)) && !flags.some(f => f.rule === 'pipe_to_shell')) add('risky', 'hidden_command');
     if (BACKGROUND.test(cmd)) add('background', 'background');
     for (const [rule, pattern] of OUTBOUND) if (matches(pattern)) add('outbound', rule);
     const host = HTTP_CLIENT.test(cmd) ? externalHost(cmd) : null;

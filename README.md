@@ -77,7 +77,7 @@ Each session card has two fold-out sections.
 
 **Work** shows the files the agent touched, the current git branch, and commits made in that repository since the session started. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
 
-**To review** lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
+**To review** is a hint list, not a security control. It lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
 
 | Kind | Examples |
 | --- | --- |
@@ -89,7 +89,7 @@ Each session card has two fold-out sections.
 
 These are pattern matches meant to point you at things to check. They do not prove anything happened, and a command phrased unusually will not be caught. OpenCode logs that it asked but not what you answered, so "you were asked" is inferred from a prompt logged at the moment the call started.
 
-If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Identical calls are shown once with a count.
+If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Calls flagged by the same rule are shown as one entry with a count, the latest example, and how many were prompted for.
 
 ## History
 
@@ -136,7 +136,7 @@ By default a Discord message carries only the state, the project folder name, th
 - `log/opencode.log` in the same directory: the only place permission prompts are recorded.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
 - The process list, to tell whether OpenCode is running.
-- Each project directory: `.git/HEAD` is read for the branch, and `git log` for recent commits. `git status` is not used, because it would run filter programs named in the repository's own config; that is why uncommitted changes are not shown.
+- Each project directory: `.git/HEAD` is read for the branch and `.git/logs/HEAD` (the reflog) for commits. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. That is why uncommitted changes are not shown.
 - HTTP or TCP checks against the model server and the services you configured.
 
 ## Limits
@@ -146,7 +146,7 @@ By default a Discord message carries only the state, the project folder name, th
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus successful tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
 - Secret detection in tool results reads only the first 8,000 characters of each result.
-- Commits listed under Work are everything committed in that repository since the session started, whoever made them.
+- Commits listed under Work are those made in that clone since the session started, whoever made them (the agent or you). Commits that arrived by pull or fetch are not listed.
 - A session whose OpenCode window crashed looks stuck until OpenCode is closed entirely or the session falls out of the lookback window.
 - Redaction is pattern-based: known token formats, passwords in URLs, and values of names such as `TOKEN`, `KEY`, `PASSWORD`. A secret with no recognisable shape will not be caught.
 - View only. There are no controls that act on the agent.

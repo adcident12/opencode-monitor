@@ -89,17 +89,19 @@ test('review: flagged calls with who approved them, and no secret in the listing
   const review = byTitle('Clean up the release branch').review;
   assert.deepEqual(review.counts, { risky: 3, secret_value: 1, secret_file: 1, outbound: 2, background: 0 });
   const find = rule => review.items.find(i => i.rule === rule);
-  assert.equal(find('git_force_push').approval, 'asked');
-  assert.equal(find('kill_process').approval, 'rule');
-  assert.equal(find('delete_recursive').approval, 'refused');
+  assert.deepEqual(find('git_force_push').approvals, { asked: 1, rule: 0, refused: 0 });
+  assert.deepEqual(find('kill_process').approvals, { asked: 0, rule: 1, refused: 0 });
+  assert.deepEqual(find('delete_recursive').approvals, { asked: 0, rule: 0, refused: 1 });
   assert.equal(find('http_request').host, 'registry.example.com');
   assert.equal(find('in_output').tool, 'read');
   assert.equal(byTitle('Rename UserCard').review.total, 0);
 });
 
 test('review: repeats collapse into one entry, and rules can be switched off', () => {
-  const stuck = byTitle('Migrate reports').review;
-  assert.equal(stuck.counts.secret_value, 2);
+  // Two different commands carrying a token: one entry, counted twice, showing the newest.
+  const [values] = byTitle('Migrate reports').review.items;
+  assert.deepEqual([values.rule, values.count, values.approvals.rule], ['in_command', 2, 2]);
+  assert.ok(values.text.startsWith('sonar-scanner'));
   const make = ignoreRules => createMonitor({
     db, log: createLogTail(join(dir, 'data', 'log', 'opencode.log')), cfg: { ...DEFAULTS, review: { ignoreRules } },
     redact: createRedactor(), modelLimits: new Map(), probe: { running: true },

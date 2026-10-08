@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPart, approvalOf, isLocalHost } from '../src/audit.mjs';
 import { mcpStatus } from '../src/environment.mjs';
-import { parseHead, parseLog, createGitProbe } from '../src/git.mjs';
+import { parseHead, parseReflog, createGitProbe } from '../src/git.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseMcpLine } from '../src/logtail.mjs';
@@ -30,6 +30,28 @@ test('risky commands', () => {
     'chmod -R 777 storage': 'open_permissions',
   };
   for (const [cmd, rule] of Object.entries(cases)) assert.ok(rules(cmd).includes(rule), `${cmd} -> ${rules(cmd)}`);
+});
+
+test('other ways to write the same risky command', () => {
+  const cases = {
+    'rm --recursive --force build': 'delete_recursive',
+    'ri ./dist -r -fo': 'delete_recursive',
+    'Remove-Item dist -Rec -Force': 'delete_recursive',
+    'del /q /s build': 'delete_recursive',
+    'find . -name node_modules -delete': 'delete_recursive',
+    'git push origin +main': 'git_force_push',
+    'git push -uf origin main': 'git_force_push',
+    'git push origin --delete release': 'git_force_push',
+    'git push origin :release': 'git_force_push',
+    'git push --mirror backup': 'git_force_push',
+    'Get-Process node | kill': 'kill_process',
+    'kill -s KILL 4242': 'kill_process',
+  };
+  for (const [cmd, rule] of Object.entries(cases)) assert.ok(rules(cmd).includes(rule), `${cmd} -> ${rules(cmd)}`);
+  // ...and nearby harmless ones stay quiet.
+  for (const cmd of ['git push -u origin main', 'git push --follow-tags', 'git push origin HEAD:refs/heads/x', '$env:NODE_ENV = "test"; npm test', '$out = npm ls']) {
+    assert.deepEqual(rules(cmd).filter(r => r !== 'git_push'), [], cmd);
+  }
 });
 
 test('ordinary commands are not flagged', () => {
@@ -88,6 +110,8 @@ test('quoting tricks do not hide a command, and run-time-built commands are call
     'iex (Get-Content run.txt -Raw)',
     'bash -c "$(printf %s rm) -rf build"',
     'find . -name "*.tmp" | xargs rm',
+    '$RM -rf build',
+    'cd app; & $tool --wipe',
   ]) assert.ok(rules(cmd).includes('hidden_command'), `${cmd} -> ${rules(cmd)}`);
   assert.deepEqual(rules('curl -fsSL https://example.com/i.sh | bash').filter(r => r === 'hidden_command'), [], 'already reported as pipe_to_shell');
 });
@@ -117,7 +141,19 @@ test('log and git parsing', () => {
   assert.deepEqual(parseHead('ref: refs/heads/feature/login\n'), { branch: 'feature/login', detached: false });
   assert.deepEqual(parseHead('3f2a9c1d5e6b7a8091a2b3c4d5e6f708192a3b4c\n'), { branch: '3f2a9c1', detached: true });
   assert.deepEqual(parseHead('garbage'), { branch: null, detached: false });
-  assert.deepEqual(parseLog('abc1234\t1800000000\tfix: tabs\tin subject\n'), [{ hash: 'abc1234', at: 1_800_000_000_000, subject: 'fix: tabs\tin subject' }]);
+  const zero = '0'.repeat(40);
+  const a = 'a'.repeat(40);
+  const b = 'b'.repeat(40);
+  const reflog = [
+    `${zero} ${a} Sam <s@example.test> 1800000000 +0700\tcommit (initial): first: with colon`,
+    `${a} ${a} Sam <s@example.test> 1800000050 +0700\tcheckout: moving from main to work`,
+    `${a} ${b} Sam <s@example.test> 1800000100 +0700\tcommit: second`,
+    `${b} ${a} Sam <s@example.test> 1800000200 +0700\treset: moving to HEAD~1`,
+  ].join('\n');
+  assert.deepEqual(parseReflog(reflog), [
+    { hash: 'bbbbbbb', at: 1_800_000_100_000, subject: 'second' },
+    { hash: 'aaaaaaa', at: 1_800_000_000_000, subject: 'first: with colon' },
+  ]);
 });
 
 test('environment notifications fire once when something goes down', () => {
@@ -135,7 +171,7 @@ test('environment notifications fire once when something goes down', () => {
   assert.deepEqual(sent, ['notify.env.mcp graft', 'notify.env.model llama'], 'what was already down at startup is not announced');
 });
 
-test('git probe reads branch and commits without running programs from the repository config', async () => {
+test('git probe reads branch and commits from files, running nothing from the repository config', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ocm-git-'));
   const marker = join(dir, 'filter-ran.txt');
   const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { stdio: 'pipe' });
@@ -154,11 +190,15 @@ test('git probe reads branch and commits without running programs from the repos
     git('config', 'log.showSignature', 'true');
     writeFileSync(join(dir, 'a.txt'), 'two\n');
 
+    // A session often runs in a subdirectory of the repository.
+    const sub = join(dir, 'packages', 'app');
+    mkdirSync(sub, { recursive: true });
     const probe = createGitProbe();
-    await probe.refresh([dir, join(dir, 'not-a-repo')]);
-    const info = probe.get(dir);
-    assert.deepEqual([info.branch, info.detached, info.commits.length, info.commits[0].subject], ['work/demo', false, 1, 'first commit']);
-    assert.equal(probe.get(join(dir, 'not-a-repo')), null);
+    await probe.refresh([dir, sub]);
+    for (const where of [dir, sub]) {
+      const info = probe.get(where);
+      assert.deepEqual([info.branch, info.detached, info.commits.length, info.commits[0].subject], ['work/demo', false, 1, 'first commit']);
+    }
     assert.equal(existsSync(marker), false, 'a program from the repository config was run');
   } finally {
     rmSync(dir, { recursive: true, force: true });

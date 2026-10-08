@@ -87,7 +87,9 @@
   "review.count.secret_file": "{n} secret files",
   "review.count.outbound": "{n} outbound",
   "review.count.background": "{n} background",
-  "review.more": "…and {n} earlier ones",
+  "review.more": "…and {n} more of other kinds",
+  "review.latest": "Latest:",
+  "review.note": "Found by matching text. It can miss a command written in an unusual way, so an empty list is not proof that nothing risky ran.",
 
   "rule.delete_recursive": "Recursive delete",
   "rule.kill_process": "Kills processes",

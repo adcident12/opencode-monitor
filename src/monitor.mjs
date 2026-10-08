@@ -8,7 +8,7 @@ import { OUTPUT_TAIL_CHARS } from './db.mjs';
 
 const SUMMARY_CHARS = 240;
 const OUTPUT_LINES = 6;
-const REVIEW_ITEMS = 15;
+const REVIEW_ITEMS = 20;
 const FILE_TOOLS = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
 
 /**
@@ -136,33 +136,37 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   // Tool calls worth a second look, newest first, with who let each one run.
   function reviewOf(digest, asks) {
     const counts = Object.fromEntries(FLAG_KINDS.map(kind => [kind, 0]));
-    // The same command flagged twenty times is one thing to look at, not twenty.
+    // One entry per rule (and per host for requests): twenty process kills are one thing
+    // to look at, not twenty. Each entry shows its newest call and how the calls got through.
     const groups = new Map();
     for (let i = digest.flagged.length - 1; i >= 0; i--) {
       const p = digest.flagged[i];
+      let approval;
       for (const flag of p.flags) {
         if (ignoredRules.has(flag.rule)) continue;
         counts[flag.kind]++;
-        const key = `${flag.rule}|${flag.host ?? ''}|${describePart(p)}`;
-        const group = groups.get(key);
-        if (group) {
-          group.count++;
-        } else if (groups.size < REVIEW_ITEMS) {
-          groups.set(key, {
+        approval ??= approvalOf(p, asks);
+        const key = `${flag.rule}|${flag.host ?? ''}`;
+        let group = groups.get(key);
+        if (!group) {
+          if (groups.size >= REVIEW_ITEMS) continue;
+          group = {
             kind: flag.kind,
             rule: flag.rule,
             host: flag.host ? show(flag.host, 80) : null,
             tool: p.tool,
             text: show(describePart(p), 160),
-            // Newest occurrence: when it last ran and who let that one through.
             at: p.started ?? p.time_created,
-            approval: approvalOf(p, asks),
-            count: 1,
-          });
+            count: 0,
+            approvals: { asked: 0, rule: 0, refused: 0 },
+          };
+          groups.set(key, group);
         }
+        group.count++;
+        group.approvals[approval]++;
       }
     }
-    const items = [...groups.values()];
+    const items = [...groups.values()].sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind) || b.at - a.at);
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
     return { counts, total, items, more: total - items.reduce((sum, item) => sum + item.count, 0) };
   }

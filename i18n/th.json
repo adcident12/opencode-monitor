@@ -87,7 +87,9 @@
   "review.count.secret_file": "ไฟล์ secret {n}",
   "review.count.outbound": "ส่งออกนอกเครื่อง {n}",
   "review.count.background": "รันเบื้องหลัง {n}",
-  "review.more": "…และก่อนหน้านี้อีก {n} รายการ",
+  "review.more": "…และประเภทอื่นอีก {n} รายการ",
+  "review.latest": "ล่าสุด:",
+  "review.note": "รายการนี้ได้จากการจับคู่ข้อความ คำสั่งที่เขียนแปลกไปอาจหลุดได้ รายการว่างจึงไม่ได้พิสูจน์ว่าไม่มีคำสั่งเสี่ยง",
 
   "rule.delete_recursive": "ลบทั้งโฟลเดอร์",
   "rule.kill_process": "สั่งหยุด process",
