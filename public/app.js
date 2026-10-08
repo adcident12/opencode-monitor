@@ -184,8 +184,6 @@ function workSection(s) {
   if (git?.branch) parts.push(el('span', warnProtected ? 'tag warn' : 'tag', t('work.branch', { branch: git.branch })));
   if (files.count) parts.push(el('span', '', t('work.files', { n: files.count })));
   if (git?.commitCount) parts.push(el('span', '', t('work.commits', { n: git.commitCount })));
-  if (git?.dirty) parts.push(el('span', '', t('work.dirty', { n: git.dirty })));
-  if (git?.ahead) parts.push(el('span', '', t('work.ahead', { n: git.ahead })));
   if (!parts.length) return null;
 
   const body = el('div', 'more-body');
@@ -223,6 +221,7 @@ function reviewSection(s) {
     const head = el('div', 'review-head');
     head.append(
       el('span', 'tag', t(`rule.${item.rule}`, { host: item.host ?? '' })),
+      item.count > 1 ? el('span', 'times', `×${item.count}`) : '',
       el('span', `approval a-${item.approval}`, t(`approval.${item.approval}`)),
       ticking('review-time', 'time.ago', item.at),
     );
@@ -230,7 +229,7 @@ function reviewSection(s) {
     list.append(row);
   }
   body.append(list);
-  if (total > items.length) body.append(el('p', 'reason', t('review.more', { n: total - items.length })));
+  if (s.review.more > 0) body.append(el('p', 'reason', t('review.more', { n: s.review.more })));
   return section(`${s.id}:review`, 'review-section', [el('span', 'more-title', t('review.title')), ...parts], body);
 }
 

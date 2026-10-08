@@ -27,7 +27,14 @@ const RISKY = [
   ['disk', /\bmkfs(?:\.\w+)?\b|\bdd\s+if=|\bFormat-Volume\b|\bdiskpart\b/i],
 ];
 
-const BACKGROUND = /\bStart-Process\b|\bStart-Job\b|\bnohup\s|\bstart\s+\/b\b|[^&|]&\s*$|\bup\s+(?:-[\w-]+\s+)*(?:-d|--detach)\b/im;
+// A command built at run time cannot be judged by reading it. Say so instead of staying quiet.
+const HIDDEN = /\beval\s|\b(?:iex|Invoke-Expression)\b|-(?:EncodedCommand|enc|ec)\s+[A-Za-z0-9+/=]{16,}|\bbase64\s+(?:-d|--decode)\b|\bFromBase64String\b|\b(?:sh|bash|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-\w+\s+)*(?:-c|\/c|-Command)\s+["']?\$\(|\|\s*(?:sh|bash|zsh)\b|\bxargs\s+(?:-\S+\s+)*(?:sh|bash|rm)\b|\$\{?IFS\b/i;
+
+// The shell drops quotes, carets and backslash escapes before running a word, so
+// r"m" -rf, 'rm' -rf and r\m -rf are all rm -rf. Rules are tried on this form as well.
+const unquote = cmd => cmd.replace(/["'`^]|\\(?=[A-Za-z-])/g, '');
+
+const BACKGROUND =/\bStart-Process\b|\bStart-Job\b|\bnohup\s|\bstart\s+\/b\b|[^&|]&\s*$|\bup\s+(?:-[\w-]+\s+)*(?:-d|--detach)\b/im;
 
 const OUTBOUND = [
   ['git_push', new RegExp(String.raw`\bgit\b${SEG}\bpush\b`)],
@@ -55,9 +62,12 @@ export function classifyPart(part, hasSecret = () => false) {
 
   if (part.tool === 'bash' && part.cmd) {
     const cmd = part.cmd;
-    for (const [rule, pattern] of RISKY) if (pattern.test(cmd)) add('risky', rule);
+    const plain = unquote(cmd);
+    const matches = pattern => pattern.test(cmd) || pattern.test(plain);
+    for (const [rule, pattern] of RISKY) if (matches(pattern)) add('risky', rule);
+    if (HIDDEN.test(cmd) && !flags.some(f => f.rule === 'pipe_to_shell')) add('risky', 'hidden_command');
     if (BACKGROUND.test(cmd)) add('background', 'background');
-    for (const [rule, pattern] of OUTBOUND) if (pattern.test(cmd)) add('outbound', rule);
+    for (const [rule, pattern] of OUTBOUND) if (matches(pattern)) add('outbound', rule);
     const host = HTTP_CLIENT.test(cmd) ? externalHost(cmd) : null;
     if (host) add('outbound', 'http_request', { host });
     if (SECRET_FILE.test(cmd)) add('secret_file', 'secret_file');
@@ -74,19 +84,33 @@ export function classifyPart(part, hasSecret = () => false) {
 }
 
 const ASK_MATCH_MS = 2000;
+// The exact text OpenCode stores when the user says no. Matched from the start, so a
+// command cannot earn the "refused" label by printing similar words.
+const REJECTED = 'The user rejected permission';
+// Which prompt kinds can belong to which tool. A prompt of another kind logged at the same
+// moment (another session, another tool) must not be read as approval of this call.
+const PROMPT_KINDS = { bash: ['bash'], read: ['read'], edit: ['edit'], write: ['edit'], webfetch: ['webfetch'] };
+
+function promptFits(ask, tool) {
+  if (!ask.permission || ask.permission === 'external_directory') return true;
+  return (PROMPT_KINDS[tool] ?? [tool]).includes(ask.permission);
+}
 
 /**
- * Who let a tool call run. OpenCode logs when it asks; a call that was asked about and
- * then ran was approved by the user, one that ran without a prompt was allowed by a rule.
- * @returns {'you'|'rule'|'denied'}
+ * Whether a prompt was shown for a tool call. OpenCode logs when it asks but not the answer,
+ * so this is an inference from timing, not a record:
+ *   refused - OpenCode stored its own "rejected permission" error for the call
+ *   asked   - a fitting prompt was logged as the call started, and the call went on to run
+ *   rule    - no prompt was logged: a permission rule let it through
+ * @returns {'asked'|'rule'|'refused'}
  */
 export function approvalOf(part, asks) {
-  if (part.status === 'error' && /rejected permission/i.test(part.error ?? '')) return 'denied';
+  if (part.status === 'error' && String(part.error ?? '').startsWith(REJECTED)) return 'refused';
   const at = part.started ?? part.time_created;
   for (let i = asks.length - 1; i >= 0; i--) {
     const ask = asks[i];
     if (ask.t < at - ASK_MATCH_MS) break;
-    if (ask.kind === 'permission' && Math.abs(ask.t - at) <= ASK_MATCH_MS) return 'you';
+    if (ask.kind === 'permission' && Math.abs(ask.t - at) <= ASK_MATCH_MS && promptFits(ask, part.tool)) return 'asked';
   }
   return 'rule';
 }

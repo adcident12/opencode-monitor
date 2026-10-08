@@ -36,6 +36,7 @@ export const DEFAULTS = {
   environment: { checkSeconds: 15, modelServers: 'local' },
   services: [],
   work: { git: true, protectedBranches: ['main', 'master'] },
+  review: { ignoreRules: [] },
   history: { enabled: true, file: 'data/history.jsonl', retentionDays: 30 },
   notify: {
     on: ['waiting', 'stuck'],

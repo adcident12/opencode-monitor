@@ -77,8 +77,6 @@
   "work.branch": "branch {branch}",
   "work.files": "{n} files touched",
   "work.commits": "{n} commits",
-  "work.dirty": "{n} uncommitted",
-  "work.ahead": "{n} not pushed",
   "work.protected": "The agent is changing files directly on {branch}.",
   "work.recentFiles": "Latest files touched by the agent",
   "work.commitsSince": "Commits in this repository since the session started",
@@ -101,6 +99,7 @@
   "rule.elevated": "Elevated privileges",
   "rule.open_permissions": "Opens file permissions",
   "rule.disk": "Disk-level command",
+  "rule.hidden_command": "Built at run time, could not be checked",
   "rule.background": "Left running in the background",
   "rule.git_push": "git push",
   "rule.publish": "Publishes",
@@ -110,9 +109,9 @@
   "rule.in_command": "Secret-looking value in the command",
   "rule.in_output": "Secret-looking value in the result",
 
-  "approval.you": "you approved",
+  "approval.asked": "you were asked, then it ran",
   "approval.rule": "allowed by a rule, no prompt",
-  "approval.denied": "you refused",
+  "approval.refused": "you refused",
 
   "tab.now": "Now",
   "tab.history": "History",

@@ -89,12 +89,27 @@ test('review: flagged calls with who approved them, and no secret in the listing
   const review = byTitle('Clean up the release branch').review;
   assert.deepEqual(review.counts, { risky: 3, secret_value: 1, secret_file: 1, outbound: 2, background: 0 });
   const find = rule => review.items.find(i => i.rule === rule);
-  assert.equal(find('git_force_push').approval, 'you');
+  assert.equal(find('git_force_push').approval, 'asked');
   assert.equal(find('kill_process').approval, 'rule');
-  assert.equal(find('delete_recursive').approval, 'denied');
+  assert.equal(find('delete_recursive').approval, 'refused');
   assert.equal(find('http_request').host, 'registry.example.com');
   assert.equal(find('in_output').tool, 'read');
   assert.equal(byTitle('Rename UserCard').review.total, 0);
+});
+
+test('review: repeats collapse into one entry, and rules can be switched off', () => {
+  const stuck = byTitle('Migrate reports').review;
+  assert.equal(stuck.counts.secret_value, 2);
+  const make = ignoreRules => createMonitor({
+    db, log: createLogTail(join(dir, 'data', 'log', 'opencode.log')), cfg: { ...DEFAULTS, review: { ignoreRules } },
+    redact: createRedactor(), modelLimits: new Map(), probe: { running: true },
+  })(NOW).sessions.find(s => s.title.startsWith('Clean up the release')).review;
+
+  const all = make([]);
+  assert.ok(all.items.every(item => item.count === 1) && all.more === 0);
+  const quiet = make(['kill_process', 'http_request']);
+  assert.deepEqual([quiet.counts.risky, quiet.counts.outbound], [2, 1]);
+  assert.ok(!quiet.items.some(item => item.rule === 'kill_process'));
 });
 
 test('work: files the agent touched', () => {

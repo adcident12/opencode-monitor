@@ -24,6 +24,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
+  const ignoredRules = new Set(cfg.review?.ignoreRules ?? []);
   // Longest first, so "chrome-devtools_click" is not attributed to a server named "chrome".
   const servers = [...mcpNames].sort((a, b) => b.length - a.length);
   const serverOf = tool => servers.find(name => tool.startsWith(name + '_')) ?? null;
@@ -123,8 +124,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       files: { count: digest.files.size, recent },
       git: info && {
         branch: show(info.branch, 80),
-        ahead: info.ahead,
-        dirty: info.dirty,
+        detached: info.detached,
         commitCount: commits.length,
         commits: commits.slice(0, 5).map(c => ({ hash: c.hash, at: c.at, subject: show(c.subject, 120) })),
       },
@@ -136,25 +136,35 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   // Tool calls worth a second look, newest first, with who let each one run.
   function reviewOf(digest, asks) {
     const counts = Object.fromEntries(FLAG_KINDS.map(kind => [kind, 0]));
-    const items = [];
+    // The same command flagged twenty times is one thing to look at, not twenty.
+    const groups = new Map();
     for (let i = digest.flagged.length - 1; i >= 0; i--) {
       const p = digest.flagged[i];
       for (const flag of p.flags) {
+        if (ignoredRules.has(flag.rule)) continue;
         counts[flag.kind]++;
-        if (items.length < REVIEW_ITEMS) {
-          items.push({
+        const key = `${flag.rule}|${flag.host ?? ''}|${describePart(p)}`;
+        const group = groups.get(key);
+        if (group) {
+          group.count++;
+        } else if (groups.size < REVIEW_ITEMS) {
+          groups.set(key, {
             kind: flag.kind,
             rule: flag.rule,
             host: flag.host ? show(flag.host, 80) : null,
             tool: p.tool,
             text: show(describePart(p), 160),
+            // Newest occurrence: when it last ran and who let that one through.
             at: p.started ?? p.time_created,
             approval: approvalOf(p, asks),
+            count: 1,
           });
         }
       }
     }
-    return { counts, total: Object.values(counts).reduce((a, b) => a + b, 0), items };
+    const items = [...groups.values()];
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return { counts, total, items, more: total - items.reduce((sum, item) => sum + item.count, 0) };
   }
 
   function buildSession(session, now, asks) {

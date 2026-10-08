@@ -48,6 +48,10 @@
     "protectedBranches": ["main", "master"]
   },
 
+  "review": {
+    "ignoreRules": []
+  },
+
   "history": {
     "enabled": true,
     "file": "data/history.jsonl",

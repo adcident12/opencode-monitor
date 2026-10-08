@@ -77,8 +77,6 @@
   "work.branch": "branch {branch}",
   "work.files": "แตะ {n} ไฟล์",
   "work.commits": "{n} commit",
-  "work.dirty": "ยังไม่ commit {n} รายการ",
-  "work.ahead": "ยังไม่ push {n} commit",
   "work.protected": "Agent กำลังแก้ไฟล์บน {branch} โดยตรง",
   "work.recentFiles": "ไฟล์ล่าสุดที่ agent แตะ",
   "work.commitsSince": "Commit ใน repository นี้ตั้งแต่เริ่ม session",
@@ -101,6 +99,7 @@
   "rule.elevated": "ใช้สิทธิ์ระดับสูง",
   "rule.open_permissions": "เปิดสิทธิ์ไฟล์กว้าง",
   "rule.disk": "คำสั่งระดับดิสก์",
+  "rule.hidden_command": "คำสั่งถูกประกอบตอนรัน ตรวจไม่ได้",
   "rule.background": "ทิ้งให้รันเบื้องหลัง",
   "rule.git_push": "git push",
   "rule.publish": "เผยแพร่",
@@ -110,9 +109,9 @@
   "rule.in_command": "มีค่าคล้าย secret ในคำสั่ง",
   "rule.in_output": "มีค่าคล้าย secret ในผลลัพธ์",
 
-  "approval.you": "คุณอนุมัติ",
+  "approval.asked": "ถามคุณแล้ว และคำสั่งได้รัน",
   "approval.rule": "กฎอนุญาตเอง ไม่ได้ถาม",
-  "approval.denied": "คุณปฏิเสธ",
+  "approval.refused": "คุณปฏิเสธ",
 
   "tab.now": "ตอนนี้",
   "tab.history": "ประวัติ",

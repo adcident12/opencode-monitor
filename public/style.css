@@ -268,8 +268,9 @@ main {
   overflow-wrap: anywhere;
 }
 
+.times { font-weight: 600; font-variant-numeric: tabular-nums; }
 .approval { color: var(--muted); }
-.approval.a-denied { color: var(--finished); }
+.approval.a-refused { color: var(--finished); }
 .review-time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .tabs {

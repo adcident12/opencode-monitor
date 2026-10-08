@@ -75,19 +75,21 @@ With `notify.environment` on, you are notified once when any of these goes down.
 
 Each session card has two fold-out sections.
 
-**Work** shows the files the agent touched, the current git branch, uncommitted changes, and commits made in that repository since the session started. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
+**Work** shows the files the agent touched, the current git branch, and commits made in that repository since the session started. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
 
-**To review** lists tool calls worth a second look, with who let each one run (*you approved*, *allowed by a rule, no prompt*, or *you refused*):
+**To review** lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
 
 | Kind | Examples |
 | --- | --- |
-| Risky | recursive delete, killing processes, force push, `git reset --hard`, `DROP TABLE`, `docker system prune`, piping a download into a shell |
+| Risky | commands built at run time that cannot be read (`eval`, encoded or piped-in scripts), recursive delete, killing processes, force push, `git reset --hard`, `DROP TABLE`, `docker system prune`, piping a download into a shell |
 | Secret values | a secret-looking value in a command or in a tool result (shown redacted; the original is still in OpenCode's own database) |
 | Secret files | reading `.env`, private keys, credential files |
 | Outbound | `git push`, publishing, requests to hosts outside your network, `ssh`/`scp` |
 | Background | commands that leave a process running (`Start-Process`, `nohup`, `docker compose up -d`) |
 
-These are pattern matches meant to point you at things to check. They do not prove anything happened, and a command phrased unusually will not be caught.
+These are pattern matches meant to point you at things to check. They do not prove anything happened, and a command phrased unusually will not be caught. OpenCode logs that it asked but not what you answered, so "you were asked" is inferred from a prompt logged at the moment the call started.
+
+If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Identical calls are shown once with a count.
 
 ## History
 
@@ -110,7 +112,8 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `environment.modelServers` | `"local"` | Which model servers to check: `"local"`, `"all"`, or `"off"` |
 | `environment.checkSeconds` | 15 | How often model servers and services are checked |
 | `services` | `[]` | Extra things to watch: `{ "name", "url" }` or `{ "name", "host", "port" }` |
-| `work.git` | `true` | Read branch, status, and recent commits of each project directory |
+| `work.git` | `true` | Read the branch and recent commits of each project directory |
+| `review.ignoreRules` | `[]` | Rules to leave out of "To review" |
 | `work.protectedBranches` | `["main","master"]` | Warn when the agent changes files on these |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
 | `history.retentionDays` | 30 | How long state changes are kept in `data/history.jsonl` |
@@ -133,12 +136,12 @@ By default a Discord message carries only the state, the project folder name, th
 - `log/opencode.log` in the same directory: the only place permission prompts are recorded.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
 - The process list, to tell whether OpenCode is running.
-- `git` in each project directory, read-only commands only (`status`, `log`).
+- Each project directory: `.git/HEAD` is read for the branch, and `git log` for recent commits. `git status` is not used, because it would run filter programs named in the repository's own config; that is why uncommitted changes are not shown.
 - HTTP or TCP checks against the model server and the services you configured.
 
 ## Limits
 
-- **Tested on OpenCode 1.18.35, Windows 11, Node 24.** macOS and Linux paths and notifications follow the documented conventions but have not been run yet. Reports welcome.
+- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Reports welcome.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus successful tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
