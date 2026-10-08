@@ -3,11 +3,23 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
+import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 43_000 + Math.floor(Math.random() * 2000);
+
+// Ask the system for ports that are free right now instead of guessing numbers.
+const freePort = () => new Promise((resolve, reject) => {
+  const probe = createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const { port } = probe.address();
+    probe.close(() => resolve(port));
+  });
+});
+const PORT = await freePort();
+const OTHER_PORT = await freePort();
 
 // fetch() will not let a test set the Host header, so use node:http directly.
 function get(path, host = `127.0.0.1:${PORT}`) {
@@ -28,7 +40,7 @@ test('server: sample mode serves the page, the state, and the history; refuses f
   child.stdout.on('data', chunk => (output += chunk));
   child.stderr.on('data', chunk => (output += chunk));
   try {
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + 60_000; // shared CI runners can be slow to start a process
     while (!output.includes(`:${PORT}`)) {
       assert.ok(child.exitCode == null && Date.now() < deadline, `server did not start:\n${output}`);
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -64,7 +76,7 @@ test('server: clear messages for a missing database and a bad option', async () 
     child.stderr.on('data', chunk => (err += chunk));
     child.on('close', code => resolve({ code, err }));
   });
-  const missing = await run(['--data-dir', join(ROOT, 'test', 'no-such-dir'), '--port', String(PORT + 1), '--no-notify']);
+  const missing = await run(['--data-dir', join(ROOT, 'test', 'no-such-dir'), '--port', String(OTHER_PORT), '--no-notify']);
   assert.equal(missing.code, 1);
   assert.match(missing.err, /OpenCode database not found/);
   assert.ok(!missing.err.includes('    at '), 'no stack trace for an expected problem');

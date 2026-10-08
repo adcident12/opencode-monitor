@@ -22,4 +22,5 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: node --version
-      - run: npm test
+      # Prints each failing test as an error annotation, so the cause shows on the run page.
+      - run: node scripts/ci-test.mjs
