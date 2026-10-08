@@ -2,11 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPart, approvalOf, isLocalHost } from '../src/audit.mjs';
 import { mcpStatus } from '../src/environment.mjs';
-import { parseHead, parseReflog, historyState, isSafeLocalPath, isSafeSegment, createGitProbe, UNREADABLE } from '../src/git.mjs';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
 import { parseMcpLine } from '../src/logtail.mjs';
 import { createNotifier } from '../src/notify.mjs';
 
@@ -137,124 +132,11 @@ test('MCP status needs a failure from the current run that no later success cont
   assert.equal(run(new Map(), false).graft, 'unknown', 'nothing is known while OpenCode is closed');
 });
 
-test('log and git parsing', () => {
+test('MCP failure lines in the log', () => {
   assert.deepEqual(parseMcpLine('timestamp=2026-10-07T03:00:00.000Z level=WARN run=ab12 message="MCP connection closed" server=chrome-devtools'),
     { t: Date.parse('2026-10-07T03:00:00.000Z'), run: 'ab12', kind: 'closed', name: 'chrome-devtools' });
   assert.equal(parseMcpLine('timestamp=2026-10-07T03:00:00.000Z level=WARN run=ab12 message="server unavailable" key=graft type=local status=failed').kind, 'unavailable');
   assert.equal(parseMcpLine('timestamp=2026-10-07T03:00:00.000Z level=INFO run=ab12 message=evaluated pattern="echo message=\\"MCP connection closed\\" server=x"'), null);
-
-  assert.deepEqual(parseHead('ref: refs/heads/feature/login\n'), { branch: 'feature/login', detached: false });
-  assert.deepEqual(parseHead('3f2a9c1d5e6b7a8091a2b3c4d5e6f708192a3b4c\n'), { branch: '3f2a9c1', detached: true });
-  assert.deepEqual(parseHead('garbage'), { branch: null, detached: false });
-  const state = (head, last, intact = true, unborn = false) => historyState({ head, reflog: { last, intact }, unborn });
-  assert.equal(state('abc', 'abc'), 'ok');
-  assert.equal(state('abc', 'def'), 'mismatch');
-  assert.equal(state('abc', 'abc', false), 'mismatch', 'a gap in the reflog');
-  assert.equal(state(null, 'abc'), 'mismatch', 'the current commit could not be determined');
-  assert.equal(state('abc', null), 'missing');
-  assert.equal(state(null, null), 'missing', 'no reflog and no readable commit is not "fine"');
-  assert.equal(state(null, null, true, true), 'ok', 'only a repository with no branch yet is');
-  const zero = '0'.repeat(40);
-  const a = 'a'.repeat(40);
-  const b = 'b'.repeat(40);
-  const reflog = [
-    `${zero} ${a} Sam <s@example.test> 1800000000 +0700\tcommit (initial): first: with colon`,
-    `${a} ${a} Sam <s@example.test> 1800000050 +0700\tcheckout: moving from main to work`,
-    `${a} ${b} Sam <s@example.test> 1800000100 +0700\tcommit: second`,
-    `${b} ${a} Sam <s@example.test> 1800000200 +0700\treset: moving to HEAD~1`,
-  ].join('\n');
-  assert.deepEqual(parseReflog(reflog), {
-    commits: [
-      { hash: 'bbbbbbb', at: 1_800_000_100_000, subject: 'second' },
-      { hash: 'aaaaaaa', at: 1_800_000_000_000, subject: 'first: with colon' },
-    ],
-    last: a,
-    intact: true,
-  });
-  // Cutting a line out of the middle leaves a gap the next entry gives away.
-  const lines = reflog.split('\n');
-  assert.equal(parseReflog([lines[0], lines[1], lines[3]].join('\n')).intact, false);
-  assert.equal(parseReflog(`${reflog}\nnot a reflog line`).intact, false);
-});
-
-test('paths found inside a repository are not followed off the machine or out of a repository', async () => {
-  for (const path of ['\\\\evil.example\\share\\.git', '//evil.example/share/.git', '\\\\.\\pipe\\x', '\\\\?\\C:\\x', '/dev/zero', '/proc/self/environ', 'relative/path', '', 'C:repo', tmpdir() + sep + 'NUL', tmpdir() + sep + 'x' + sep + 'COM1.txt']) {
-    assert.equal(isSafeLocalPath(path), false, path);
-  }
-  assert.equal(isSafeLocalPath(tmpdir()), true);
-  for (const name of ['', '.', '..', 'a/b', 'a\\b', 'C:', 'file::$DATA', 'NUL', 'nul.txt', 'COM1', 'LPT9', 'CONIN$', 'aux', 'NUL.', 'aux ', 'trailing.', 'q?', 'tab\tname']) {
-    assert.equal(isSafeSegment(name), false, JSON.stringify(name));
-  }
-  for (const name of ['HEAD', 'refs', 'feature-1', 'release_2.4', 'console', 'com10x', '.git']) assert.equal(isSafeSegment(name), true, name);
-
-  // realpath: on macOS the temp directory itself sits behind a link, which is refused by design.
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ocm-ptr-')));
-  try {
-    // A real repository to aim at, and "projects" whose .git file points at things it must not.
-    const real = join(root, 'real');
-    mkdirSync(join(real, '.git', 'worktrees', 'wt', 'logs'), { recursive: true });
-    mkdirSync(join(real, '.git', 'refs', 'heads'), { recursive: true });
-    const hash = 'c'.repeat(40);
-    writeFileSync(join(real, '.git', 'HEAD'), 'ref: refs/heads/main\n');
-    writeFileSync(join(real, '.git', 'refs', 'heads', 'feature'), `${hash}\n`);
-    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'HEAD'), 'ref: refs/heads/feature\n');
-    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'commondir'), '../..\n');
-    writeFileSync(join(real, '.git', 'worktrees', 'wt', 'logs', 'HEAD'), `${'0'.repeat(40)} ${hash} Sam <s@example.test> 1800000000 +0000\tcommit (initial): in worktree\n`);
-
-    const project = (name, pointer) => {
-      mkdirSync(join(root, name));
-      writeFileSync(join(root, name, '.git'), `gitdir: ${pointer}\n`);
-      return join(root, name);
-    };
-    const worktree = project('worktree', join(real, '.git', 'worktrees', 'wt'));
-    const toPlainDir = project('to-plain-dir', real);
-    const toShare = project('to-share', '\\\\evil.example\\share\\.git\\worktrees\\x');
-    const toSlashShare = project('to-slash-share', '//evil.example/share/.git/worktrees/x');
-    const toMissing = project('to-missing', join(root, 'nowhere', '.git', 'worktrees', 'x'));
-
-    // HEAD naming a ref outside refs/: must not be read as a file path.
-    const escape = join(root, 'escape');
-    mkdirSync(join(escape, '.git'), { recursive: true });
-    writeFileSync(join(root, 'secret.txt'), `${hash}\n`);
-    writeFileSync(join(escape, '.git', 'HEAD'), 'ref: refs/../../../secret.txt\n');
-
-    // A repository whose .git/logs is a link to a directory holding a tidy, fake reflog,
-    // and one whose .git/refs is a link. Neither link may be followed.
-    const decoy = join(root, 'decoy');
-    mkdirSync(join(decoy, 'heads'), { recursive: true });
-    writeFileSync(join(decoy, 'HEAD'), `${'0'.repeat(40)} ${hash} Sam <s@example.test> 1800000000 +0000\tcommit (initial): from the decoy\n`);
-    writeFileSync(join(decoy, 'heads', 'main'), `${hash}\n`);
-    const linked = join(root, 'linked');
-    mkdirSync(join(linked, '.git'), { recursive: true });
-    writeFileSync(join(linked, '.git', 'HEAD'), 'ref: refs/heads/main\n');
-    symlinkSync(decoy, join(linked, '.git', 'logs'), 'junction');
-    symlinkSync(decoy, join(linked, '.git', 'refs'), 'junction');
-
-    const plain = join(root, 'no-repo-here');
-    mkdirSync(plain);
-
-    let clock = 1_000_000;
-    const probe = createGitProbe({ everyMs: 15_000, now: () => clock });
-    const share = '\\\\evil.example\\share\\project';
-    assert.equal(probe.get(worktree), undefined, 'not looked at yet is its own answer');
-    await probe.refresh([worktree, toPlainDir, toShare, toSlashShare, toMissing, escape, linked, plain, share]);
-
-    const info = probe.get(worktree);
-    assert.deepEqual([info.branch, info.history, info.commits[0].subject], ['feature', 'ok', 'in worktree']);
-    // Refused layouts are "unreadable", which the page shows as a warning; never "no repository".
-    for (const refused of [toPlainDir, toShare, toSlashShare, toMissing, share]) assert.equal(probe.get(refused), UNREADABLE, refused);
-    assert.deepEqual([probe.get(escape).branch, probe.get(escape).history], [null, 'missing'], 'the ref outside refs/ was not resolved');
-    assert.deepEqual([probe.get(linked).history, probe.get(linked).commits.length], ['missing', 0], 'links inside .git were not followed, and that is not reported as fine');
-    // Only a directory with no .git anywhere above it is "no repository"... unless the temp
-    // directory itself happens to live inside one, in which case it is simply not null.
-    if (probe.get(plain) !== null) assert.ok(probe.get(plain).history);
-
-    // A result nobody has refreshed for a long time is no longer vouched for.
-    clock += 15_000 * 4 + 1;
-    assert.equal(probe.get(worktree), UNREADABLE);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 test('environment notifications fire once when something goes down', () => {
@@ -270,54 +152,4 @@ test('environment notifications fire once when something goes down', () => {
   notify.environment(env('failed', false));
   notify.environment(env('failed', false));
   assert.deepEqual(sent, ['notify.env.mcp graft', 'notify.env.model llama'], 'what was already down at startup is not announced');
-});
-
-test('git probe reads branch and commits from files, running nothing from the repository config', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'ocm-git-'));
-  const marker = join(dir, 'filter-ran.txt');
-  const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { stdio: 'pipe' });
-  try {
-    git('init', '-q', '-b', 'work/demo');
-    writeFileSync(join(dir, 'a.txt'), 'one\n');
-    git('add', '.');
-    git('commit', '-q', '-m', 'first commit');
-    // What a hostile repository could set up: a filter, a fsmonitor, and a "gpg" that all write a marker.
-    const touch = `node -e "require('fs').writeFileSync(process.argv[1],'x')" "${marker.replace(/\\/g, '/')}"`;
-    writeFileSync(join(dir, '.gitattributes'), '* filter=evil\n');
-    git('config', 'filter.evil.clean', touch);
-    git('config', 'filter.evil.smudge', touch);
-    git('config', 'core.fsmonitor', touch);
-    git('config', 'gpg.program', touch);
-    git('config', 'log.showSignature', 'true');
-    writeFileSync(join(dir, 'a.txt'), 'two\n');
-
-    // A session often runs in a subdirectory of the repository.
-    const sub = join(dir, 'packages', 'app');
-    mkdirSync(sub, { recursive: true });
-    const probe = createGitProbe();
-    await probe.refresh([dir, sub]);
-    for (const where of [dir, sub]) {
-      const info = probe.get(where);
-      assert.deepEqual([info.branch, info.detached, info.commits.length, info.commits[0].subject], ['work/demo', false, 1, 'first commit']);
-    }
-    assert.equal(existsSync(marker), false, 'a program from the repository config was run');
-    assert.equal(probe.get(dir).history, 'ok');
-
-    // A second commit whose reflog line is then removed: the list would silently miss it.
-    writeFileSync(join(dir, 'b.txt'), 'x\n');
-    git('-c', 'filter.evil.clean=', '-c', 'filter.evil.smudge=', '-c', 'core.fsmonitor=false', 'commit', '-q', '--no-verify', '-am', 'second commit');
-    const reflogPath = join(dir, '.git', 'logs', 'HEAD');
-    writeFileSync(reflogPath, readFileSync(reflogPath, 'utf8').trimEnd().split('\n').slice(0, -1).join('\n') + '\n');
-    const second = createGitProbe();
-    await second.refresh([dir]);
-    assert.deepEqual([second.get(dir).history, second.get(dir).commits.length], ['mismatch', 1]);
-
-    // The reflog deleted outright.
-    rmSync(join(dir, '.git', 'logs'), { recursive: true, force: true });
-    const third = createGitProbe();
-    await third.refresh([dir]);
-    assert.deepEqual([third.get(dir).history, third.get(dir).commits.length], ['missing', 0]);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });

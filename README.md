@@ -75,7 +75,7 @@ With `notify.environment` on, you are notified once when any of these goes down.
 
 Each session card has two fold-out sections.
 
-**Work** shows the files the agent touched, the current git branch, and commits made in that repository since the session started. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
+**Work** shows the files the agent touched and the git branch the project is on. It warns when changes are landing directly on a protected branch (`main` or `master` by default).
 
 **To review** is a hint list, not a security control. It lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
 
@@ -112,7 +112,7 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `environment.modelServers` | `"local"` | Which model servers to check: `"local"`, `"all"`, or `"off"` |
 | `environment.checkSeconds` | 15 | How often model servers and services are checked |
 | `services` | `[]` | Extra things to watch: `{ "name", "url" }` or `{ "name", "host", "port" }` |
-| `work.git` | `true` | Read the branch and recent commits of each project directory |
+| `work.git` | `true` | Read the branch name of each project directory |
 | `review.ignoreRules` | `[]` | Rules to leave out of "To review" |
 | `work.protectedBranches` | `["main","master"]` | Warn when the agent changes files on these |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
@@ -136,7 +136,7 @@ By default a Discord message carries only the state, the project folder name, th
 - `log/opencode.log` in the same directory: the only place permission prompts are recorded.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
 - The process list, to tell whether OpenCode is running.
-- Each project directory: `.git/HEAD` is read for the branch and `.git/logs/HEAD` (the reflog) for commits. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. That is why uncommitted changes are not shown.
+- Each project directory: one file, `.git/HEAD`, for the branch name. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. Commits and uncommitted changes are therefore not shown.
 - HTTP or TCP checks against the model server and the services you configured.
 
 ## Limits
@@ -146,8 +146,8 @@ By default a Discord message carries only the state, the project folder name, th
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus successful tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
 - Secret detection in tool results reads only the first 8,000 characters of each result.
-- Commits listed under Work are those made in that clone since the session started, whoever made them (the agent or you). Commits that arrived by pull or fetch are not listed. The list comes from the reflog, a plain file that can be deleted or rewritten. When it is missing, has gaps, or does not end at the current commit, the page says the commit record is unreliable instead of showing "no commits". This catches a record that is absent or stale; it is not an integrity check, because whoever can write the file can write a consistent fake one.
-- Files under `.git` are reached one directory at a time without following links, and only regular files are read. A link or junction inside `.git`, a network path, a device name, or a worktree whose path passes through a link (on macOS that includes anything under `/tmp` or `/var`) is refused. Such a repository is shown as "git state unreadable", with a warning, never as a repository with nothing to report.
+- Only the branch name is read from a repository, from `.git/HEAD`. A worktree or submodule (where `.git` is a file pointing elsewhere), a `.git` or `HEAD` that is a link, and a project on a network path are not read; they show "git state unreadable" with a warning, never a clean result.
+- Between checking `.git/HEAD` and opening it there is a short window in which a process racing the monitor could swap it for a link. Node offers no way to close that window completely; what is read is only ever interpreted as a branch name.
 - A session whose OpenCode window crashed looks stuck until OpenCode is closed entirely or the session falls out of the lookback window.
 - Redaction is pattern-based: known token formats, passwords in URLs, and values of names such as `TOKEN`, `KEY`, `PASSWORD`. A secret with no recognisable shape will not be caught.
 - View only. There are no controls that act on the agent.
@@ -163,7 +163,7 @@ src/state.mjs           state and health rules (pure, unit-tested)
 src/monitor.mjs         polling, caching, redaction of the snapshot
 src/audit.mjs           rules for risky, outbound, and secret-touching calls
 src/environment.mjs     MCP, model server, and service checks
-src/git.mjs             branch, status, commits per project
+src/git.mjs             branch name per project (reads .git/HEAD only)
 src/history.mjs         record of state changes (data/history.jsonl)
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications

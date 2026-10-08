@@ -176,7 +176,7 @@ function section(key, className, summaryNodes, body) {
   return node;
 }
 
-// What the agent did to the project: branch, files touched, commits.
+// What the agent did to the project: files touched, and the branch it is on.
 function workSection(s) {
   const { files, git, warnProtected, warnUnknownBranch } = s.work;
   if (!files.count && !git) return null;
@@ -184,11 +184,8 @@ function workSection(s) {
   if (git?.branch) parts.push(el('span', warnProtected ? 'tag warn' : 'tag', t(git.detached ? 'work.detached' : 'work.branch', { branch: git.branch })));
   else if (warnUnknownBranch) parts.push(el('span', 'tag warn', t('work.branchUnknown')));
   if (files.count) parts.push(el('span', '', t('work.files', { n: files.count })));
-  if (git?.commitCount) parts.push(el('span', '', t('work.commits', { n: git.commitCount })));
-  // "0 commits" would be a claim; say the record is unreliable instead.
-  if (git?.history === 'pending') parts.push(el('span', 'tag', t('work.checking')));
-  else if (git?.history === 'unreadable') parts.push(el('span', 'tag warn', t('work.gitUnreadable')));
-  else if (git && git.history !== 'ok') parts.push(el('span', 'tag warn', t('work.historyUnreliable')));
+  if (git?.state === 'pending') parts.push(el('span', 'tag', t('work.checking')));
+  else if (git?.state === 'unreadable') parts.push(el('span', 'tag warn', t('work.gitUnreadable')));
   if (!parts.length) return null;
 
   const body = el('div', 'more-body');
@@ -200,17 +197,7 @@ function workSection(s) {
     body.append(list);
   }
   if (warnUnknownBranch) body.append(el('p', 'warn-text', t('work.unknownBranch')));
-  if (git && git.history !== 'ok' && git.history !== 'pending') body.append(el('p', 'warn-text', t(`work.history.${git.history}`)));
-  if (git?.commits.length) {
-    body.append(el('div', 'box-label', t('work.commitsSince')));
-    const list = el('ul', 'plain');
-    for (const commit of git.commits) {
-      const item = el('li');
-      item.append(el('code', '', commit.hash), ` ${commit.subject}`);
-      list.append(item);
-    }
-    body.append(list);
-  }
+  if (git?.state === 'unreadable') body.append(el('p', 'warn-text', t('work.unreadable')));
   return section(`${s.id}:work`, 'work', [el('span', 'more-title', t('work.title')), ...parts], body);
 }
 
