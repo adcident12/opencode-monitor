@@ -1,0 +1,13 @@
+# Per-user settings (may hold a Discord webhook URL)
+config.json
+
+# State history written by the monitor
+data/
+
+# Generated fake data for --sample
+sample/
+
+node_modules/
+*.log
+.remember/
+.playwright-mcp/

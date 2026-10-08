@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenCode Monitor</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1 data-i18n="app.title">OpenCode Monitor</h1>
+      <div class="top-status">
+        <span class="chip" id="conn"><span class="dot"></span><span id="conn-text"></span></span>
+        <span class="chip" id="oc"><span class="dot"></span><span id="oc-text"></span></span>
+        <label class="lang">
+          <span class="sr-only" data-i18n="app.language">Language</span>
+          <select id="lang">
+            <option value="en">English</option>
+            <option value="th">ไทย</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="summary" id="summary"></div>
+    <section class="env" id="env"></section>
+    <nav class="tabs" id="tabs" hidden>
+      <a href="#now" data-tab="now" data-i18n="tab.now">Now</a>
+      <a href="#history" data-tab="history" data-i18n="tab.history">History</a>
+    </nav>
+  </header>
+  <main id="sessions" aria-live="polite"></main>
+  <main id="history" hidden>
+    <label class="filter"><input type="checkbox" id="history-filter"> <span data-i18n="history.filter">Only what needed you</span></label>
+    <div id="history-list"></div>
+  </main>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
