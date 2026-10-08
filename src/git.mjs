@@ -48,6 +48,42 @@ export function parseReflog(text) {
   return commits.reverse().slice(0, MAX_COMMITS);
 }
 
+/** Hash the reflog says HEAD moved to last, whatever kind of entry that was. */
+export function lastReflogHash(text) {
+  const lines = text.trimEnd().split('\n');
+  return /^[0-9a-f]{40,64} ([0-9a-f]{40,64}) /.exec(lines.at(-1) ?? '')?.[1] ?? null;
+}
+
+// The commit HEAD points at now, read from the ref files. null when it cannot be found.
+async function headHash(gitDir, headText) {
+  const direct = /^[0-9a-f]{40,64}$/i.exec(headText.trim())?.[0];
+  if (direct) return direct.toLowerCase();
+  const ref = /^ref:\s*(refs\/\S+)/m.exec(headText)?.[1];
+  if (!ref) return null;
+  // In a worktree, branches live in the main repository, named by the `commondir` file.
+  const common = await readFile(join(gitDir, 'commondir'), 'utf8').then(text => resolve(gitDir, text.trim())).catch(() => gitDir);
+  for (const base of new Set([gitDir, common])) {
+    const loose = await readFile(join(base, ...ref.split('/')), 'utf8').catch(() => null);
+    if (loose && /^[0-9a-f]{40,64}/i.test(loose)) return loose.trim().toLowerCase();
+  }
+  const packed = await readFile(join(common, 'packed-refs'), 'utf8').catch(() => '');
+  return new RegExp(`^([0-9a-f]{40,64}) ${ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'mi').exec(packed)?.[1]?.toLowerCase() ?? null;
+}
+
+/**
+ * Can the reflog be trusted as the list of commits? It is a plain file the agent can delete,
+ * and git can be told not to write it. An empty list must never be shown as "no commits"
+ * when the truth is "no record":
+ *   ok       - the reflog's last entry is the commit HEAD points at now
+ *   missing  - no reflog, or it is empty, while the repository does have a commit
+ *   mismatch - HEAD has moved in a way the reflog did not record
+ */
+export function historyState({ head, reflogHash }) {
+  if (!reflogHash) return head ? 'missing' : 'ok';
+  if (!head) return 'mismatch';
+  return head === reflogHash.toLowerCase() ? 'ok' : 'mismatch';
+}
+
 async function readTail(path) {
   const file = await open(path, 'r');
   try {
@@ -75,10 +111,10 @@ export function createGitProbe({ enabled = true, everyMs = 15_000 } = {}) {
       await Promise.all([...wanted].map(async dir => {
         try {
           const gitDir = await gitDirOf(dir);
-          const head = parseHead(await readFile(join(gitDir, 'HEAD'), 'utf8'));
-          // A repository without a reflog simply shows no commits.
-          const commits = parseReflog(await readTail(join(gitDir, 'logs', 'HEAD')).catch(() => ''));
-          cache.set(dir, { ...head, commits });
+          const headText = await readFile(join(gitDir, 'HEAD'), 'utf8');
+          const reflog = await readTail(join(gitDir, 'logs', 'HEAD')).catch(() => '');
+          const history = historyState({ head: await headHash(gitDir, headText), reflogHash: lastReflogHash(reflog) });
+          cache.set(dir, { ...parseHead(headText), commits: parseReflog(reflog), history });
         } catch {
           cache.set(dir, null);
         }

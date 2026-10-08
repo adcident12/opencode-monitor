@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyPart, approvalOf, isLocalHost } from '../src/audit.mjs';
 import { mcpStatus } from '../src/environment.mjs';
-import { parseHead, parseReflog, createGitProbe } from '../src/git.mjs';
+import { parseHead, parseReflog, historyState, createGitProbe } from '../src/git.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseMcpLine } from '../src/logtail.mjs';
@@ -44,6 +44,11 @@ test('other ways to write the same risky command', () => {
     'git push origin --delete release': 'git_force_push',
     'git push origin :release': 'git_force_push',
     'git push --mirror backup': 'git_force_push',
+    'git reflog expire --expire=now --all': 'git_internals',
+    'git -c core.logAllRefUpdates=false commit -m x': 'git_internals',
+    'rm -f .git/logs/HEAD': 'git_internals',
+    'git config core.hooksPath ./hooks': 'git_internals',
+    'git update-ref -d refs/heads/main': 'git_internals',
     'Get-Process node | kill': 'kill_process',
     'kill -s KILL 4242': 'kill_process',
   };
@@ -141,6 +146,10 @@ test('log and git parsing', () => {
   assert.deepEqual(parseHead('ref: refs/heads/feature/login\n'), { branch: 'feature/login', detached: false });
   assert.deepEqual(parseHead('3f2a9c1d5e6b7a8091a2b3c4d5e6f708192a3b4c\n'), { branch: '3f2a9c1', detached: true });
   assert.deepEqual(parseHead('garbage'), { branch: null, detached: false });
+  assert.equal(historyState({ head: 'abc', reflogHash: 'ABC' }), 'ok');
+  assert.equal(historyState({ head: 'abc', reflogHash: 'def' }), 'mismatch');
+  assert.equal(historyState({ head: 'abc', reflogHash: null }), 'missing');
+  assert.equal(historyState({ head: null, reflogHash: null }), 'ok', 'a repository with no commits yet');
   const zero = '0'.repeat(40);
   const a = 'a'.repeat(40);
   const b = 'b'.repeat(40);
@@ -200,6 +209,22 @@ test('git probe reads branch and commits from files, running nothing from the re
       assert.deepEqual([info.branch, info.detached, info.commits.length, info.commits[0].subject], ['work/demo', false, 1, 'first commit']);
     }
     assert.equal(existsSync(marker), false, 'a program from the repository config was run');
+    assert.equal(probe.get(dir).history, 'ok');
+
+    // A second commit whose reflog line is then removed: the list would silently miss it.
+    writeFileSync(join(dir, 'b.txt'), 'x\n');
+    git('-c', 'filter.evil.clean=', '-c', 'filter.evil.smudge=', '-c', 'core.fsmonitor=false', 'commit', '-q', '--no-verify', '-am', 'second commit');
+    const reflogPath = join(dir, '.git', 'logs', 'HEAD');
+    writeFileSync(reflogPath, readFileSync(reflogPath, 'utf8').trimEnd().split('\n').slice(0, -1).join('\n') + '\n');
+    const second = createGitProbe();
+    await second.refresh([dir]);
+    assert.deepEqual([second.get(dir).history, second.get(dir).commits.length], ['mismatch', 1]);
+
+    // The reflog deleted outright.
+    rmSync(join(dir, '.git', 'logs'), { recursive: true, force: true });
+    const third = createGitProbe();
+    await third.refresh([dir]);
+    assert.deepEqual([third.get(dir).history, third.get(dir).commits.length], ['missing', 0]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

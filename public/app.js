@@ -178,12 +178,15 @@ function section(key, className, summaryNodes, body) {
 
 // What the agent did to the project: branch, files touched, commits.
 function workSection(s) {
-  const { files, git, warnProtected } = s.work;
+  const { files, git, warnProtected, warnUnknownBranch } = s.work;
   if (!files.count && !git) return null;
   const parts = [];
-  if (git?.branch) parts.push(el('span', warnProtected ? 'tag warn' : 'tag', t('work.branch', { branch: git.branch })));
+  if (git?.branch) parts.push(el('span', warnProtected ? 'tag warn' : 'tag', t(git.detached ? 'work.detached' : 'work.branch', { branch: git.branch })));
+  else if (warnUnknownBranch) parts.push(el('span', 'tag warn', t('work.branchUnknown')));
   if (files.count) parts.push(el('span', '', t('work.files', { n: files.count })));
   if (git?.commitCount) parts.push(el('span', '', t('work.commits', { n: git.commitCount })));
+  // "0 commits" would be a claim; say the record is unreliable instead.
+  if (git && git.history !== 'ok') parts.push(el('span', 'tag warn', t('work.historyUnreliable')));
   if (!parts.length) return null;
 
   const body = el('div', 'more-body');
@@ -194,6 +197,8 @@ function workSection(s) {
     for (const file of files.recent) list.append(el('li', '', file));
     body.append(list);
   }
+  if (warnUnknownBranch) body.append(el('p', 'warn-text', t('work.unknownBranch')));
+  if (git && git.history !== 'ok') body.append(el('p', 'warn-text', t(`work.history.${git.history}`)));
   if (git?.commits.length) {
     body.append(el('div', 'box-label', t('work.commitsSince')));
     const list = el('ul', 'plain');
@@ -230,13 +235,25 @@ function reviewSection(s) {
     }
     head.append(ticking('review-time', 'time.ago', item.at));
     row.append(head);
-    if (item.count > 1) row.append(el('div', 'box-label', t('review.latest')));
-    row.append(el('code', '', item.text));
+    // Every distinct command of the group, newest first: grouping must not hide any of them.
+    const examples = el('ul', 'examples');
+    for (const example of item.examples) {
+      const line = el('li');
+      line.append(el('code', '', example.text));
+      if (item.examples.length > 1 || example.count > 1) {
+        const how = ['refused', 'asked', 'rule'].filter(k => example.approvals[k]).map(k => t(`approval.${k}`)).join(' / ');
+        line.append(el('span', 'example-meta', `${example.count > 1 ? `×${example.count} · ` : ''}${how}`));
+      }
+      examples.append(line);
+    }
+    row.append(examples);
+    if (item.hiddenExamples) row.append(el('p', 'warn-text', t('review.hiddenExamples', { n: item.hiddenExamples })));
     list.append(row);
   }
   body.append(list);
+  if (s.review.more > 0) body.append(el('p', 'warn-text', t('review.more', { n: s.review.more })));
+  if (s.review.ignored > 0) body.append(el('p', 'reason', t('review.ignored', { n: s.review.ignored })));
   body.append(el('p', 'reason', t('review.note')));
-  if (s.review.more > 0) body.append(el('p', 'reason', t('review.more', { n: s.review.more })));
   return section(`${s.id}:review`, 'review-section', [el('span', 'more-title', t('review.title')), ...parts], body);
 }
 

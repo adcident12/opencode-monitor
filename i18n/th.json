@@ -5,6 +5,7 @@
   "conn.live": "เชื่อมต่ออยู่",
   "conn.lost": "ติดต่อ monitor ไม่ได้ กำลังลองใหม่",
   "conn.stale": "อ่านข้อมูลของ OpenCode ไม่ได้ในขณะนี้ กำลังแสดงค่าล่าสุดที่อ่านได้",
+
   "oc.running": "OpenCode กำลังทำงาน",
   "oc.stopped": "OpenCode ไม่ได้เปิดอยู่",
   "oc.unknown": "ไม่ได้ตรวจ process ของ OpenCode",
@@ -42,6 +43,7 @@
 
   "output.last": "Output ล่าสุด",
   "output.none": "ยังไม่มี output",
+
   "progress.steps": "ขั้นตอนล่าสุดในรอบนี้",
   "progress.todos": "แผนงาน {done}/{total}",
   "progress.lastActivity": "ความเคลื่อนไหวล่าสุด",
@@ -80,6 +82,12 @@
   "work.protected": "Agent กำลังแก้ไฟล์บน {branch} โดยตรง",
   "work.recentFiles": "ไฟล์ล่าสุดที่ agent แตะ",
   "work.commitsSince": "Commit ใน repository นี้ตั้งแต่เริ่ม session",
+  "work.detached": "detached ที่ {branch}",
+  "work.branchUnknown": "ไม่ทราบ branch",
+  "work.unknownBranch": "อ่าน branch ปัจจุบันไม่ได้ จึงไม่ได้ตรวจว่าเป็น branch ที่ควรป้องกันหรือไม่",
+  "work.historyUnreliable": "บันทึก commit เชื่อไม่ได้",
+  "work.history.missing": "Repository นี้ไม่มี reflog จึงแสดงรายการ commit ไม่ได้ ซึ่งไม่ได้แปลว่าไม่มี commit เพราะ reflog ถูกลบหรือปิดได้",
+  "work.history.mismatch": "Reflog ไม่ตรงกับ commit ปัจจุบัน รายการ commit ด้านล่างจึงอาจไม่ครบ มีการเปลี่ยนประวัติโดยไม่ถูกบันทึก",
 
   "review.title": "ควรตรวจ",
   "review.count.risky": "เสี่ยง {n}",
@@ -87,9 +95,10 @@
   "review.count.secret_file": "ไฟล์ secret {n}",
   "review.count.outbound": "ส่งออกนอกเครื่อง {n}",
   "review.count.background": "รันเบื้องหลัง {n}",
-  "review.more": "…และประเภทอื่นอีก {n} รายการ",
-  "review.latest": "ล่าสุด:",
   "review.note": "รายการนี้ได้จากการจับคู่ข้อความ คำสั่งที่เขียนแปลกไปอาจหลุดได้ รายการว่างจึงไม่ได้พิสูจน์ว่าไม่มีคำสั่งเสี่ยง",
+  "review.hiddenExamples": "ยังมีคำสั่งที่ต่างกันในกลุ่มนี้อีก {n} รายการที่ไม่ได้แสดง",
+  "review.more": "ยังมีรายการประเภทอื่นอีก {n} รายการที่ไม่ได้แสดง",
+  "review.ignored": "มี {n} รายการที่ถูกตัดออกตาม review.ignoreRules ใน config ของคุณ",
 
   "rule.delete_recursive": "ลบทั้งโฟลเดอร์",
   "rule.kill_process": "สั่งหยุด process",
@@ -110,6 +119,7 @@
   "rule.secret_file": "แตะไฟล์ secret",
   "rule.in_command": "มีค่าคล้าย secret ในคำสั่ง",
   "rule.in_output": "มีค่าคล้าย secret ในผลลัพธ์",
+  "rule.git_internals": "แก้บันทึกหรือ config ของ git เอง",
 
   "approval.asked": "ถามคุณแล้ว และคำสั่งได้รัน",
   "approval.rule": "กฎอนุญาตเอง ไม่ได้ถาม",
@@ -117,6 +127,7 @@
 
   "tab.now": "ตอนนี้",
   "tab.history": "ประวัติ",
+
   "history.filter": "เฉพาะรายการที่ต้องรอคุณ",
   "history.after": "หลังจาก \"{state}\" อยู่ {t}",
   "history.firstSeen": "monitor เห็นครั้งแรก",
@@ -124,8 +135,10 @@
   "history.emptyBody": "ทุกครั้งที่สถานะเปลี่ยนจะถูกบันทึกไว้ที่นี่ ตราบที่ monitor เปิดอยู่",
 
   "subagents": "Subagent",
+
   "summary.none": "ตอนนี้ไม่มีอะไรรอคุณ",
   "summary.attention": "{n} รายการรอคุณ",
+
   "empty.title": "ไม่มี session ล่าสุด",
   "empty.body": "Session ที่มีความเคลื่อนไหวใน {h} ชั่วโมงที่ผ่านมาจะแสดงที่นี่",
 

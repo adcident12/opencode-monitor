@@ -29,6 +29,9 @@ const RISKY = [
   // --force/-f, --mirror, deleting a remote branch, or a +refspec, which forces without any flag
   ['git_force_push', new RegExp(String.raw`\bgit\b${SEG}\bpush\b${SEG}(?:--force\b|--force-with-lease|\s-\w*f\w*\b|--mirror\b|--delete\b|\s-d\b|\s\+[\w./-]+|\s:[\w./-]+)`)],
   ['git_discard', new RegExp(String.raw`\bgit\b${SEG}\b(?:reset\s+--hard|clean\s+-\w*f|checkout\s+(?:--\s+)?\.(?:\s|$)|restore\s+\.(?:\s|$)|branch\s+-D\b|stash\s+(?:drop|clear))`)],
+  // Rewriting git's own records or the programs it runs. The Work section reads the reflog,
+  // so a command that removes or disables it is itself something to look at.
+  ['git_internals', new RegExp(String.raw`\breflog\s+(?:expire|delete)\b|logAllRefUpdates|\.git[\\/](?:logs|hooks|config|HEAD|packed-refs|refs)\b|\bgit\b${SEG}\bconfig\b${SEG}(?:core\.(?:fsmonitor|hooksPath|sshCommand|pager|editor)|filter\.|gpg\.program|alias\.|credential\.)|\bgit\b${SEG}\b(?:filter-branch|filter-repo|update-ref|gc\s${SEG}--prune)`, 'i')],
   ['db_destructive', /\b(?:drop\s+(?:table|database|schema)|truncate\s+table)\b|\bdelete\s+from\s+[\w."`]+\s*(?:;|"|'|$)|\bmigrate\s+reset\b|--force-reset\b/i],
   ['docker_destructive', new RegExp(String.raw`\bdocker\b${SEG}\b(?:system|volume|image|container|builder)\s+prune\b|\bdocker\s+volume\s+rm\b|\bcompose\b${SEG}\bdown\b${SEG}(?:\s-v\b|--volumes)`)],
   ['pipe_to_shell', /\b(?:curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^\n]*\|\s*(?:sudo\s+)?(?:sh|bash|zsh|iex|Invoke-Expression)\b/i],

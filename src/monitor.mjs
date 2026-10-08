@@ -8,7 +8,8 @@ import { OUTPUT_TAIL_CHARS } from './db.mjs';
 
 const SUMMARY_CHARS = 240;
 const OUTPUT_LINES = 6;
-const REVIEW_ITEMS = 20;
+const REVIEW_GROUPS = 40;
+const REVIEW_EXAMPLES = 25;
 const FILE_TOOLS = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
 
 /**
@@ -119,17 +120,22 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     const recent = [...digest.files].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([file]) => shortPath(file, session.directory));
     const info = git?.get(session.directory) ?? null;
     const commits = info ? info.commits.filter(c => c.at >= session.time_created) : [];
-    const onProtected = Boolean(info?.branch) && cfg.work.protectedBranches.includes(info.branch);
+    const changed = digest.files.size > 0 || commits.length > 0;
+    const onProtected = Boolean(info?.branch) && !info.detached && cfg.work.protectedBranches.includes(info.branch);
     return {
       files: { count: digest.files.size, recent },
       git: info && {
-        branch: show(info.branch, 80),
+        branch: info.branch ? show(info.branch, 80) : null,
         detached: info.detached,
+        // 'ok' | 'missing' | 'mismatch': whether the commit list below can be trusted.
+        history: info.history,
         commitCount: commits.length,
         commits: commits.slice(0, 5).map(c => ({ hash: c.hash, at: c.at, subject: show(c.subject, 120) })),
       },
       // Changes landing straight on a branch you probably meant to protect.
-      warnProtected: onProtected && (digest.files.size > 0 || commits.length > 0),
+      warnProtected: onProtected && changed,
+      // Not knowing the branch is not the same as being on a safe one.
+      warnUnknownBranch: Boolean(info) && !info.branch && changed,
     };
   }
 
@@ -137,38 +143,58 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   function reviewOf(digest, asks) {
     const counts = Object.fromEntries(FLAG_KINDS.map(kind => [kind, 0]));
     // One entry per rule (and per host for requests): twenty process kills are one thing
-    // to look at, not twenty. Each entry shows its newest call and how the calls got through.
+    // to look at, not twenty. Grouping must not hide anything, though: every distinct
+    // command in a group is listed, so a harmless `rm -rf dist` cannot cover for an
+    // earlier `rm -rf ~`, and whatever does not fit is counted and said out loud.
     const groups = new Map();
+    let ignored = 0; // matches left out by review.ignoreRules; reported, never silent
     for (let i = digest.flagged.length - 1; i >= 0; i--) {
       const p = digest.flagged[i];
       let approval;
+      let text;
       for (const flag of p.flags) {
-        if (ignoredRules.has(flag.rule)) continue;
+        if (ignoredRules.has(flag.rule)) {
+          ignored++;
+          continue;
+        }
         counts[flag.kind]++;
         approval ??= approvalOf(p, asks);
+        text ??= describePart(p);
         const key = `${flag.rule}|${flag.host ?? ''}`;
         let group = groups.get(key);
         if (!group) {
-          if (groups.size >= REVIEW_ITEMS) continue;
           group = {
             kind: flag.kind,
             rule: flag.rule,
             host: flag.host ? show(flag.host, 80) : null,
-            tool: p.tool,
-            text: show(describePart(p), 160),
             at: p.started ?? p.time_created,
             count: 0,
             approvals: { asked: 0, rule: 0, refused: 0 },
+            distinct: new Map(), // raw command text -> { count, at, tool, approvals }
           };
           groups.set(key, group);
         }
         group.count++;
         group.approvals[approval]++;
+        let example = group.distinct.get(text);
+        if (!example) {
+          example = { tool: p.tool, at: p.started ?? p.time_created, count: 0, approvals: { asked: 0, rule: 0, refused: 0 } };
+          group.distinct.set(text, example);
+        }
+        example.count++;
+        example.approvals[approval]++;
       }
     }
-    const items = [...groups.values()].sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind) || b.at - a.at);
+    // Sorted before cutting, so a flood of low-priority entries cannot push risky ones out.
+    const sorted = [...groups.values()].sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind) || b.at - a.at);
+    const items = sorted.slice(0, REVIEW_GROUPS).map(({ distinct, ...group }) => ({
+      ...group,
+      examples: [...distinct].slice(0, REVIEW_EXAMPLES).map(([raw, example]) => ({ ...example, text: show(raw, 200) })),
+      // Distinct commands in this group that are not listed above.
+      hiddenExamples: Math.max(0, distinct.size - REVIEW_EXAMPLES),
+    }));
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    return { counts, total, items, more: total - items.reduce((sum, item) => sum + item.count, 0) };
+    return { counts, total, items, ignored, more: total - items.reduce((sum, item) => sum + item.count, 0) };
   }
 
   function buildSession(session, now, asks) {

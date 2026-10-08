@@ -93,25 +93,68 @@ test('review: flagged calls with who approved them, and no secret in the listing
   assert.deepEqual(find('kill_process').approvals, { asked: 0, rule: 1, refused: 0 });
   assert.deepEqual(find('delete_recursive').approvals, { asked: 0, rule: 0, refused: 1 });
   assert.equal(find('http_request').host, 'registry.example.com');
-  assert.equal(find('in_output').tool, 'read');
+  assert.equal(find('in_output').examples[0].tool, 'read');
   assert.equal(byTitle('Rename UserCard').review.total, 0);
 });
 
-test('review: repeats collapse into one entry, and rules can be switched off', () => {
-  // Two different commands carrying a token: one entry, counted twice, showing the newest.
+test('review: grouping by rule lists every distinct command, and ignored rules are counted', () => {
+  // Two different commands carrying a token: one entry, and both commands are listed.
   const [values] = byTitle('Migrate reports').review.items;
-  assert.deepEqual([values.rule, values.count, values.approvals.rule], ['in_command', 2, 2]);
-  assert.ok(values.text.startsWith('sonar-scanner'));
+  assert.deepEqual([values.rule, values.count, values.approvals.rule, values.hiddenExamples], ['in_command', 2, 2, 0]);
+  assert.equal(values.examples.length, 2);
+  assert.ok(values.examples[0].text.startsWith('sonar-scanner') && values.examples[1].text.startsWith('curl'));
+
+  // The same command five times is one line with a count, not five lines.
+  const loop = byTitle('Migrate reports').health.repeat;
+  assert.equal(loop.count, 5);
+
   const make = ignoreRules => createMonitor({
     db, log: createLogTail(join(dir, 'data', 'log', 'opencode.log')), cfg: { ...DEFAULTS, review: { ignoreRules } },
     redact: createRedactor(), modelLimits: new Map(), probe: { running: true },
   })(NOW).sessions.find(s => s.title.startsWith('Clean up the release')).review;
 
   const all = make([]);
-  assert.ok(all.items.every(item => item.count === 1) && all.more === 0);
+  assert.ok(all.items.every(item => item.count === 1) && all.more === 0 && all.ignored === 0);
+  assert.equal(all.items[0].kind, 'risky', 'risky entries come first');
   const quiet = make(['kill_process', 'http_request']);
-  assert.deepEqual([quiet.counts.risky, quiet.counts.outbound], [2, 1]);
+  assert.deepEqual([quiet.counts.risky, quiet.counts.outbound, quiet.ignored], [2, 1, 2]);
   assert.ok(!quiet.items.some(item => item.rule === 'kill_process'));
+});
+
+test('review: an earlier dangerous command is not hidden behind later harmless ones', () => {
+  // Built directly, so the session can have many calls flagged by the same rule.
+  const data = mkdtempSync(join(tmpdir(), 'ocm-rv-'));
+  const raw = new DatabaseSync(join(data, 'opencode.db'));
+  raw.exec(`create table session (id text primary key, parent_id text, directory text, title text, time_created integer, time_updated integer);
+    create table message (id text primary key, session_id text, time_created integer, data text);
+    create table part (id text primary key, message_id text, session_id text, time_created integer, time_updated integer, data text);`);
+  raw.prepare('insert into session values (?,?,?,?,?,?)').run('s', null, '/work/x', 'T', NOW - 9e6, NOW);
+  raw.prepare('insert into message values (?,?,?,?)').run('m', 's', NOW - 9e6, JSON.stringify({ role: 'assistant', finish: 'stop', time: { completed: NOW } }));
+  const insert = raw.prepare('insert into part values (?,?,?,?,?,?)');
+  const bash = (i, command) => insert.run(`p${String(i).padStart(3, '0')}`, 'm', 's', NOW - 9e6 + i, NOW - 9e6 + i,
+    JSON.stringify({ type: 'tool', tool: 'bash', state: { status: 'completed', input: { command }, time: { start: NOW - 9e6 + i, end: NOW - 9e6 + i } } }));
+  bash(0, 'rm -rf ~/important');
+  for (let i = 1; i <= 30; i++) bash(i, `rm -rf dist/chunk-${i}`);
+  for (let i = 31; i <= 90; i++) bash(i, `curl https://host${i}.example.com/ping`);
+  raw.close();
+
+  const local = openDb(data);
+  try {
+    const review = createMonitor({
+      db: local, log: createLogTail(join(data, 'none.log')), cfg: DEFAULTS, redact: createRedactor(), modelLimits: new Map(), probe: { running: true },
+    })(NOW).sessions[0].review;
+    const [deletes] = review.items;
+    assert.deepEqual([deletes.rule, deletes.count], ['delete_recursive', 31]);
+    // 31 distinct commands, 25 listed: the page is told that 6 are not shown.
+    assert.deepEqual([deletes.examples.length, deletes.hiddenExamples], [25, 6]);
+    // 60 request groups could not push the risky group out, and what was cut is counted.
+    assert.equal(review.items.length, 40);
+    assert.equal(review.more, review.total - review.items.reduce((n, item) => n + item.count, 0));
+    assert.equal(review.more, 21);
+  } finally {
+    local.close();
+    rmSync(data, { recursive: true, force: true });
+  }
 });
 
 test('work: files the agent touched', () => {

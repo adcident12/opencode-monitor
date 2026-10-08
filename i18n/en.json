@@ -5,6 +5,7 @@
   "conn.live": "Live",
   "conn.lost": "Monitor not reachable — retrying",
   "conn.stale": "Can't read OpenCode's data right now — showing the last good reading",
+
   "oc.running": "OpenCode is running",
   "oc.stopped": "OpenCode is not running",
   "oc.unknown": "OpenCode process not checked",
@@ -42,6 +43,7 @@
 
   "output.last": "Last output",
   "output.none": "No output yet",
+
   "progress.steps": "Latest steps this turn",
   "progress.todos": "Plan {done}/{total}",
   "progress.lastActivity": "Last activity",
@@ -80,6 +82,12 @@
   "work.protected": "The agent is changing files directly on {branch}.",
   "work.recentFiles": "Latest files touched by the agent",
   "work.commitsSince": "Commits in this repository since the session started",
+  "work.detached": "detached at {branch}",
+  "work.branchUnknown": "branch unknown",
+  "work.unknownBranch": "The current branch could not be read, so there is no check for a protected branch.",
+  "work.historyUnreliable": "commit record unreliable",
+  "work.history.missing": "This repository has no reflog, so commits cannot be listed. That is not the same as no commits: the reflog can be deleted or switched off.",
+  "work.history.mismatch": "The reflog does not match the current commit, so the commit list below may be incomplete. History was changed without being recorded.",
 
   "review.title": "To review",
   "review.count.risky": "{n} risky",
@@ -87,9 +95,10 @@
   "review.count.secret_file": "{n} secret files",
   "review.count.outbound": "{n} outbound",
   "review.count.background": "{n} background",
-  "review.more": "…and {n} more of other kinds",
-  "review.latest": "Latest:",
   "review.note": "Found by matching text. It can miss a command written in an unusual way, so an empty list is not proof that nothing risky ran.",
+  "review.hiddenExamples": "{n} more distinct commands in this group are not shown.",
+  "review.more": "{n} more flagged calls of other kinds are not shown.",
+  "review.ignored": "{n} matches left out by review.ignoreRules in your config.",
 
   "rule.delete_recursive": "Recursive delete",
   "rule.kill_process": "Kills processes",
@@ -110,6 +119,7 @@
   "rule.secret_file": "Touches a secret file",
   "rule.in_command": "Secret-looking value in the command",
   "rule.in_output": "Secret-looking value in the result",
+  "rule.git_internals": "Changes git's own records or config",
 
   "approval.asked": "you were asked, then it ran",
   "approval.rule": "allowed by a rule, no prompt",
@@ -117,6 +127,7 @@
 
   "tab.now": "Now",
   "tab.history": "History",
+
   "history.filter": "Only what needed you",
   "history.after": "after {t} of \"{state}\"",
   "history.firstSeen": "first seen by the monitor",
@@ -124,8 +135,10 @@
   "history.emptyBody": "Each change of state is recorded here while the monitor is running.",
 
   "subagents": "Subagents",
+
   "summary.none": "Nothing needs you right now",
   "summary.attention": "{n} need you",
+
   "empty.title": "No recent sessions",
   "empty.body": "Sessions active in the last {h} hours appear here.",
 

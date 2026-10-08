@@ -89,7 +89,7 @@ Each session card has two fold-out sections.
 
 These are pattern matches meant to point you at things to check. They do not prove anything happened, and a command phrased unusually will not be caught. OpenCode logs that it asked but not what you answered, so "you were asked" is inferred from a prompt logged at the moment the call started.
 
-If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Calls flagged by the same rule are shown as one entry with a count, the latest example, and how many were prompted for.
+If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Calls flagged by the same rule are shown as one entry with a count and every distinct command in it, so a harmless command cannot cover for a dangerous one under the same rule. Anything cut for length, or left out by `review.ignoreRules`, is counted on the page rather than dropped silently.
 
 ## History
 
@@ -146,7 +146,7 @@ By default a Discord message carries only the state, the project folder name, th
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus successful tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
 - Secret detection in tool results reads only the first 8,000 characters of each result.
-- Commits listed under Work are those made in that clone since the session started, whoever made them (the agent or you). Commits that arrived by pull or fetch are not listed.
+- Commits listed under Work are those made in that clone since the session started, whoever made them (the agent or you). Commits that arrived by pull or fetch are not listed. The list comes from the reflog, a plain file that can be deleted or rewritten; when it is missing or does not end at the current commit, the page says the commit record is unreliable instead of showing "no commits".
 - A session whose OpenCode window crashed looks stuck until OpenCode is closed entirely or the session falls out of the lookback window.
 - Redaction is pattern-based: known token formats, passwords in URLs, and values of names such as `TOKEN`, `KEY`, `PASSWORD`. A secret with no recognisable shape will not be caught.
 - View only. There are no controls that act on the agent.
