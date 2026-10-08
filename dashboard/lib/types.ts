@@ -115,6 +115,7 @@ export interface Snapshot {
   sessions: Session[]
   environment: { checkedAt: number | null; models: CheckedTarget[]; services: CheckedTarget[]; mcp: McpServer[] } | null
   historyCount: number | null
+  build: string | null
 }
 
 export interface HistoryEvent {

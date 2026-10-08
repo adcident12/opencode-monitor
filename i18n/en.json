@@ -2,6 +2,10 @@
   "app.title": "OpenCode Monitor",
   "app.language": "Language",
 
+  "update.title": "A newer version of this page is available",
+  "update.body": "The monitor was updated while this page was open. Reload to see the new version.",
+  "update.reload": "Reload",
+
   "conn.live": "Live",
   "conn.lost": "Monitor not reachable — retrying",
   "conn.stale": "Can't read OpenCode's data right now — showing the last good reading",

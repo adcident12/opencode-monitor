@@ -1,7 +1,7 @@
 // Serves the built page (public/, produced by dashboard/) and the shared UI strings (i18n/).
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, sep } from 'node:path';
 
 const TYPES = {
@@ -56,15 +56,38 @@ export function resolveUnder(dir, urlPath) {
 export function createStatic(root) {
   const publicDir = join(root, 'public');
   const i18nDir = join(root, 'i18n');
-  let csp;
-  try {
-    csp = contentSecurityPolicy(readFileSync(join(publicDir, 'index.html'), 'utf8'));
-  } catch {
-    csp = "default-src 'self'";
+  // The policy follows the HTML file it is sent with, recomputed when the page is rebuilt
+  // while the monitor runs; a stale hash list would block the new page's scripts.
+  const policies = new Map(); // file -> { mtime, csp }
+  function cspFor(file) {
+    try {
+      const { mtimeMs } = statSync(file);
+      const known = policies.get(file);
+      if (known?.mtime === mtimeMs) return known.csp;
+      const csp = contentSecurityPolicy(readFileSync(file, 'utf8'));
+      policies.set(file, { mtime: mtimeMs, csp });
+      return csp;
+    } catch {
+      return "default-src 'self'";
+    }
+  }
+
+  // The id of the page build now on disk (dashboard/scripts/publish.mjs writes it). Re-read
+  // only when the file changes, since this is asked on every update.
+  const buildFile = join(publicDir, 'build.json');
+  let build = { mtime: -1, id: null };
+  function buildId() {
+    try {
+      const { mtimeMs } = statSync(buildFile);
+      if (mtimeMs !== build.mtime) build = { mtime: mtimeMs, id: String(JSON.parse(readFileSync(buildFile, 'utf8')).id ?? '') || null };
+    } catch {
+      build = { mtime: -1, id: null };
+    }
+    return build.id;
   }
 
   /** @returns {Promise<{body: Buffer, type: string, csp?: string}|null>} */
-  return async function lookup(path) {
+  async function lookup(path) {
     let file;
     const i18n = /^\/i18n\/([a-z]{2,3})\.json$/.exec(path);
     if (i18n) file = join(i18nDir, `${i18n[1]}.json`);
@@ -76,6 +99,9 @@ export function createStatic(root) {
     if (!type) return null;
     const info = await stat(file).catch(() => null);
     if (!info?.isFile()) return null;
-    return { body: await readFile(file), type, csp: type.startsWith('text/html') ? csp : undefined };
-  };
+    return { body: await readFile(file), type, csp: type.startsWith('text/html') ? cspFor(file) : undefined };
+  }
+
+  lookup.buildId = buildId;
+  return lookup;
 }

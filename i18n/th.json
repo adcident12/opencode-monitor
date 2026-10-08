@@ -2,6 +2,10 @@
   "app.title": "OpenCode Monitor",
   "app.language": "ภาษา",
 
+  "update.title": "มีหน้านี้รุ่นใหม่กว่า",
+  "update.body": "monitor ถูกอัปเดตระหว่างที่หน้านี้เปิดอยู่ โหลดใหม่เพื่อดูรุ่นล่าสุด",
+  "update.reload": "โหลดใหม่",
+
   "conn.live": "เชื่อมต่ออยู่",
   "conn.lost": "ติดต่อ monitor ไม่ได้ กำลังลองใหม่",
   "conn.stale": "อ่านข้อมูลของ OpenCode ไม่ได้ในขณะนี้ กำลังแสดงค่าล่าสุดที่อ่านได้",

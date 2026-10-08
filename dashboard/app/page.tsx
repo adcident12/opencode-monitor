@@ -1,6 +1,8 @@
 "use client"
 
+import { ChartColumnIcon, HistoryIcon, RadioIcon } from "lucide-react"
 import { useEffect } from "react"
+import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
 import { Header } from "@/components/monitor/header"
 import { History } from "@/components/monitor/history"
@@ -13,6 +15,8 @@ import { useI18n } from "@/lib/i18n"
 import { useHash, useHistory, useNow, useSnapshot } from "@/lib/live"
 
 type Tab = "now" | "history" | "stats"
+
+const TAB = "flex-none gap-2 px-3.5 text-sm text-foreground/75 data-active:text-foreground"
 
 export default function Page() {
   const { t } = useI18n()
@@ -34,14 +38,29 @@ export default function Page() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 pt-6 pb-16 sm:px-6 sm:pt-8">
+      <UpdateBanner served={snapshot?.build ?? null} />
       <Header snapshot={snapshot} connected={connected} />
       <Environment environment={snapshot?.environment ?? null} />
 
       <Tabs value={tab} onValueChange={value => changeTab(value as Tab)} className="gap-6">
-        <TabsList variant="line">
-          <TabsTrigger value="now">{t("tab.now")}</TabsTrigger>
-          {historyEnabled && <TabsTrigger value="history">{t("tab.history")}</TabsTrigger>}
-          <TabsTrigger value="stats">{t("tab.stats")}</TabsTrigger>
+        {/* Full-contrast labels with icons, so the other views are seen at a glance. */}
+        <TabsList className="h-10 gap-1 p-1">
+          <TabsTrigger value="now" className={TAB}>
+            <RadioIcon aria-hidden />
+            {t("tab.now")}
+            {/* From another tab, still show that something needs you. */}
+            {tab !== "now" && attention.length > 0 && <span className="rounded-full bg-waiting px-1.5 text-xs font-semibold tabular-nums text-background">{attention.length}</span>}
+          </TabsTrigger>
+          {historyEnabled && (
+            <TabsTrigger value="history" className={TAB}>
+              <HistoryIcon aria-hidden />
+              {t("tab.history")}
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="stats" className={TAB}>
+            <ChartColumnIcon aria-hidden />
+            {t("tab.stats")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="now" className="space-y-10">

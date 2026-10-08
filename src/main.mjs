@@ -67,6 +67,7 @@ export async function main(argv) {
   let latest = '{}';
   const clients = new Set();
   await probe.refresh();
+  const lookup = createStatic(ROOT);
   const tick = () => {
     // Background checks; each keeps its own interval and the snapshot uses the latest results.
     probe.refresh();
@@ -79,13 +80,12 @@ export async function main(argv) {
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
       history.record(snap.sessions, snap.now);
     }
-    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null });
+    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId() });
     for (const res of clients) res.write(`data: ${latest}\n\n`);
   };
   tick();
   setInterval(tick, cfg.pollMs);
 
-  const lookup = createStatic(ROOT);
   const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact) });
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {

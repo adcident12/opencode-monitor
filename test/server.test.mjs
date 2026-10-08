@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -54,6 +55,8 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     assert.equal(state.stale, false);
     assert.equal(state.historyCount, 9, 'one entry per top-level session');
     assert.equal(state.environment.mcp.length, 4);
+    // The build the server is serving, so an open page can tell when it is out of date.
+    assert.equal(state.build, JSON.parse(readFileSync(join(ROOT, 'public', 'build.json'), 'utf8')).id);
     assert.ok(!/squ_[0-9a-f]{8}/.test(JSON.stringify(state)));
 
     assert.equal(JSON.parse((await get('/api/history')).body).length, 9);
