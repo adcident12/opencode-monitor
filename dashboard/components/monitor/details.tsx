@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronRightIcon, GitBranchIcon, ShieldAlertIcon } from "lucide-react"
+import { ActivityIcon, ChevronRightIcon, GitBranchIcon, ShieldAlertIcon } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -152,8 +152,8 @@ function Section({ title, summary, children }: { title: string; summary: React.R
 
 export function Work({ session }: { session: Session }) {
   const { t } = useI18n()
-  const { files, git, warnProtected, warnUnknownBranch } = session.work
-  if (!files.count && !git) return null
+  const { files, git, warnProtected, warnUnknownBranch, running } = session.work
+  if (!files.count && !git && !running?.items.length) return null
 
   const summary = (
     <>
@@ -167,6 +167,13 @@ export function Work({ session }: { session: Session }) {
       {git?.state === "pending" && <span className="text-muted-foreground">{t("work.checking")}</span>}
       {git?.state === "unreadable" && <Badge variant="outline" className="border-stuck/50 text-stuck">{t("work.gitUnreadable")}</Badge>}
       {files.count > 0 && <span className="text-muted-foreground">{t("work.files", { n: files.count })}</span>}
+      {running && running.items.length > 0 && (
+        <Badge variant="outline" className="gap-1 border-stuck/50 text-stuck">
+          <ActivityIcon aria-hidden />
+          {t("work.stillRunning", { n: running.items.length })}
+        </Badge>
+      )}
+      {running?.failed && <span className="text-muted-foreground">{t("work.processCheckFailed")}</span>}
     </>
   )
 
@@ -175,6 +182,7 @@ export function Work({ session }: { session: Session }) {
       {warnProtected && git?.branch && <p className="text-stuck">{t("work.protected", { branch: git.branch })}</p>}
       {warnUnknownBranch && <p className="text-stuck">{t("work.unknownBranch")}</p>}
       {git?.state === "unreadable" && <p className="text-stuck">{t("work.unreadable")}</p>}
+      {running && running.items.length > 0 && <Running items={running.items} />}
       {files.recent.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">{t("work.recentFiles")}</p>
@@ -191,7 +199,40 @@ export function Work({ session }: { session: Session }) {
   )
 }
 
-const KIND_ORDER: FlagKind[] = ["risky", "secret_value", "secret_file", "outbound", "background"]
+/** Background processes the agent started that are still alive, and how to stop them yourself. */
+function Running({ items }: { items: NonNullable<Session["work"]["running"]>["items"] }) {
+  const { t } = useI18n()
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{t("work.runningTitle")}</p>
+      <ul className="space-y-3">
+        {items.map(item => (
+          <li key={item.pid} className="space-y-1 rounded-lg border border-stuck/30 bg-stuck-soft/40 px-3 py-2">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <span className="font-medium">{item.name}</span>
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">PID {item.pid}</span>
+              {item.processes > 1 && <span className="text-xs text-muted-foreground">{t("work.processTree", { n: item.processes })}</span>}
+              {item.ports.length > 0 && <span className="text-xs font-medium text-stuck">{t("work.listening", { ports: item.ports.join(", ") })}</span>}
+            </div>
+            <Code className="text-[0.78rem] text-muted-foreground">{item.from}</Code>
+            <p className="text-xs text-muted-foreground">
+              {t("work.stopHint")} <code className="font-mono">{stopCommand(item.pid)}</code>
+            </p>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t("work.runningNote")}</p>
+    </div>
+  )
+}
+
+// The monitor never stops anything itself; it only shows the command for the user's system.
+function stopCommand(pid: number) {
+  const windows = typeof navigator !== "undefined" && /Win/i.test(navigator.platform || navigator.userAgent)
+  return windows ? `taskkill /PID ${pid} /T /F` : `kill ${pid}`
+}
+
+const KIND_ORDER: FlagKind[] =["risky", "secret_value", "secret_file", "outbound", "background"]
 const SERIOUS = new Set<FlagKind>(["risky", "secret_value"])
 
 export function Review({ session }: { session: Session }) {

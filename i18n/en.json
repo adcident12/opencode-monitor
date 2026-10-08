@@ -87,6 +87,13 @@
   "work.checking": "checking git…",
   "work.gitUnreadable": "git state unreadable",
   "work.unreadable": "There is a repository here, but its branch was not read: it is a worktree or submodule, .git or HEAD is not a plain directory and file, or the read failed. Nothing about it is known, so nothing is assumed to be fine.",
+  "work.stillRunning": "{n} still running",
+  "work.processCheckFailed": "could not check running processes",
+  "work.runningTitle": "Started in the background by this session, and still running",
+  "work.processTree": "{n} processes",
+  "work.listening": "listening on {ports}",
+  "work.stopHint": "To stop it:",
+  "work.runningNote": "Matched by start time and command words, so check the command before stopping anything. The monitor never stops processes itself.",
 
   "review.title": "To review",
   "review.count.risky": "{n} risky",

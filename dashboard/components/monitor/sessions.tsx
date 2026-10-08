@@ -169,7 +169,7 @@ export function QuietRow({ session, now }: { session: Session; now: number }) {
         <span className="tabular-nums text-xs text-muted-foreground">{t("time.ago", { t: rough(now - session.since) })}</span>
         <Project session={session} />
       </div>
-      {(session.review.total > 0 || session.work.warnProtected) && (
+      {(session.review.total > 0 || session.work.warnProtected || (session.work.running?.items.length ?? 0) > 0) && (
         <div className="space-y-1">
           <Work session={session} />
           <Review session={session} />

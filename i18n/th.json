@@ -87,6 +87,13 @@
   "work.checking": "กำลังตรวจ git…",
   "work.gitUnreadable": "อ่านสถานะ git ไม่ได้",
   "work.unreadable": "ที่นี่มี repository แต่ไม่ได้อ่าน branch เพราะเป็น worktree หรือ submodule หรือ .git กับ HEAD ไม่ใช่โฟลเดอร์และไฟล์ธรรมดา หรืออ่านไม่สำเร็จ จึงไม่รู้อะไรเกี่ยวกับมัน และไม่ถือว่าปกติ",
+  "work.stillRunning": "ยังรันอยู่ {n}",
+  "work.processCheckFailed": "ตรวจ process ที่รันอยู่ไม่ได้",
+  "work.runningTitle": "Session นี้สั่งรันเบื้องหลังไว้ และยังรันอยู่",
+  "work.processTree": "{n} process",
+  "work.listening": "เปิด port {ports}",
+  "work.stopHint": "สั่งหยุดด้วย:",
+  "work.runningNote": "จับคู่จากเวลาเริ่มและคำในคำสั่ง ควรดูคำสั่งให้แน่ใจก่อนสั่งหยุด monitor ไม่สั่งหยุด process เองเด็ดขาด",
 
   "review.title": "ควรตรวจ",
   "review.count.risky": "เสี่ยง {n}",

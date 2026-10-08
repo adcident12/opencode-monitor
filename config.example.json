@@ -45,6 +45,7 @@
 
   "work": {
     "git": true,
+    "processes": true,
     "protectedBranches": ["main", "master"]
   },
 

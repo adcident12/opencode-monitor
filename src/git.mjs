@@ -111,7 +111,9 @@ export function createGitProbe({ enabled = true, everyMs = 15_000, now = () => D
   let busy = false;
 
   async function refresh(dirs) {
-    if (!enabled || busy || now() - last < everyMs) return;
+    // Nothing to look at yet (the first tick, before any session is known): do not start the
+    // interval, or the first real check would wait a whole interval.
+    if (!enabled || busy || !dirs.length || now() - last < everyMs) return;
     busy = true;
     try {
       const wanted = new Set(dirs.filter(Boolean));

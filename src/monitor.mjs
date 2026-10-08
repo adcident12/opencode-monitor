@@ -12,6 +12,14 @@ const REVIEW_GROUPS = 40;
 const REVIEW_EXAMPLES = 25;
 const FILE_TOOLS = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
 
+// The same file arrives from edit tools and from patches written differently (slashes, and on
+// Windows, letter case). One entry per file, shown as first seen, dated by the latest touch.
+function touch(files, path, at) {
+  const key = process.platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path;
+  const entry = files.get(key);
+  files.set(key, { path: entry?.path ?? path, at: Math.max(at, entry?.at ?? 0) });
+}
+
 /**
  * @param {object} deps
  * @param {object} deps.db, deps.log, deps.cfg, deps.probe
@@ -21,7 +29,7 @@ const FILE_TOOLS = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
  * @param {object} [deps.environment]  from createEnvironment
  * @param {object} [deps.git]          from createGitProbe
  */
-export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNames = [], environment = null, git = null }) {
+export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNames = [], environment = null, git = null, leftovers = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
@@ -48,9 +56,9 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     const mcpUse = new Map(); // server -> { okAt }
     for (const p of sorted) {
       if (p.type === 'patch' && p.fileList) {
-        for (const file of p.fileList) files.set(file, p.time_created);
+        for (const file of p.fileList) touch(files, file, p.time_created);
       } else if (p.type === 'tool') {
-        if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) files.set(p.file, p.time_updated);
+        if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) touch(files, p.file, p.time_updated);
         if (p.flags.length) flagged.push(p);
         const server = p.status === 'completed' ? serverOf(p.tool) : null;
         if (server) mcpUse.set(server, { okAt: p.time_updated });
@@ -117,7 +125,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
 
   // What the agent did to the project: files it touched, and the state of the repository.
   function workOf(session, digest) {
-    const recent = [...digest.files].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([file]) => shortPath(file, session.directory));
+    const recent = [...digest.files.values()].sort((a, b) => b.at - a.at).slice(0, 5).map(({ path }) => shortPath(path, session.directory));
     // null: git reading is off, or the directory is not in a repository.
     // undefined: not looked at yet; shown as "checking", never as a clean result.
     const found = !git || !cfg.work.git ? null : git.get(session.directory);
@@ -136,7 +144,31 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       warnProtected: onProtected,
       // Not knowing the branch is not the same as being on a safe one.
       warnUnknownBranch: Boolean(info) && !info.branch && info.state !== 'pending',
+      running: leftoversOf(digest),
     };
+  }
+
+  // Processes this session's background commands started that are still running.
+  // null when the check is off or has not been able to run.
+  function leftoversOf(digest) {
+    if (!leftovers?.enabled) return null;
+    const items = [];
+    for (const p of digest.flagged) {
+      if (!p.flags.some(f => f.rule === 'background')) continue;
+      for (const proc of leftovers.get(p.id)) {
+        items.push({
+          pid: proc.pid,
+          pids: proc.pids,
+          name: show(proc.name, 60),
+          command: show(proc.command, 240),
+          startedAt: proc.startedAt,
+          ports: proc.ports,
+          processes: proc.processes,
+          from: show(describePart(p), 200),
+        });
+      }
+    }
+    return { failed: leftovers.failed(), items: items.sort((a, b) => b.startedAt - a.startedAt) };
   }
 
   // Tool calls worth a second look, newest first, with who let each one run.
@@ -276,5 +308,15 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
 
   /** Project directories of the sessions on screen, for the git probe. */
   snapshot.directories = () => directories;
+  /** Background-flagged calls of the sessions on screen, for the leftover-process probe. */
+  snapshot.backgroundCalls = () => {
+    const calls = [];
+    for (const entry of cache.values()) {
+      for (const p of entry.digest.flagged) {
+        if (p.cmd && p.flags.some(f => f.rule === 'background')) calls.push({ key: p.id, at: p.started ?? p.time_created, cmd: p.cmd });
+      }
+    }
+    return calls;
+  };
   return snapshot;
 }

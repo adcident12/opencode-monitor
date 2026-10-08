@@ -26,7 +26,7 @@ const waiting: Session = {
   prompt: { kind: "permission", permission: "read", detail: "/work/clinic-app/.env" },
   progress: { lastActivityAt: NOW - 8 * 3_600_000, steps: [], todos: null },
   health: { contextTokens: 54_000, contextLimit: 131_072, contextPct: 41, compactions: 0, toolCalls: 9, toolErrors: 0, lastError: null, repeat: null, hints: ["old_session"], suggestNewSession: true },
-  work: { files: { count: 0, recent: [] }, git: { branch: "main", detached: false, state: "ok" }, warnProtected: true, warnUnknownBranch: false },
+  work: { files: { count: 0, recent: [] }, git: { branch: "main", detached: false, state: "ok" }, warnProtected: true, warnUnknownBranch: false, running: { failed: false, items: [{ pid: 4242, pids: [4242, 4243], name: "cmd.exe", command: "cmd /c npm run dev", startedAt: NOW - 600_000, ports: [3000], processes: 2, from: "Start-Process npm -ArgumentList run,dev" }] } },
   review: {
     counts: { risky: 0, secret_value: 0, secret_file: 1, outbound: 0, background: 0 }, total: 1, more: 0, ignored: 0,
     items: [{ kind: "secret_file", rule: "secret_file", host: null, at: NOW, count: 1, approvals: { asked: 1, rule: 0, refused: 0 }, hiddenExamples: 0,
@@ -64,5 +64,10 @@ describe("AttentionCard", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Work/ }))
     expect(await screen.findByText(/This session is working directly on main/)).toBeInTheDocument()
+    // The leftover dev server: named, with its port, and how to stop it by hand.
+    expect(screen.getByText("1 still running")).toBeInTheDocument()
+    expect(screen.getByText("PID 4242")).toBeInTheDocument()
+    expect(screen.getByText("listening on 3000")).toBeInTheDocument()
+    expect(screen.getByText(/taskkill \/PID 4242|kill 4242/)).toBeInTheDocument()
   })
 })

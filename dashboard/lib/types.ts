@@ -75,6 +75,10 @@ export interface Session {
     git: { branch: string | null; detached: boolean; state: "ok" | "unreadable" | "pending" } | null
     warnProtected: boolean
     warnUnknownBranch: boolean
+    running: {
+      failed: boolean
+      items: { pid: number; pids: number[]; name: string; command: string; startedAt: number; ports: number[]; processes: number; from: string }[]
+    } | null
   }
   review: {
     counts: Record<FlagKind, number>

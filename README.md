@@ -78,6 +78,8 @@ Each session card has two fold-out sections.
 
 **Work** shows the files the agent touched and the git branch the project is on. It warns whenever the session is on a protected branch (`main` or `master` by default), whether or not any file change was detected: the file count only covers the edit tools, not changes made through shell commands.
 
+**Still running** lists processes this session started in the background (a dev server via `Start-Process`, `nohup`, `docker compose up -d`) that are still alive, with their PID, the ports they listen on, and the command to stop them yourself. A process is matched to the command that started it by start time (within a minute after it) and shared words, so check the command before stopping anything. The monitor never stops processes. Turn it off with `work.processes: false`.
+
 **To review** is a hint list, not a security control. It lists tool calls worth a second look, with whether you were prompted for it (*you were asked, then it ran*, *allowed by a rule, no prompt*, or *you refused*):
 
 | Kind | Examples |
@@ -91,6 +93,17 @@ Each session card has two fold-out sections.
 These are pattern matches meant to point you at things to check. They do not prove anything happened, and a command phrased unusually will not be caught. OpenCode logs that it asked but not what you answered, so "you were asked" is inferred from a prompt logged at the moment the call started.
 
 If a rule is only noise for you, list it under `review.ignoreRules` in `config.json` (rule names are the `rule.*` keys in `i18n/en.json`, for example `"kill_process"` or `"background"`). Calls flagged by the same rule are shown as one entry with a count and every distinct command in it, so a harmless command cannot cover for a dangerous one under the same rule. Anything cut for length, or left out by `review.ignoreRules`, is counted on the page rather than dropped silently.
+
+## Stats
+
+The **Stats** tab looks back over the last 7, 14, or 30 days, from OpenCode's own records, so it covers days when the monitor was not running:
+
+- how long prompts waited for you in total, the typical time to answer, and the longest waits;
+- how many tool calls hung (ran longer than `stuckToolMinutes`), and the slowest ones;
+- time the agent spent working, per day;
+- calls per tool and how many failed, how often graft was used instead of read/grep/glob, files read again and again in one session, and skills loaded.
+
+A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
 
 ## History
 
@@ -114,6 +127,7 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `environment.checkSeconds` | 15 | How often model servers and services are checked |
 | `services` | `[]` | Extra things to watch: `{ "name", "url" }` or `{ "name", "host", "port" }` |
 | `work.git` | `true` | Read the branch name of each project directory |
+| `work.processes` | `true` | Look for background processes the agent started that are still running |
 | `review.ignoreRules` | `[]` | Rules to leave out of "To review" |
 | `work.protectedBranches` | `["main","master"]` | Warn when the agent changes files on these |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
@@ -139,6 +153,7 @@ By default a Discord message carries only the state, the project folder name, th
 - The process list, to tell whether OpenCode is running.
 - Each project directory: one file, `.git/HEAD`, for the branch name. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. Commits and uncommitted changes are therefore not shown.
 - HTTP or TCP checks against the model server and the services you configured.
+- The process list and listening ports (Windows: `Get-CimInstance Win32_Process` and `netstat`; macOS and Linux: `ps` and `lsof`), only while a session on screen has started something in the background.
 
 ## Limits
 
@@ -165,6 +180,8 @@ src/monitor.mjs         polling, caching, redaction of the snapshot
 src/audit.mjs           rules for risky, outbound, and secret-touching calls
 src/environment.mjs     MCP, model server, and service checks
 src/git.mjs             branch name per project (reads .git/HEAD only)
+src/stats.mjs           figures for the Stats tab (pure); stats-source.mjs reads and caches them
+src/leftovers.mjs       background processes still running, matched to the command that started them
 src/history.mjs         record of state changes (data/history.jsonl)
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications

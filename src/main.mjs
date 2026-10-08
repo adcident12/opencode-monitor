@@ -11,6 +11,7 @@ import { createRedactor } from './redact.mjs';
 import { loadOpencodeConfig } from './opencode-config.mjs';
 import { createEnvironment } from './environment.mjs';
 import { createGitProbe } from './git.mjs';
+import { createLeftoverProbe } from './leftovers.mjs';
 import { createProcessProbe } from './process.mjs';
 import { createMonitor } from './monitor.mjs';
 import { createNotifier, testNotify } from './notify.mjs';
@@ -51,8 +52,10 @@ export async function main(argv) {
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
   const environment = createEnvironment({ cfg, opencode, log, probe });
   const git = createGitProbe({ enabled: cfg.work.git });
+  // Off for --sample: fake sessions must never be matched against real processes.
+  const leftovers = createLeftoverProbe({ enabled: cfg.work.processes && !args.sample, ignoreNames: cfg.processNames });
   const monitor = createMonitor({
-    db, log, cfg, probe, environment, git,
+    db, log, cfg, probe, environment, git, leftovers,
     redact: createRedactor(cfg.redact),
     modelLimits: opencode.limits,
     mcpNames: opencode.mcp.map(server => server.name),
@@ -69,6 +72,7 @@ export async function main(argv) {
     probe.refresh();
     environment.refresh();
     git.refresh(monitor.directories());
+    leftovers.refresh(monitor.backgroundCalls());
     const snap = monitor();
     if (!snap.stale) {
       notify(snap.sessions, snap.now);
