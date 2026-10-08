@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import type { HistoryEvent, Snapshot } from "./types"
+import type { HistoryEvent, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -65,4 +65,26 @@ export function useHash(): [string, (hash: string) => void] {
     window.dispatchEvent(new HashChangeEvent("hashchange"))
   }
   return [hash, setHash]
+}
+
+/** Figures for the stats tab; refreshed every minute while the tab is open. */
+export function useStats(days: number, enabled: boolean) {
+  const [state, setState] = useState<{ days: number; stats: Stats | null; failed: boolean }>({ days, stats: null, failed: false })
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    const load = () =>
+      fetch(`/api/stats?days=${days}`)
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(stats => live && setState({ days, stats, failed: false }))
+        .catch(() => live && setState(s => ({ ...s, failed: true })))
+    load()
+    const timer = setInterval(load, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [days, enabled])
+  // Figures for another range are not shown as if they were for this one.
+  return { stats: state.days === days ? state.stats : null, failed: state.failed }
 }

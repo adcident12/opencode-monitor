@@ -225,7 +225,7 @@ test('a database with an unexpected layout is refused with a clear message', () 
 
 test('log lines: real prompts parse, look-alikes inside commands do not', () => {
   const ask = parseAskLine('timestamp=2026-10-07T15:20:01.123Z level=INFO run=ab12cd34 message=asking id=per_abc permission=bash patterns="[\\"npm run dev\\"]"');
-  assert.deepEqual(ask, { t: Date.parse('2026-10-07T15:20:01.123Z'), id: 'per_abc', kind: 'permission', permission: 'bash', patterns: 'npm run dev' });
+  assert.deepEqual(ask, { t: Date.parse('2026-10-07T15:20:01.123Z'), run: 'ab12cd34', id: 'per_abc', kind: 'permission', permission: 'bash', patterns: 'npm run dev' });
   assert.equal(parseAskLine('timestamp=2026-10-07T15:20:01.123Z level=INFO run=ab12cd34 message=asking id=que_abc questions=1').kind, 'question');
   assert.equal(parseAskLine('timestamp=2026-10-07T15:20:01.123Z level=INFO run=ab12cd34 message=evaluated permission=bash pattern="echo message=asking id=per_fake"'), null);
 });

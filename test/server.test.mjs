@@ -57,6 +57,11 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     assert.ok(!/squ_[0-9a-f]{8}/.test(JSON.stringify(state)));
 
     assert.equal(JSON.parse((await get('/api/history')).body).length, 9);
+    const stats = JSON.parse((await get('/api/stats?days=7')).body);
+    assert.equal(stats.daily.length, 7);
+    assert.ok(stats.totals.prompts >= 2, 'the sample prompts are counted');
+    assert.equal(JSON.parse((await get('/api/stats?days=999')).body).daily.length, 14, 'unknown ranges fall back to 14 days');
+    assert.ok(!/squ_[0-9a-f]{8}/.test(JSON.stringify(stats)));
     const page = await get('/');
     assert.equal(page.status, 200);
     assert.match(page.type, /text\/html/);

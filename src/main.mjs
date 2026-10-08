@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { createStatic } from './static.mjs';
+import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
 import { ROOT, HELP, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
@@ -81,6 +82,7 @@ export async function main(argv) {
   setInterval(tick, cfg.pollMs);
 
   const lookup = createStatic(ROOT);
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact) });
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
@@ -98,6 +100,14 @@ export async function main(argv) {
       res.write(`data: ${latest}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
+    } else if (path === '/api/stats') {
+      const days = Number(new URL(req.url, `http://${HOST}`).searchParams.get('days'));
+      try {
+        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(days)));
+      } catch (err) {
+        console.warn(`Stats failed: ${err.code ?? err.message}`);
+        res.writeHead(503, headers).end('Stats are not available right now.');
+      }
     } else if (path === '/api/history') {
       res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.list()));
     } else {

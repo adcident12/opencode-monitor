@@ -128,3 +128,42 @@ export interface HistoryEvent {
   error: string | null
   detail: string | null
 }
+
+export interface DayStats {
+  date: string
+  activeMs: number
+  waitMs: number
+  prompts: number
+  stuck: number
+  abandoned: number
+  toolCalls: number
+  toolErrors: number
+  compactions: number
+  sessions: number
+}
+
+export interface Stats {
+  range: { from: number; to: number; days: number }
+  stuckMs: number
+  daily: DayStats[]
+  totals: {
+    sessions: number
+    activeMs: number
+    waitMs: number
+    prompts: number
+    open: number
+    abandoned: number
+    medianAnswerMs: number | null
+    stuck: number
+    abandonedCalls: number
+    toolCalls: number
+    toolErrors: number
+    compactions: number
+  }
+  waits: { at: number; kind: "permission" | "question"; permission: string | null; detail: string; waitMs: number; answered: boolean; abandoned: boolean; project: string; title: string }[]
+  slow: { at: number; tool: string; text: string; runMs: number; status: string; running: boolean; project: string; title: string }[]
+  tools: { tool: string; count: number; errors: number; totalMs: number }[]
+  explore: { graft: number; other: number }
+  rereads: { file: string; count: number; project: string; title: string }[]
+  skills: { name: string; count: number }[]
+}

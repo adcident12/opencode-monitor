@@ -94,8 +94,41 @@ export function openDb(dataDir) {
     .every(c => db.prepare('pragma table_info(todo)').all().some(col => col.name === c));
   const todos = hasTodos ? db.prepare('select content, status from todo where session_id = ? order by position') : null;
 
+  // For the stats page: everything in a time range, with only the fields it counts.
+  const statsStmt = {
+    sessions: db.prepare('select id, parent_id, directory, title, time_created from session where time_updated >= ?'),
+    tools: db.prepare(`select id, session_id, time_created, time_updated,
+        json_extract(data,'$.tool') tool,
+        json_extract(data,'$.state.status') status,
+        json_extract(data,'$.state.time.start') started,
+        json_extract(data,'$.state.time.end') ended,
+        substr(json_extract(data,'$.state.input.command'),1,500) cmd,
+        substr(json_extract(data,'$.state.input.filePath'),1,500) file,
+        substr(json_extract(data,'$.state.input.questions[0].question'),1,300) question,
+        substr(json_extract(data,'$.state.input.description'),1,300) descr,
+        substr(json_extract(data,'$.state.input.name'),1,100) skill
+      from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
+    messages: db.prepare(`select session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed
+      from message where time_created >= ?`),
+    compactions: db.prepare("select session_id, time_created from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'"),
+  };
+  // Update times of each tool call, from OpenCode's event log. Indexed by session, so only
+  // the sessions that had prompts are read. Absent in versions without the event table.
+  const hasEvents = ['aggregate_id', 'type', 'data'].every(c => db.prepare('pragma table_info(event)').all().some(col => col.name === c));
+  const toolEvents = hasEvents
+    ? db.prepare(`select json_extract(data,'$.part.id') part_id, json_extract(data,'$.time') t from event
+        where aggregate_id = ? and type = 'message.part.updated.1' and json_extract(data,'$.part.type') = 'tool'`)
+    : null;
+
   return {
     path,
+    stats: {
+      sessions: since => statsStmt.sessions.all(since),
+      tools: since => statsStmt.tools.all(since),
+      messages: since => statsStmt.messages.all(since),
+      compactions: since => statsStmt.compactions.all(since),
+      toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
+    },
     todos: sessionId => (todos ? todos.all(sessionId) : []),
     recentSessions: (since, limit) => stmt.sessions.all(since, limit),
     partStats: sessionId => stmt.partStats.get(sessionId),

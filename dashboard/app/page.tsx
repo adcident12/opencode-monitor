@@ -5,21 +5,22 @@ import { Environment } from "@/components/monitor/environment"
 import { Header } from "@/components/monitor/header"
 import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
+import { Stats } from "@/components/monitor/stats"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { childrenOf, groupByUrgency } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useHash, useHistory, useNow, useSnapshot } from "@/lib/live"
 
-type Tab = "now" | "history"
+type Tab = "now" | "history" | "stats"
 
 export default function Page() {
   const { t } = useI18n()
   const { snapshot, connected, skew } = useSnapshot()
   const now = useNow(skew)
   const [hash, setHash] = useHash()
-  const tab: Tab = hash === "#history" ? "history" : "now"
-  const changeTab = (value: Tab) => setHash(value === "history" ? "history" : "")
+  const tab: Tab = hash === "#history" ? "history" : hash === "#stats" ? "stats" : "now"
+  const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
 
   const historyEnabled = snapshot?.historyCount != null
   const events = useHistory(snapshot?.historyCount ?? null, tab === "history")
@@ -37,12 +38,11 @@ export default function Page() {
       <Environment environment={snapshot?.environment ?? null} />
 
       <Tabs value={tab} onValueChange={value => changeTab(value as Tab)} className="gap-6">
-        {historyEnabled && (
-          <TabsList variant="line">
-            <TabsTrigger value="now">{t("tab.now")}</TabsTrigger>
-            <TabsTrigger value="history">{t("tab.history")}</TabsTrigger>
-          </TabsList>
-        )}
+        <TabsList variant="line">
+          <TabsTrigger value="now">{t("tab.now")}</TabsTrigger>
+          {historyEnabled && <TabsTrigger value="history">{t("tab.history")}</TabsTrigger>}
+          <TabsTrigger value="stats">{t("tab.stats")}</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="now" className="space-y-10">
           {!snapshot && <Loading />}
@@ -97,6 +97,8 @@ export default function Page() {
             <History events={events} />
           </TabsContent>
         )}
+
+        <TabsContent value="stats">{tab === "stats" && <Stats />}</TabsContent>
       </Tabs>
     </div>
   )

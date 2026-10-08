@@ -106,7 +106,7 @@ const REJECTED = 'The user rejected permission';
 // moment (another session, another tool) must not be read as approval of this call.
 const PROMPT_KINDS = { bash: ['bash'], read: ['read'], edit: ['edit'], write: ['edit'], webfetch: ['webfetch'] };
 
-function promptFits(ask, tool) {
+export function promptFits(ask, tool) {
   if (!ask.permission || ask.permission === 'external_directory') return true;
   return (PROMPT_KINDS[tool] ?? [tool]).includes(ask.permission);
 }
