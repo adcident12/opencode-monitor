@@ -1,6 +1,7 @@
 // Gathers the rows the stats page needs and caches the result. node:sqlite is synchronous,
 // so each computation blocks the server briefly; caching keeps that to once a minute at most.
 import { computeStats, summarize } from './stats.mjs';
+import { takeawaysOf } from './takeaways.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
 import { compactionPoint } from './opencode-config.mjs';
@@ -110,6 +111,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     };
     const value = computeStats(input);
     value.compare = compareAround(split, value, input);
+    value.takeaways = takeawaysOf(value);
     if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
     cache.set(key, { at: now, value });
     return value;

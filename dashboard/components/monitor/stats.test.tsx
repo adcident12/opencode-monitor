@@ -27,6 +27,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
   compare: null,
+  takeaways: [],
   work: {
     time: { readingMs: 600_000, thinkingMs: 6_000_000, writingMs: 1_200_000, toolMs: 300_000 },
     turns: {
@@ -98,6 +99,41 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("Takeaways in Stats", () => {
+  it("is left out when no rule held", async () => {
+    renderStats()
+    await screen.findByRole("heading", { name: "Where the time went" })
+    expect(screen.queryByRole("heading", { name: "Worth knowing" })).not.toBeInTheDocument()
+  })
+
+  it("says each in a sentence with its figures, marks what to change, and links to the details", async () => {
+    const english = readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8")
+    vi.stubGlobal("fetch", async (url: string) =>
+      url.startsWith("/api/stats")
+        ? Response.json(figures({
+            takeaways: [
+              { id: "permission_repeat", tone: "act", vars: { n: 7, permission: "external_directory", pattern: "C:\\temp\\*" }, anchor: "stats-you" },
+              { id: "waited", tone: "note", vars: { hours: 1.5, prompts: 9 }, anchor: "stats-you" },
+            ],
+          }))
+        : new Response(english)
+    )
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    window.matchMedia ??= (() => ({ matches: false })) as unknown as typeof window.matchMedia
+    renderStats()
+    const box = (await screen.findByRole("heading", { name: "Worth knowing" })).closest("section")!
+    const items = within(box).getAllByRole("listitem")
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent("To change")
+    expect(items[0]).toHaveTextContent("You were asked 7 times to allow external_directory: C:\\temp\\*.")
+    expect(items[1]).not.toHaveTextContent("To change")
+    expect(items[1]).toHaveTextContent("waited 1.5 h for your answer to 9 questions")
+    await userEvent.click(within(items[0]).getByRole("button", { name: "Details" }))
+    expect(scrolled).toHaveBeenCalled()
   })
 })
 

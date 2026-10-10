@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { compact, duration, money, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useStats } from "@/lib/live"
-import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
+import type { DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
 import { Chapter, GRID, H3, SUB, TAB, TH } from "./section"
@@ -215,13 +215,16 @@ function Group({ id, note, children }: { id: GroupId; note?: string; children: R
   )
 }
 
-/** Links to the chapters. Plain scrolling: the URL hash already says which tab is open. */
+/** Plain scrolling to a chapter: the URL hash already says which tab is open. */
+const goTo = (anchor: string) => {
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  document.getElementById(anchor)?.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" })
+}
+
+/** Links to the chapters. */
 function Jump({ shown }: { shown: GroupId[] }) {
   const { t } = useI18n()
-  const go = (id: GroupId) => {
-    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    document.getElementById(`stats-${id}`)?.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" })
-  }
+  const go = (id: GroupId) => goTo(`stats-${id}`)
   return (
     <nav aria-label={t("stats.jump")} className="-mx-2 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
       <span className="px-2 text-muted-foreground">{t("stats.jump")}</span>
@@ -243,6 +246,7 @@ function Figures({ stats }: { stats: StatsData }) {
 
   return (
     <>
+      <Takeaways items={stats.takeaways} />
       <section aria-label={t("stats.summary")} className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
         <Tile label={t("stats.waitTotal")} value={rough(totals.waitMs)} note={t("stats.prompts", { n: totals.prompts })} tone="waiting" />
         <Tile
@@ -355,6 +359,38 @@ function Figures({ stats }: { stats: StatsData }) {
         </Group>
       )}
     </>
+  )
+}
+
+/**
+ * What the figures below say, in a sentence each, with a link to where they are. Shown only
+ * when a rule held: an empty box would suggest something was looked for and not found.
+ */
+function Takeaways({ items }: { items: Takeaway[] }) {
+  const { t } = useI18n()
+  if (!items.length) return null
+  return (
+    <section aria-labelledby="takeaways-title" className="space-y-3 rounded-xl border bg-card px-4 py-4 sm:px-5">
+      <div>
+        <h3 id="takeaways-title" className={H3}>
+          {t("takeaways.title")}
+        </h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("takeaways.note")}</p>
+      </div>
+      <ul className="divide-y border-t">
+        {items.map(item => (
+          <li key={item.id} className="flex flex-col gap-x-4 gap-y-1 py-2.5 sm:flex-row sm:items-baseline">
+            <p className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
+              {item.tone === "act" && <span className="mr-2 inline-block rounded-full border border-waiting/50 px-1.5 text-2xs leading-5 whitespace-nowrap text-waiting">{t("takeaways.act")}</span>}
+              {t(`takeaways.${item.id}`, item.vars)}
+            </p>
+            <button type="button" onClick={() => goTo(item.anchor)} className="self-start rounded-sm text-sm whitespace-nowrap sm:self-auto text-muted-foreground underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+              {t("takeaways.details")}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

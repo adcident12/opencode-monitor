@@ -255,6 +255,15 @@ export interface DayStats {
   files: number
 }
 
+/** A rule over the figures below it; the page writes the sentence from `id` and `vars`. */
+export interface Takeaway {
+  id: string
+  tone: "act" | "note"
+  vars: Record<string, string | number>
+  /** The chapter with the details. */
+  anchor: string
+}
+
 export interface Stats {
   range: { from: number; to: number; days: number }
   session: SessionChoice | null
@@ -265,6 +274,8 @@ export interface Stats {
   mcpLogFrom: number | null
   /** Present when a day to split the period on was asked for and both sides have days. */
   compare: { split: string; model: string | null; before: PeriodSummary; after: PeriodSummary } | null
+  /** At most five rules that held, most useful first; empty when the evidence is too thin. */
+  takeaways: Takeaway[]
   /** Only with one session selected: how its context filled and where it was compacted. */
   context: {
     limit: number | null
