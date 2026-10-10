@@ -2,6 +2,8 @@
   "app.title": "OpenCode Monitor",
   "app.version": "opencode-monitor เวอร์ชัน {v}",
   "app.language": "ภาษา",
+  "app.install": "ติดตั้งแอป",
+  "app.install.hint": "เปิด monitor ในหน้าต่างของตัวเอง มีไอคอนของตัวเอง เหมือนแอป ยังคงเป็นหน้านี้ จึงต้องเปิด monitor ไว้",
 
   "update.title": "มีหน้านี้รุ่นใหม่กว่า",
   "update.body": "monitor ถูกอัปเดตระหว่างที่หน้านี้เปิดอยู่ โหลดใหม่เพื่อดูรุ่นล่าสุด",

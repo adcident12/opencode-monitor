@@ -90,6 +90,12 @@ node server.mjs --autostart on
 
 บน macOS คำสั่งเดียวกันเขียน launchd agent ไปที่ `~/Library/LaunchAgents/com.opencode-monitor.plist` (ผลลัพธ์ไปที่ `~/Library/Logs/opencode-monitor.log`) และบน Linux เขียน systemd user unit ไปที่ `~/.config/systemd/user/opencode-monitor.service` ทั้งสองเริ่ม monitor ทันทีและทุกครั้งที่ login และ `--autostart off` ลบออก บนทั้งสามระบบ CI ทำสิ่งนี้จริงทุกครั้งที่ push: เปิด autostart รอให้ monitor ที่ระบบเริ่มให้ตอบ ปิด แล้วตรวจว่าหายไปแล้ว สิ่งที่ CI แสดงให้เห็นไม่ได้คือการ login เข้า desktop หลัง reboot ถ้า monitor ไม่อยู่หลังคุณ login ให้ดู `--doctor` และ log ของระบบเอง (`journalctl --user -u opencode-monitor` หรือ `~/Library/Logs/opencode-monitor.log`) ว่าเพราะอะไร
 
+### ติดตั้งเป็นแอป
+
+ใน Chrome หรือ Edge ปุ่ม **ติดตั้งแอป** ที่ด้านบนของหน้า จะเปิด monitor ในหน้าต่างของตัวเอง มีไอคอนของตัวเองบนทาสก์บาร์และในเมนู Start แทนการเปิดเป็นแท็บของ browser ปุ่มนี้แสดงเฉพาะเมื่อ browser เสนอให้ติดตั้งได้ จึงหายไปเมื่อติดตั้งแล้ว ส่วน browser อื่นไม่มีข้อเสนอนี้ (Safari มี **Add to Dock** ในเมนู File)
+
+แอปยังคงเป็นหน้านี้ที่ monitor บนเครื่องนี้ส่งให้ ไม่มีอะไรถูกคัดลอกไปที่อื่น และแสดงข้อมูลได้เฉพาะขณะที่ monitor รันอยู่ จึงเหมาะจะใช้คู่กับ `--autostart on` แอปถูกติดตั้งตามที่อยู่ที่เปิดไว้ จึงควรใช้พอร์ตเดิม หากต้องการเอาออก ให้ใช้เมนูของหน้าต่างแอป (**Uninstall**)
+
 ## สถานะแต่ละแบบหมายถึงอะไร
 
 | สถานะ | ตัดสินอย่างไร |

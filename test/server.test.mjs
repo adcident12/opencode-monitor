@@ -91,6 +91,13 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     // The page's policy allows its own inline scripts by hash and nothing inline beyond that.
     assert.match(page.csp, /script-src 'self'( 'sha256-[^']+')+;/);
     assert.ok(!/script-src[^;]*unsafe-inline/.test(page.csp));
+    // What a browser needs to install the page as an app: the manifest the page links to, and its icons.
+    assert.ok(page.body.includes('<link rel="manifest" href="/manifest.webmanifest"'));
+    const manifest = await get('/manifest.webmanifest');
+    assert.deepEqual([manifest.status, manifest.type], [200, 'application/manifest+json; charset=utf-8']);
+    const app = JSON.parse(manifest.body);
+    assert.equal(app.display, 'standalone');
+    for (const icon of app.icons) assert.deepEqual([(await get(icon.src)).status, (await get(icon.src)).type], [200, 'image/png'], icon.src);
 
     for (const path of ['/i18n/../config.json', '/config.json', '/../config.json', '/%2e%2e/config.json', '/_next/..%2f..%2fconfig.json', '/..%5cconfig.json', '/server.mjs', '/src/main.mjs']) {
       assert.equal((await get(path)).status, 404, path);

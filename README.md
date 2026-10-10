@@ -90,6 +90,12 @@ registers a scheduled task named `opencode-monitor` for your user (no administra
 
 On macOS the same command writes a launchd agent to `~/Library/LaunchAgents/com.opencode-monitor.plist` (output goes to `~/Library/Logs/opencode-monitor.log`), and on Linux a systemd user unit to `~/.config/systemd/user/opencode-monitor.service`; both start the monitor at once and at every login, and `--autostart off` removes them. On all three systems CI does this for real on every push: it turns autostart on, waits for the monitor that the system started to answer, turns it off, and checks that it is gone. What CI cannot show is a desktop login after a reboot; if the monitor is not there after you log in, `--doctor` and the system's own log (`journalctl --user -u opencode-monitor`, or `~/Library/Logs/opencode-monitor.log`) say why.
 
+### Install it as an app
+
+In Chrome or Edge, **Install app** at the top of the page puts the monitor in a window of its own, with its own icon on the taskbar and in the Start menu, instead of a browser tab. The button is there only while the browser offers to install, so it is gone once that is done; other browsers do not offer it (Safari has **Add to Dock** in its File menu).
+
+The app is still this page, served by the monitor on this machine: nothing is copied anywhere, and it shows data only while the monitor runs, so it goes well with `--autostart on`. It is installed for the address it was opened at, so keep to one port. To remove it, use the app window's menu (**Uninstall**).
+
 ## What the states mean
 
 | State | How it is decided |

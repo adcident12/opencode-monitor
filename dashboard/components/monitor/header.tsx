@@ -11,6 +11,7 @@ import type { Snapshot } from "@/lib/types"
 import type { MarkTone } from "@/lib/logo"
 import { Logo } from "./logo"
 import { Hint } from "./hint"
+import { InstallButton } from "./install"
 import { Dot, toneOf } from "./state"
 
 const RUNNING_KEY = { ok: "oc.running", bad: "oc.stopped", unknown: "oc.unknown" } as const
@@ -51,6 +52,7 @@ export function Header({ snapshot, connected, tone }: Readonly<{ snapshot: Snaps
       </output>
 
       <div className="flex items-center gap-2">
+        <InstallButton />
         <Select value={lang} onValueChange={value => setLang(value as Lang)} items={LANGUAGES.map(l => ({ value: l.code, label: l.label }))}>
           <SelectTrigger size="sm" aria-label={t("app.language")} className="min-w-24">
             <SelectValue />

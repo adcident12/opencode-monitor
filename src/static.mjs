@@ -14,6 +14,8 @@ const TYPES = {
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  // What a browser reads to install the page as an app.
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 /**
