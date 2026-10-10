@@ -14,6 +14,7 @@ import { useConfigChanges, useStats } from "@/lib/live"
 import type { ConfigChange, DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
+import { Hint, TIP } from "./hint"
 import { Chapter, GRID, H3, SUB, TAB, TH } from "./section"
 import { Agents, Files, Permissions, Plans, TimeSplit, Turns } from "./work"
 import { SessionFilter } from "./session-filter"
@@ -497,9 +498,9 @@ function When({ at, project }: Readonly<{ at: number; project: string }>) {
   return (
     <span className="col-start-2 flex max-w-[16rem] min-w-0 items-baseline gap-1.5 text-xs whitespace-nowrap text-muted-foreground sm:col-start-auto">
       {when}
-      <span className="truncate font-mono" title={project}>
+      <Hint label={project} onlyWhenCut className="truncate font-mono">
         {project}
-      </span>
+      </Hint>
     </span>
   )
 }
@@ -558,8 +559,8 @@ function Bars({ title, summary, points, color, tick }: Readonly<{ title: string;
                 const item = payload?.[0]?.payload as (typeof data)[number] | undefined
                 if (!active || !item) return null
                 return (
-                  <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-                    <p className="text-muted-foreground">{item.label}</p>
+                  <div className={TIP}>
+                    <p className="text-background/70">{item.label}</p>
                     <p className="font-medium tabular-nums">{item.text}</p>
                   </div>
                 )
@@ -614,9 +615,9 @@ function ToolUse({ stats }: Readonly<{ stats: StatsData }>) {
       <ul className="space-y-1.5">
         {stats.tools.map(x => (
           <li key={x.tool} className="grid grid-cols-[minmax(6rem,11rem)_1fr_auto] items-center gap-3 text-sm">
-            <span className="truncate font-mono text-code" title={x.tool}>
+            <Hint label={x.tool} onlyWhenCut className="truncate font-mono text-code">
               {x.tool}
-            </span>
+            </Hint>
             <span className="h-2 rounded-full bg-muted" aria-hidden>
               <span className="block h-full rounded-full bg-working/70" style={{ width: `${(x.count / max) * 100}%` }} />
             </span>
@@ -670,8 +671,8 @@ function Context({ stats }: Readonly<{ stats: StatsData }>) {
                 const item = payload?.[0]?.payload as (typeof data)[number] | undefined
                 if (!active || !item) return null
                 return (
-                  <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-                    <p className="text-muted-foreground">{time.format(item.t)}</p>
+                  <div className={TIP}>
+                    <p className="text-background/70">{time.format(item.t)}</p>
                     <p className="font-medium tabular-nums">{t("stats.contextTokens", { n: compact(item.tokens) })}</p>
                   </div>
                 )

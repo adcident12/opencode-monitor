@@ -10,6 +10,7 @@ import { LANGUAGES, useI18n, type Lang } from "@/lib/i18n"
 import type { Snapshot } from "@/lib/types"
 import type { MarkTone } from "@/lib/logo"
 import { Logo } from "./logo"
+import { Hint } from "./hint"
 import { Dot, toneOf } from "./state"
 
 const RUNNING_KEY = { ok: "oc.running", bad: "oc.stopped", unknown: "oc.unknown" } as const
@@ -32,9 +33,9 @@ export function Header({ snapshot, connected, tone }: Readonly<{ snapshot: Snaps
         <h1 className="text-lg font-semibold">{t("app.title")}</h1>
         {/* Which version is running, so "is this the new one?" needs no terminal. */}
         {snapshot?.version && (
-          <span className="text-xs tabular-nums text-muted-foreground" title={t("app.version", { v: snapshot.version })}>
+          <Hint label={t("app.version", { v: snapshot.version })} className="text-xs tabular-nums text-muted-foreground">
             v{snapshot.version}
-          </span>
+          </Hint>
         )}
       </div>
 

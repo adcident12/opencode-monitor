@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n"
 import type { Stats } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Facts, H3, SUB, TD, TH } from "./section"
+import { Hint } from "./hint"
 
 type Work = Stats["work"]
 
@@ -34,6 +35,7 @@ export function TimeSplit({ work }: Readonly<{ work: Work }>) {
   const total = PARTS.reduce((n, p) => n + work.time[p.key], 0)
   if (!total) return null
   const pct = (ms: number) => Math.round((ms / total) * 100)
+  const partLabel = (key: (typeof PARTS)[number]["key"]) => `${t("work.part." + key)}: ${rough(work.time[key])} · ${pct(work.time[key])}%`
   const biggest = PARTS.reduce((a, b) => (work.time[b.key] > work.time[a.key] ? b : a))
 
   return (
@@ -41,7 +43,9 @@ export function TimeSplit({ work }: Readonly<{ work: Work }>) {
       <Heading title={t("work.time")} note={t("work.timeNote")} />
       <div role="img" aria-label={PARTS.map(p => `${t(`work.part.${p.key}`)} ${pct(work.time[p.key])}%`).join(", ")} className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
         {PARTS.filter(p => work.time[p.key] > 0).map(p => (
-          <span key={p.key} title={`${t(`work.part.${p.key}`)}: ${rough(work.time[p.key])}`} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${(work.time[p.key] / total) * 100}%`, background: p.color }} />
+          <Hint key={p.key} label={partLabel(p.key)} render={<span style={{ width: `${(work.time[p.key] / total) * 100}%`, background: p.color }} />} className="h-full first:rounded-l-full last:rounded-r-full">
+            {null}
+          </Hint>
         ))}
       </div>
       <Facts

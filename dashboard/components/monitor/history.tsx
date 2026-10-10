@@ -15,6 +15,7 @@ import { Code } from "./details"
 import { Chapter, SUB, TAB, TH } from "./section"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
+import { Hint } from "./hint"
 
 const EFFORT_DAYS = 30
 const EFFORT_ROWS = 8
@@ -64,16 +65,17 @@ function Effort({ rows, selected, onSelect }: Readonly<{ rows: Stats["sessions"]
             {shown.map(r => (
               <tr key={r.id} className={cn(r.id === selected && "bg-muted/50")}>
                 <th scope="row" className="max-w-0 py-2 pr-3 text-left font-normal sm:w-2/5">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(r.id === selected ? null : r.id)}
-                    aria-pressed={r.id === selected}
+                  <Hint
+                    label={r.title || r.id}
+                    onlyWhenCut
+                    render={<button type="button" onClick={() => onSelect(r.id === selected ? null : r.id)} aria-pressed={r.id === selected} />}
                     className="block w-full truncate rounded-sm text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                    title={r.title}
                   >
                     {r.title || r.id}
-                  </button>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">{r.project}</span>
+                  </Hint>
+                  <Hint label={r.project} onlyWhenCut className="block truncate font-mono text-xs text-muted-foreground">
+                    {r.project}
+                  </Hint>
                 </th>
                 <td className="py-2 pr-3 whitespace-nowrap">
                   <span className="flex items-center gap-2 tabular-nums">

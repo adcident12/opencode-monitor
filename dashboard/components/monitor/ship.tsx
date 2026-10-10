@@ -9,6 +9,7 @@ import { drawShip } from "@/lib/ship-draw"
 import type { Session, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { AttentionCard, QuietRow, WorkingCard } from "./sessions"
+import { Hint } from "./hint"
 
 const FRAME_MS = 125 // eight pictures a second is enough for pixel art, and cheap
 /** Marks a compaction the drawing loop has not shown yet. */
@@ -150,12 +151,9 @@ function StationButton({ session, now, selected, onPick, drones }: Readonly<{ se
   const bubble = bubbleOf(session, now, t, ms => rough(ms))
   const name = session.project || session.title || session.id
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      aria-pressed={selected}
-      aria-label={t("ship.station", { project: name, state: t(`state.${session.state}`), title: session.title || session.id })}
-      title={`${name} — ${session.title || session.id}`}
+    <Hint
+      label={<StationTip name={name} title={session.title || session.id} state={t(`state.${session.state}`)} />}
+      render={<button type="button" onClick={onPick} aria-pressed={selected} aria-label={t("ship.station", { project: name, state: t(`state.${session.state}`), title: session.title || session.id })} />}
       className="group relative block size-full rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-white"
     >
       {/* Inside the station, over its beacon: never up into the row above. */}
@@ -180,7 +178,18 @@ function StationButton({ session, now, selected, onPick, drones }: Readonly<{ se
         {name}
       </span>
       {drones > 0 && <span className="absolute top-[30%] right-0 font-mono text-2xs text-[#9be7c4]">+{drones}</span>}
-    </button>
+    </Hint>
+  )
+}
+
+/** Which session a station is: its folder, its title and its state, each in full. */
+function StationTip({ name, title, state }: Readonly<{ name: string; title: string; state: string }>) {
+  return (
+    <span className="grid gap-0.5">
+      <span className="font-mono">{name}</span>
+      <span className="font-medium">{title}</span>
+      <span className="text-background/70">{state}</span>
+    </span>
   )
 }
 

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -58,7 +58,12 @@ describe("The bridge", () => {
     const first = (await screen.findAllByRole("button", { pressed: true }))[0]
     const tag = within(first).getByText(LONG)
     expect(tag).toHaveClass("truncate")
-    expect(first).toHaveAttribute("title", `${LONG} — Wire up the staging environment`)
+    // Pointing at it opens the page's own tooltip, with the name in full.
+    expect(first).not.toHaveAttribute("title")
+    await userEvent.hover(first)
+    const tip = await waitFor(() => { const el = document.querySelector("[data-slot=tooltip-content]"); if (!el) throw new Error("no tooltip"); return el as HTMLElement })
+    expect(within(tip).getByText(LONG)).toBeInTheDocument()
+    expect(within(tip).getByText("Waiting for you")).toBeInTheDocument()
   })
 
   it("over a station, a few words say its state; a working one has none", async () => {
