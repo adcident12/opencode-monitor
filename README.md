@@ -9,6 +9,8 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 - **No install step.** The server uses built-in Node modules only, and the page comes pre-built. npm is needed only to change the page (see [dashboard/](dashboard/README.md)).
 - **Secrets are hidden by default** before anything is displayed or sent.
 
+> **Contributions are not accepted.** Pull requests are closed without review and feature requests are not taken. Bug reports are welcome as issues. You are free to fork and change your own copy (MIT). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Run it
 
 Needs Node.js 22.13 or newer.
@@ -208,7 +210,7 @@ By default a Discord message carries only the state, the project folder name, th
 ## Limits
 
 - `--autostart` is exercised by CI on Ubuntu, macOS and Windows runners, not on a desktop across a reboot.
-- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Reports welcome.
+- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Bug reports are welcome as issues.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus tool calls.
@@ -270,6 +272,10 @@ npm test
 The version is the one in `package.json`. It is printed when the monitor starts, shown next to the title on the page, and `node server.mjs --version` prints it alone. [CHANGELOG.md](CHANGELOG.md) says what each version added.
 
 Work on a version happens on a branch named after it (`v6`), and `main` is moved to it when it is done. The released commit is tagged `v6.0.0`.
+
+## Contributing
+
+This project does not accept code contributions. Pull requests are closed without review, whatever their quality, and feature requests are not taken; bug reports are welcome as issues, with the output of `node server.mjs --doctor`. The reasons, and what you are free to do with the code, are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Not affiliated with OpenCode
 

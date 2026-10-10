@@ -1,0 +1,29 @@
+name: Bug report
+description: Something the monitor shows is wrong, or it does not start.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bug reports are read. Fixes are written by the maintainer: please do not attach a patch or open a pull request (see CONTRIBUTING.md).
+        Remove anything private from what you paste. The monitor hides secrets it recognises, but check before you post.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `node server.mjs --doctor`
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and Node.js version
+      placeholder: Windows 11, Node 24.1
+    validations:
+      required: true

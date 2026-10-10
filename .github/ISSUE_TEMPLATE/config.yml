@@ -1,0 +1,7 @@
+# Issues are for bug reports only. Code contributions and feature requests are not taken:
+# see CONTRIBUTING.md.
+blank_issues_enabled: false
+contact_links:
+  - name: Contributions are not accepted
+    url: https://github.com/adcident12/opencode-monitor/blob/main/CONTRIBUTING.md
+    about: Pull requests and feature requests are closed without review. Read this before spending time on one.
