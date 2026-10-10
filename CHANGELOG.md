@@ -3,6 +3,30 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.2.0 - 2026-10-11
+
+The whole bridge played back, the monitor as an app, and on your own network.
+
+- **The whole bridge**, in the Replay tab: every session of one day at once, a station a
+  session, how many were in each state, a line for each saying what it was doing, and a
+  timeline with a row a session. Each session is its own replay by the same rules; a
+  station leads to it. Checked on real data: 13 days, 9,331 station-moments, no difference.
+- **The player holds still.** The running time is a stopwatch of one width, the play
+  button keeps one width, and every panel has its height from the start, so nothing moves
+  while it plays: checked on every session of real data, 160 places each.
+- **Seven speeds**, 1x (real speed), 1.5x, 2.5x, 3x, 30x, 60x and 180x; buttons to step to
+  what happens next and back; the time of each entry under What happened leads to it.
+- **The agent and its tools** moves whenever the agent works: tools beyond the six most
+  used share a place, named while in use (a call to one of them drew nothing before); a
+  ring spreads while it reads, thinks or writes; the line of a short call stays a moment
+  and fades, so it can be seen when played fast; any number of subagents fits.
+- **Install app**: in Chrome or Edge, the monitor in a window of its own with its own icon.
+- **--lan**: open the monitor to the other devices of your network, each with an access
+  key shown once (`--access-key` prints it). Off by default; this machine never needs it.
+- Ship: a row that is not full stands in the middle; two stations of one folder are named
+  by their titles; the console screen follows one rule, live and in a replay.
+- A moving picture of the Replay tab in the README, in English and in Thai.
+
 ## 11.1.0 - 2026-10-10
 
 Play a session back, and see the monitor before installing it.
