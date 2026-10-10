@@ -40,6 +40,8 @@ export class UserError extends Error {
 
 export const DEFAULTS = {
   port: 4317,
+  // Open to the other devices of the local network, each of which must show the access key.
+  lan: false,
   pollMs: 2000,
   lang: 'en',
   dataDir: null,
@@ -90,34 +92,36 @@ function merge(base, extra) {
   return out;
 }
 
+// Options that are on or off, and options that take a value, each with the setting it fills.
+const SWITCHES = {
+  '--sample': 'sample', '--lan': 'lan', '--access-key': 'accessKey', '--no-notify': 'noNotify', '--assume-running': 'assumeRunning',
+  '--test-notify': 'testNotify', '--version': 'version', '-v': 'version', '--doctor': 'doctor', '--help': 'help', '-h': 'help',
+};
+const VALUES = { '--port': ['port', Number], '--data-dir': ['dataDir', String], '--config': ['config', String], '--lang': ['lang', String], '--autostart': ['autostart', String] };
+
 export function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    const value = () => {
+    if (Object.hasOwn(SWITCHES, arg)) {
+      args[SWITCHES[arg]] = true;
+    } else if (Object.hasOwn(VALUES, arg)) {
       if (i + 1 >= argv.length) throw new UserError(`${arg} needs a value.`);
-      return argv[++i];
-    };
-    if (arg === '--port') args.port = Number(value());
-    else if (arg === '--data-dir') args.dataDir = value();
-    else if (arg === '--config') args.config = value();
-    else if (arg === '--lang') args.lang = value();
-    else if (arg === '--sample') args.sample = true;
-    else if (arg === '--no-notify') args.noNotify = true;
-    else if (arg === '--assume-running') args.assumeRunning = true;
-    else if (arg === '--test-notify') args.testNotify = true;
-    else if (arg === '--autostart') args.autostart = value();
-    else if (arg === '--version' || arg === '-v') args.version = true;
-    else if (arg === '--doctor') args.doctor = true;
-    else if (arg === '--help' || arg === '-h') args.help = true;
-    else throw new UserError(`Unknown option ${arg}. Try --help.`);
+      const [name, read] = VALUES[arg];
+      args[name] = read(argv[++i]);
+    } else {
+      throw new UserError(`Unknown option ${arg}. Try --help.`);
+    }
   }
   return args;
 }
 
 export const HELP = `Usage: node server.mjs [options]
 
-  --port <n>         Port to listen on (default 4317). Always binds 127.0.0.1.
+  --port <n>         Port to listen on (default 4317). Binds 127.0.0.1 unless --lan is given.
+  --lan              Also answer the other devices of your local network. Each of them must
+                     show the access key once; this machine never needs it.
+  --access-key       Print the addresses to open on another device, with the key, then exit.
   --data-dir <path>  OpenCode data directory (the one holding opencode.db).
   --config <path>    Settings file (default: config.json next to server.mjs).
   --lang <code>      Language for notifications (en, th).
@@ -142,6 +146,7 @@ export function defaultOpencodeConfigDir(env = process.env) {
 /** Refuses settings the monitor cannot run with, in words that say which one. */
 function validate(cfg) {
   if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new UserError(`Invalid port: ${cfg.port}`);
+  if (typeof cfg.lan !== 'boolean') throw new UserError('lan must be true or false.');
   if (!(cfg.pollMs >= 500)) throw new UserError('pollMs must be at least 500.');
   if (!['off', 'local', 'all'].includes(cfg.environment.modelServers)) throw new UserError('environment.modelServers must be "off", "local", or "all".');
   if (!Array.isArray(cfg.services)) throw new UserError('services must be a list.');
@@ -171,6 +176,7 @@ export function loadConfig(args = {}, env = process.env) {
   const cfg = merge(DEFAULTS, fromFile);
   if (env.OPENCODE_MONITOR_DISCORD_WEBHOOK) cfg.notify.discord.webhookUrl = env.OPENCODE_MONITOR_DISCORD_WEBHOOK;
   if (args.port !== undefined) cfg.port = args.port;
+  if (args.lan) cfg.lan = true;
   if (args.lang) cfg.lang = args.lang;
   if (args.dataDir) cfg.dataDir = args.dataDir;
   if (args.assumeRunning) cfg.processCheck = false;

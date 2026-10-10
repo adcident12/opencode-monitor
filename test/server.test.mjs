@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -23,6 +23,7 @@ const freePort = () => new Promise((resolve, reject) => {
 const PORT = await freePort();
 const OTHER_PORT = await freePort();
 const INNER_PORT = await freePort();
+const LAN_PORT = await freePort();
 
 // fetch() will not let a test set the Host header, so use node:http directly.
 function get(path, host = null, port = PORT) {
@@ -220,4 +221,52 @@ test('string files: no key is defined twice, and both languages have the same ke
   const th = Object.keys(JSON.parse(readFileSync(join(ROOT, 'i18n', 'th.json'), 'utf8')));
   assert.deepEqual(en.filter(k => !th.includes(k)), [], 'missing from th.json');
   assert.deepEqual(th.filter(k => !en.includes(k)), [], 'missing from en.json');
+});
+
+test('access: a monitor started with --lan lets this machine in, and another address only with the key', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-lan-'));
+  const config = join(dir, 'config.json');
+  writeFileSync(config, JSON.stringify({ history: { enabled: false, file: join(dir, 'history.jsonl') } }));
+  const { main } = await import('../src/main.mjs');
+  const { lanAddresses } = await import('../src/access.mjs');
+  const port = LAN_PORT;
+  const log = console.log;
+  const lines = [];
+  console.log = line => lines.push(String(line));
+  let monitor;
+  try {
+    monitor = await main(['--sample', '--lan', '--port', String(port), '--config', config]);
+  } finally {
+    console.log = log;
+  }
+  try {
+    // Said at startup that it is open, and how to get the key; the key itself is not printed.
+    const key = readFileSync(join(dir, 'access-key'), 'utf8').trim();
+    assert.ok(lines.some(l => l.includes('open to the local network')));
+    assert.ok(!lines.join('\n').includes(key));
+
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/state`)).status, 200);
+    const [address] = lanAddresses();
+    if (!address) return; // a machine with no network has no other way in to try
+    const base = `http://${address}:${port}`;
+    const asked = await fetch(`${base}/`);
+    assert.equal(asked.status, 401);
+    assert.match(await asked.text(), /Access key/);
+    assert.match(asked.headers.get('content-security-policy'), /form-action 'self'/);
+    assert.equal((await fetch(`${base}/api/state`)).status, 401);
+    assert.equal((await fetch(`${base}/api/events`)).status, 401);
+    assert.equal((await fetch(`${base}/?key=wrong`)).status, 401);
+
+    const let_in = await fetch(`${base}/?key=${key}`, { redirect: 'manual' });
+    assert.equal(let_in.status, 302);
+    assert.equal(let_in.headers.get('location'), '/');
+    const cookie = let_in.headers.get('set-cookie').split(';')[0];
+    const state = await fetch(`${base}/api/state`, { headers: { cookie } });
+    assert.equal(state.status, 200);
+    assert.equal((await state.json()).sessions.length, 10);
+    assert.equal((await fetch(`${base}/`, { headers: { cookie } })).status, 200);
+  } finally {
+    await monitor.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

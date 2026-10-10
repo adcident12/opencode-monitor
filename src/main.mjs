@@ -1,10 +1,11 @@
-// Wires everything together and serves the page on 127.0.0.1.
+// Wires everything together and serves the page: on 127.0.0.1, or to the local network with --lan.
 import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
 import { createReplaySource } from './replay-source.mjs';
 import { createStatic } from './static.mjs';
+import { ASK_CSP, askPage, createAccess, lanAddresses, loadAccessKey } from './access.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
 import { ROOT, HELP, VERSION, TESTED_OPENCODE, isUntestedOpencode, UserError, parseArgs, loadConfig } from './config.mjs';
@@ -22,8 +23,22 @@ import { loadTranslator } from './format.mjs';
 import { existsSync } from 'node:fs';
 import { buildSetupReport, formatSetupReport } from './setup.mjs';
 
-const HOST = '127.0.0.1'; // Not configurable on purpose: the page shows what your agent is doing.
+// The page shows what your agent is doing: this machine only, unless you open it yourself.
+const HOST = '127.0.0.1';
+const EVERY_INTERFACE = '0.0.0.0';
 
+/** Where the access key is kept: beside the history, out of the repository. */
+const accessKeyFile = cfg => join(dirname(resolve(ROOT, cfg.history.file)), 'access-key');
+
+/** --access-key: the addresses to open on another device, with the key. Printed only when asked. */
+function runAccessKey(cfg) {
+  const key = loadAccessKey(accessKeyFile(cfg));
+  const addresses = lanAddresses();
+  if (!cfg.lan) console.log('The monitor answers this machine only. Start it with --lan (or set "lan": true in config.json) to open it to your local network.');
+  if (!addresses.length) console.log('This machine has no address on a local network right now.');
+  for (const address of addresses) console.log(`http://${address}:${cfg.port}/?key=${key}`);
+  console.log(`The key is kept in ${accessKeyFile(cfg)}. Delete that file and start the monitor again for a new one; devices that had the old one must ask again.`);
+}
 
 /** Sends this week's summary now, from the real figures, and says how Discord answered. */
 async function testDigest(cfg) {
@@ -91,6 +106,10 @@ function announce(cfg, db, sample) {
   console.log(`opencode-monitor${version}: http://${HOST}:${cfg.port}`);
   console.log(`  reading ${db.path} (read-only)${sample ? ' — SAMPLE DATA' : ''}`);
   console.log(`  history: ${historyLine(cfg, sample)}`);
+  if (cfg.lan) {
+    const addresses = lanAddresses().map(address => `http://${address}:${cfg.port}`);
+    console.log(`  open to the local network: ${addresses.join(', ') || 'no address right now'} (each device needs the access key: node server.mjs --access-key)`);
+  }
   console.log(`  notifications: ${notifications}`);
 }
 
@@ -137,6 +156,7 @@ export async function main(argv) {
     cfg.services = [];
   }
   if (args.doctor) return runDoctor(cfg);
+  if (args.accessKey) return runAccessKey(cfg);
 
   const db = openDb(cfg.dataDir);
   const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
@@ -252,14 +272,27 @@ export async function main(argv) {
     res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end(body);
   };
 
-  const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
+  const access = createAccess({ lan: cfg.lan, port: cfg.port, key: cfg.lan ? loadAccessKey(accessKeyFile(cfg)) : undefined });
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
-    if (!allowedHosts.has(req.headers.host) || req.method !== 'GET') {
+    if (!access.hosts.has(String(req.headers.host).toLowerCase()) || req.method !== 'GET') {
       res.writeHead(403).end();
       return;
     }
-    const { pathname: path, searchParams: query } = new URL(req.url, `http://${HOST}`);
+    const url = new URL(req.url, `http://${HOST}`);
+    const { pathname: path, searchParams: query } = url;
+    // Another device of the network: let in with the key, remembered by a cookie.
+    const who = access.check(req, url);
+    if (who.redirect) {
+      res.writeHead(302, { ...BASE_HEADERS, location: who.redirect, 'set-cookie': who.cookie, 'referrer-policy': 'no-referrer' }).end();
+      return;
+    }
+    if (who.ask) {
+      const page = path === '/' || path === '/index.html';
+      res.writeHead(401, { ...BASE_HEADERS, 'content-type': page ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'content-security-policy': ASK_CSP, 'referrer-policy': 'no-referrer' })
+        .end(page ? askPage(who.wrong) : 'The access key is needed.');
+      return;
+    }
     if (path === '/api/events') {
       res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'text/event-stream; charset=utf-8', connection: 'keep-alive' });
       res.write(`data: ${latest}\n\n`);
@@ -276,7 +309,7 @@ export async function main(argv) {
     server.once('error', err => reject(err.code === 'EADDRINUSE'
       ? new UserError(`Port ${cfg.port} is already in use. Pass --port <n> or set "port" in config.json.`)
       : err));
-    server.listen(cfg.port, HOST, resolve);
+    server.listen(cfg.port, cfg.lan ? EVERY_INTERFACE : HOST, resolve);
   });
   announce(cfg, db, args.sample);
 

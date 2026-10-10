@@ -36,6 +36,7 @@ export function autostartCommand({ node = process.execPath, root, args = {} }) {
   const parts = ['--headless', quoteArg(node), quoteArg(join(root, 'server.mjs'))];
   for (const key of KEPT) if (args[key] != null) parts.push(FLAG[key], quoteArg(args[key]));
   if (args.noNotify) parts.push('--no-notify');
+  if (args.lan) parts.push('--lan');
   return { execute: 'conhost.exe', args: parts.join(' '), cwd: root };
 }
 
@@ -65,6 +66,7 @@ export function serverArgs(args = {}) {
   const out = [];
   for (const key of KEPT) if (args[key] != null) out.push(FLAG[key], String(args[key]));
   if (args.noNotify) out.push('--no-notify');
+  if (args.lan) out.push('--lan');
   return out;
 }
 

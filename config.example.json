@@ -1,5 +1,6 @@
 {
   "port": 4317,
+  "lan": false,
   "pollMs": 2000,
   "lang": "en",
 

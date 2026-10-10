@@ -7,7 +7,7 @@ A local status page for [OpenCode](https://opencode.ai). It answers one question
 It exists because of things like a permission prompt sitting unanswered for eight hours overnight while it looked like the agent was busy.
 
 - **Read-only.** It reads what OpenCode already stores on disk and changes nothing in OpenCode.
-- **Local.** Binds to `127.0.0.1` only. No telemetry. Nothing leaves your machine unless you configure a Discord webhook.
+- **Local.** Binds to `127.0.0.1` only, unless you open it to your own network with `--lan`, where every other device must show an access key. No telemetry. Nothing leaves your machine unless you configure a Discord webhook.
 - **No install step.** The server uses built-in Node modules only, and the page comes pre-built. npm is needed only to change the page (see [dashboard/](dashboard/README.md)).
 - **Secrets are hidden by default** before anything is displayed or sent.
 
@@ -53,6 +53,8 @@ node server.mjs --sample
 | `--lang <code>` | Language for notifications (`en`, `th`) |
 | `--sample` | Use generated fake data |
 | `--no-notify` | No desktop or Discord notifications |
+| `--lan` | Also answer the other devices of your local network, each with the access key (see "Open it to your local network" below) |
+| `--access-key` | Print the addresses to open on another device, with the key, then exit |
 | `--assume-running` | Skip the check for a live OpenCode process |
 | `--version` | Print the version, then exit |
 | `--doctor` | Print what the monitor finds on this machine, and what is missing, then exit |
@@ -95,6 +97,23 @@ On macOS the same command writes a launchd agent to `~/Library/LaunchAgents/com.
 In Chrome or Edge, **Install app** at the top of the page puts the monitor in a window of its own, with its own icon on the taskbar and in the Start menu, instead of a browser tab. The button is there only while the browser offers to install, so it is gone once that is done; other browsers do not offer it (Safari has **Add to Dock** in its File menu).
 
 The app is still this page, served by the monitor on this machine: nothing is copied anywhere, and it shows data only while the monitor runs, so it goes well with `--autostart on`. It is installed for the address it was opened at, so keep to one port. To remove it, use the app window's menu (**Uninstall**).
+
+### Open it to your local network
+
+By default the monitor answers this machine and nothing else. To look at it from a phone or another computer on the same network, start it with `--lan` (or set `"lan": true` in `config.json`):
+
+```sh
+node server.mjs --lan
+node server.mjs --access-key
+```
+
+The second command prints the address to open on the other device, with the access key in it. Open it once: the device is then remembered for a year by a cookie, and the key is taken out of the address it is left at. A device that comes without the key is shown a page that asks for it, and gets nothing else: not the page, not the figures, not the live updates.
+
+- The page shows commands, paths and what you asked the agent, with secrets hidden as everywhere else. Anyone with the key sees all of it, so give it only to devices of your own, and only on a network you trust. It is still read-only: nothing can be changed or run through it.
+- The key is 32 random characters kept in `data/access-key`, readable by you only. It is printed only when you ask with `--access-key`, never at startup, so it does not end up in a log. Delete the file and start the monitor again for a new one; every device must then ask again.
+- This machine never needs the key, and a request that arrives under any name other than this machine's own addresses is refused.
+- The connection is plain `http`, as it is on `127.0.0.1`: on a network others can listen to, they could read it. The monitor does not open your router or reach the internet; your firewall may ask whether to let Node accept connections the first time.
+- **Install app** works on this machine only: browsers install from `http` at `127.0.0.1`, not at a network address.
 
 ## What the states mean
 
@@ -259,6 +278,7 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `thresholds.compactWarnPct` | 85 | Warn when the context is this full against the point where OpenCode compacts |
 | `thresholds.compactWarnRequests` | 3 | ...or when this few requests of the usual size are left before it |
 | `thresholds.silentMinutes` | 10 | Silence from the model before "probably stuck". Raise it for slow local models |
+| `lan` | `false` | Answer the other devices of your local network too, each with the access key; the same as `--lan` |
 | `lookbackHours` | 24 | Only sessions active in this window are listed |
 | `contextLimit.models` | `{}` | Context window per `provider/model`, if it cannot be read from OpenCode's config |
 | `redact.extraPatterns` | `[]` | Extra regular expressions to hide |
@@ -360,6 +380,7 @@ src/opencode-config.mjs model limits, MCP names, model server addresses
 public/                 the page, built from dashboard/ (do not edit by hand)
 dashboard/              source of the page: Next.js, Tailwind CSS, shadcn/ui
 src/static.mjs          serves public/ with a strict Content-Security-Policy
+src/access.mjs          --lan: the access key, and who is let in without it (this machine only)
 dashboard/lib/ship.ts   the ship view: who sits where and what each station shows (pure); ship-draw.ts draws it
 i18n/                   UI and notification strings (en, th)
 scripts/make-sample.mjs fake data for --sample and the tests
