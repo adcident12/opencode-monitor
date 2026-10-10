@@ -279,3 +279,16 @@ test('config: JSONC parsing, process matching, webhook validation', () => {
   assert.equal(matchProcesses(' 10 node /srv/opencode-monitor/server.mjs --data-dir /x/opencode\n', ['opencode'], 'linux', 1), false);
   assert.throws(() => loadConfig({}, { OPENCODE_MONITOR_DISCORD_WEBHOOK: 'https://example.com/hook' }), /Discord webhook/);
 });
+
+test('an OpenCode with a later minor or major version than the one checked is flagged; a patch is not', async () => {
+  const { isUntestedOpencode, TESTED_OPENCODE } = await import('../src/config.mjs');
+  assert.match(TESTED_OPENCODE, /^\d+\.\d+\.\d+$/);
+  assert.equal(isUntestedOpencode('1.18.35', '1.18.35'), false);
+  assert.equal(isUntestedOpencode('1.18.99', '1.18.35'), false);
+  assert.equal(isUntestedOpencode('1.19.0', '1.18.35'), true);
+  assert.equal(isUntestedOpencode('2.0.0', '1.18.35'), true);
+  assert.equal(isUntestedOpencode('1.15.12', '1.18.35'), false);
+  assert.equal(isUntestedOpencode(null, '1.18.35'), null);
+  // The snapshot carries the version of the OpenCode that wrote the newest session.
+  assert.equal(typeof snap.opencodeVersion, 'string');
+});

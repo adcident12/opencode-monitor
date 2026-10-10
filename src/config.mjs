@@ -17,6 +17,23 @@ function readVersion() {
 }
 export const VERSION = readVersion();
 
+// The OpenCode release whose database layout and compaction rule this version was read from
+// and checked against. Update it together with the checks, never on its own.
+export const TESTED_OPENCODE = '1.18.35';
+
+/**
+ * Is `version` a later minor or major release than `tested`? Patch releases are not
+ * counted: they are frequent, and what the monitor depends on has not changed in one yet.
+ * null when either is not a version.
+ */
+export function isUntestedOpencode(version, tested = TESTED_OPENCODE) {
+  const parse = v => /^(\d+)\.(\d+)\.(\d+)/.exec(String(v ?? ''))?.slice(1, 3).map(Number);
+  const a = parse(version);
+  const b = parse(tested);
+  if (!a || !b) return null;
+  return a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
+}
+
 export class UserError extends Error {
   userFacing = true;
 }

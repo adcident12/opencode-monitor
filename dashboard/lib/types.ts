@@ -128,6 +128,12 @@ export interface Snapshot {
   build: string | null
   /** Version of the monitor that is running, from its package.json. */
   version: string | null
+  /** Version of the OpenCode that wrote the newest session. */
+  opencodeVersion: string | null
+  /** The OpenCode release this monitor was checked against. */
+  opencodeTested: string | null
+  /** OpenCode is a later minor or major release than that: figures may be off. */
+  opencodeUntested: boolean
 }
 
 export interface HistoryEvent {

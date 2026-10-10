@@ -12,6 +12,7 @@
   "conn.stale": "Can't read OpenCode's data right now — showing the last good reading",
 
   "oc.running": "OpenCode is running",
+  "oc.untested": "OpenCode {version} is newer than the release this monitor was checked against ({tested}). States and the compaction point are read from how OpenCode stores its data, so they may be off until the monitor is updated.",
   "oc.stopped": "OpenCode is not running",
   "oc.unknown": "OpenCode process not checked",
 

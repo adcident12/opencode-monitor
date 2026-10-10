@@ -469,6 +469,8 @@ function ToolUse({ stats }: { stats: StatsData }) {
   const { t } = useI18n()
   const max = Math.max(1, ...stats.tools.map(x => x.count))
   const { graft, other } = stats.explore
+  // Only for people who have graft: to anyone else "graft was used for 0%" means nothing.
+  const hasGraft = graft > 0 || stats.mcp.some(m => m.name === "graft" && m.enabled)
   return (
     <section className="space-y-3">
       <div>
@@ -491,7 +493,7 @@ function ToolUse({ stats }: { stats: StatsData }) {
           </li>
         ))}
       </ul>
-      {graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
+      {hasGraft && graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
     </section>
   )
 }

@@ -12,6 +12,7 @@
   "conn.stale": "อ่านข้อมูลของ OpenCode ไม่ได้ในขณะนี้ กำลังแสดงค่าล่าสุดที่อ่านได้",
 
   "oc.running": "OpenCode กำลังทำงาน",
+  "oc.untested": "OpenCode {version} ใหม่กว่าเวอร์ชันที่ monitor นี้ตรวจไว้ ({tested}) สถานะและจุดย่อบทสนทนาอ่านจากวิธีที่ OpenCode เก็บข้อมูล จึงอาจคลาดเคลื่อนจนกว่าจะอัปเดต monitor",
   "oc.stopped": "OpenCode ไม่ได้เปิดอยู่",
   "oc.unknown": "ไม่ได้ตรวจ process ของ OpenCode",
 

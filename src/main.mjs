@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { createStatic } from './static.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
-import { ROOT, HELP, VERSION, UserError, parseArgs, loadConfig } from './config.mjs';
+import { ROOT, HELP, VERSION, TESTED_OPENCODE, isUntestedOpencode, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
 import { createRedactor } from './redact.mjs';
@@ -94,7 +94,7 @@ export async function main(argv) {
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
       history.record(snap.sessions, snap.now);
     }
-    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId(), version: VERSION });
+    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId(), version: VERSION, opencodeTested: TESTED_OPENCODE, opencodeUntested: isUntestedOpencode(snap.opencodeVersion) === true });
     for (const res of clients) res.write(`data: ${latest}\n\n`);
   };
   tick();

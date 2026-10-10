@@ -313,7 +313,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     };
   }
 
-  let previous = { sessions: [], environment: null };
+  let previous = { sessions: [], environment: null, opencodeVersion: null };
   let directories = [];
 
   function snapshot(now = Date.now()) {
@@ -329,7 +329,9 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
 
       const projectServers = projectMcp?.forDirs(directories) ?? [];
       const serverOf = createServerMatcher([...mcpNames, ...projectServers.map(s => s.name)]);
-      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers) ?? null };
+      // The newest session says which OpenCode wrote it: the one in use now.
+      const opencodeVersion = rows.find(r => r.version)?.version ?? previous.opencodeVersion;
+      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers) ?? null, opencodeVersion };
       return { ...base, stale: false, ...previous };
     } catch (err) {
       // Usually a brief lock while OpenCode writes. Keep showing the last good data, marked stale.

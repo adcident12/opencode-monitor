@@ -33,7 +33,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   stuckMs: 600_000,
   daily: [],
   totals: { sessions: 1, activeMs: 0, waitMs: 0, prompts: 0, open: 0, abandoned: 0, medianAnswerMs: null, stuck: 0, abandonedCalls: 0, toolCalls: 43, toolErrors: 8, compactions: 0, serverLimitCompactions: 0 },
-  waits: [], slow: [], tools: [], explore: { graft: 0, other: 0 }, skills: [],
+  waits: [], slow: [], tools: [], explore: { graft: 0, other: 40 }, skills: [],
   rereads: Array.from({ length: 12 }, (_, i) => ({ file: `/src/file${i}.ts`, count: 20 - i, project: "shop", title: "Checkout flow" })),
   ...extra,
 })
@@ -87,6 +87,14 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("What is shown depends on what this machine has", () => {
+  it("says nothing about graft to someone who does not have it", async () => {
+    renderStats()
+    await screen.findByText("chrome-devtools")
+    expect(screen.queryByText(/graft was used for/)).not.toBeInTheDocument()
   })
 })
 
