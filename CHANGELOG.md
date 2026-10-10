@@ -3,6 +3,28 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.0.0 - 2026-10-10
+
+The Now tab as the bridge of a spaceship, live.
+
+- **The ship**: a switch beside the heading of the Now tab shows the same sessions as a
+  pixel-art bridge, moving as the cards change, every two seconds. One crew member per
+  session, the ones that need you in front: a raised hand waiting for you, sweat when
+  stuck, a red cross on error, arms up when done, asleep when idle. The console screen
+  shows the tool, a fuel gauge the context with a tick where OpenCode compacts, drones the
+  subagents, and lights on the wall the MCP servers. Pick a station to see its card; a
+  legend says what each picture means. Cards stays the default, and your choice is
+  remembered in that browser.
+- **Long text never overflows**: only the folder name is written on the bridge, cut short to
+  fit, and the bubbles say the state in a word or two, never quoting the session. Twelve
+  stations at most, the rest counted; two columns on a phone. The picture holds still for
+  anyone who asks for less motion. The crew and the ship are drawn in code for this project.
+- **One kind of tooltip everywhere**: every tooltip is now shadcn's, the charts' hover cards
+  included; none is left to the browser. A tooltip for text cut short opens only when the
+  text really is cut.
+- A long project name wraps on the cards instead of running out of them, and a card's clock
+  lines up on the left when it drops under a long title.
+
 ## 10.2.0 - 2026-10-10
 
 The README in Thai, and tidier code. Nothing the monitor shows or does has changed.
