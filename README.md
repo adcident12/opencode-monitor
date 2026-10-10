@@ -1,5 +1,7 @@
 # opencode-monitor
 
+**English** · [ไทย](README.th.md)
+
 A local status page for [OpenCode](https://opencode.ai). It answers one question at a glance: is the agent **working**, **waiting for you**, **probably stuck**, **finished**, or **failed**?
 
 It exists because of things like a permission prompt sitting unanswered for eight hours overnight while it looked like the agent was busy.
