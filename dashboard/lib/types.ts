@@ -186,6 +186,10 @@ export interface Stats {
   mcp: McpStat[]
   /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
   mcpLogFrom: number | null
+  /** How fast each model answered, most used first. Rates are tokens per second. */
+  speed: {
+    models: { model: string; requests: number; writeTps: number | null; readTps: number | null; firstTokenMs: number | null; daily: (number | null)[] }[]
+  }
   /** Tokens as the model server reported them, per request, summed over the period. */
   usage: {
     requests: number

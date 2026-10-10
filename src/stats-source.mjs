@@ -55,6 +55,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       mcp: { servers: mergeServers(mcpServers, projectServers), events: log.mcpEvents(), logFrom: log.firstAt() },
       tools,
       messages: db.stats.messages(since),
+      steps: new Map(db.stats.steps(since).map(s => [s.message_id, s])),
       compactions: db.stats.compactions(since),
       asks,
       replies: log.replies(),

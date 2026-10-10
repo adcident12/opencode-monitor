@@ -8,6 +8,11 @@ const ASK_MATCH_MS = 2000;
 const ANSWER_MIN_MS = 500;
 const TOP = 10;
 const MAX_SESSIONS_LISTED = 100;
+// Below these a request says nothing about speed: a handful of tokens, or a clock too coarse.
+const MIN_OUTPUT_TOKENS = 20;
+const MIN_PROMPT_TOKENS = 500;
+const MIN_TIMED_MS = 300;
+const TOP_MODELS = 6;
 
 /** Local calendar day, YYYY-MM-DD. */
 export function dayKey(t) {
@@ -95,6 +100,48 @@ function nearest(sorted, t, fits) {
   return best;
 }
 
+/**
+ * How fast each model answers, from the requests that were long enough to tell.
+ *   write speed  - output tokens per second, from the first token to the last thing written.
+ *                  Tool run time and time spent waiting for you come after that, so are not in it.
+ *   read speed   - new (uncached) prompt tokens per second, over the wait for the first token.
+ * Totals over totals rather than an average of rates, so one tiny request cannot skew it.
+ */
+function computeSpeed({ requests, keys, show }) {
+  const perModel = new Map();
+  for (const r of requests) {
+    const m = perModel.get(r.model) ?? { model: r.model, requests: 0, outTokens: 0, writeMs: 0, promptTokens: 0, readMs: 0, waits: [], days: new Map() };
+    m.requests++;
+    m.waits.push(r.firstTokenMs);
+    if (r.output >= MIN_OUTPUT_TOKENS && r.writeMs >= MIN_TIMED_MS) {
+      m.outTokens += r.output;
+      m.writeMs += r.writeMs;
+      const day = m.days.get(r.day) ?? { tokens: 0, ms: 0 };
+      day.tokens += r.output;
+      day.ms += r.writeMs;
+      m.days.set(r.day, day);
+    }
+    if (r.input >= MIN_PROMPT_TOKENS && r.firstTokenMs >= MIN_TIMED_MS) {
+      m.promptTokens += r.input;
+      m.readMs += r.firstTokenMs;
+    }
+    perModel.set(r.model, m);
+  }
+  const rate = (tokens, ms) => (ms ? Math.round((tokens / ms) * 10_000) / 10 : null);
+  const models = [...perModel.values()].sort((a, b) => b.outTokens - a.outTokens).slice(0, TOP_MODELS);
+  return {
+    models: models.map(m => ({
+      model: show(m.model, 80),
+      requests: m.requests,
+      writeTps: rate(m.outTokens, m.writeMs),
+      readTps: rate(m.promptTokens, m.readMs),
+      firstTokenMs: median(m.waits),
+      // One value per day of the range, null on days the model was not used.
+      daily: keys.map(k => (m.days.has(k) ? rate(m.days.get(k).tokens, m.days.get(k).ms) : null)),
+    })),
+  };
+}
+
 /** The session itself and every subagent session under it. */
 function withDescendants(sessions, sessionId) {
   const scope = new Set([sessionId]);
@@ -115,7 +162,9 @@ function withDescendants(sessions, sessionId) {
  * @param {object} input
  * @param {object[]} input.sessions   id, title, directory, parent_id, time_created, time_updated
  * @param {object[]} input.tools      tool parts started in the range
- * @param {object[]} input.messages   session_id, role, time_created, completed
+ * @param {object[]} input.messages   id, session_id, role, time_created, completed, model, tokens
+ * @param {Map<string, {first_token: number|null, written: number|null}>} [input.steps]
+ *   per message id: when its first token arrived and when the model stopped writing
  * @param {object[]} input.compactions session_id, time_created
  * @param {object[]} input.asks       prompts from the log, in the range
  * @param {Map<string, number>} input.replies question id -> answer time
@@ -125,7 +174,7 @@ function withDescendants(sessions, sessionId) {
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map() }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0 }]));
@@ -146,6 +195,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   // Tokens: what each of those requests sent and got back, as the model server reported it.
   const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
   const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
+  const timed = []; // requests whose first token and last written token are both known
   for (const m of messages) {
     if (m.role !== 'assistant' || !inScope(m.session_id)) continue;
     const start = Math.max(m.time_created, from);
@@ -163,6 +213,17 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     usage.reasoning += m.tokens_reasoning ?? 0;
     usage.cost += m.cost ?? 0;
     b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
+    const step = steps.get(m.id);
+    if (step?.first_token != null && step.written != null && step.written >= step.first_token && m.model_id) {
+      timed.push({
+        model: m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id,
+        day: dayKey(m.time_created),
+        input: (m.tokens_input ?? 0) + (m.tokens_cache_write ?? 0),
+        output: (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0),
+        firstTokenMs: Math.max(0, step.first_token - m.time_created),
+        writeMs: step.written - step.first_token,
+      });
+    }
     const first = firstRequest.get(m.session_id);
     if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
   }
@@ -279,6 +340,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // failure counts are left out rather than shown for the wrong session.
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
     mcpLogFrom: mcp?.logFrom ?? null,
+    speed: computeSpeed({ requests: timed, keys, show }),
     usage: {
       ...usage,
       // Share of what was sent that the model server could reuse from its cache.

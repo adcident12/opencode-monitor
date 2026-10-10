@@ -127,6 +127,7 @@ function Figures({ stats }: { stats: StatsData }) {
         </div>
       </div>
 
+      <Speed stats={stats} />
       <Usage stats={stats} />
       <McpServers stats={stats} />
 
@@ -169,25 +170,32 @@ function Ranked({ title, note, empty, children }: { title: string; note?: string
   )
 }
 
-/** One bar per day, in hours. Single series: the title names it, so there is no legend. */
+/** One bar per day, in hours. */
 function DayChart({ title, days, pick, color }: { title: string; days: DayStats[]; pick: (d: DayStats) => number; color: string }) {
-  const { t, lang } = useI18n()
+  const { t } = useI18n()
+  const total = days.reduce((n, d) => n + pick(d), 0)
+  const points = days.map(d => ({ date: d.date, value: hours(pick(d)), text: pick(d) ? duration(pick(d)) : "0" }))
+  return <Bars title={title} summary={t("stats.total", { t: rough(total) })} points={points} color={color} tick={v => `${v}h`} />
+}
+
+/** One bar per day. Single series: the title names it, so there is no legend. */
+function Bars({ title, summary, points, color, tick }: { title: string; summary: string; points: { date: string; value: number; text: string }[]; color: string; tick: (v: number) => string }) {
+  const { lang } = useI18n()
   const label = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short" })
-  const data = days.map(d => ({ date: d.date, label: label.format(new Date(`${d.date}T12:00:00`)), value: hours(pick(d)), ms: pick(d) }))
-  const total = data.reduce((n, d) => n + d.ms, 0)
+  const data = points.map(p => ({ ...p, label: label.format(new Date(`${p.date}T12:00:00`)) }))
 
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="font-medium">{title}</h3>
-        <span className="text-sm tabular-nums text-muted-foreground">{t("stats.total", { t: rough(total) })}</span>
+        <span className="text-sm tabular-nums text-muted-foreground">{summary}</span>
       </div>
       <div className="h-48" role="img" aria-label={title}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap={data.length > 14 ? 2 : 6}>
             <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="0" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={v => `${v}h`} />
+            <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={tick} />
             <Tooltip
               cursor={{ fill: "var(--color-muted)", opacity: 0.6 }}
               content={({ active, payload }) => {
@@ -196,7 +204,7 @@ function DayChart({ title, days, pick, color }: { title: string; days: DayStats[
                 return (
                   <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
                     <p className="text-muted-foreground">{item.label}</p>
-                    <p className="font-medium tabular-nums">{item.ms ? duration(item.ms) : "0"}</p>
+                    <p className="font-medium tabular-nums">{item.text}</p>
                   </div>
                 )
               }}
@@ -205,7 +213,7 @@ function DayChart({ title, days, pick, color }: { title: string; days: DayStats[
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <NumbersTable rows={data.map(d => [d.label, d.ms ? duration(d.ms) : "0"])} />
+      <NumbersTable rows={data.map(d => [d.label, d.text])} />
     </section>
   )
 }
@@ -262,6 +270,56 @@ function ToolUse({ stats }: { stats: StatsData }) {
         ))}
       </ul>
       {graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
+    </section>
+  )
+}
+
+/**
+ * How fast each model answers. Writing and reading are kept apart: a slow first token is a
+ * long or uncached prompt, slow writing is the server itself.
+ */
+function Speed({ stats }: { stats: StatsData }) {
+  const { t } = useI18n()
+  const { models } = stats.speed
+  if (!models.length) return null
+  const main = models[0]
+  const tps = (n: number | null) => (n == null ? "–" : t("stats.speedTps", { n: n < 100 ? n.toFixed(1) : Math.round(n) }))
+  const points = stats.daily.map((d, i) => ({ date: d.date, value: main.daily[i] ?? 0, text: tps(main.daily[i] ?? null) }))
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h3 className="font-medium">{t("stats.speed")}</h3>
+        <p className="text-xs text-muted-foreground">{t("stats.speedNote")}</p>
+      </div>
+      <div className="grid gap-8 lg:grid-cols-2">
+        <div className="overflow-x-auto">
+          <table className="w-full text-[0.82rem]">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th scope="col" className="py-1.5 pr-3 font-normal">{t("stats.speedModel")}</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("stats.speedWrite")}</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("stats.speedRead")}</th>
+                <th scope="col" className="py-1.5 text-right font-normal">{t("stats.speedFirst")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {models.map(m => (
+                <tr key={m.model}>
+                  <th scope="row" className="py-2 pr-3 text-left font-normal">
+                    <span className="font-mono text-[0.78rem] break-all">{m.model}</span>
+                    <span className="block text-xs text-muted-foreground">{t("stats.speedRequests", { n: m.requests })}</span>
+                  </th>
+                  <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{tps(m.writeTps)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{tps(m.readTps)}</td>
+                  <td className="py-2 text-right tabular-nums whitespace-nowrap text-muted-foreground">{m.firstTokenMs == null ? "–" : quick(m.firstTokenMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Bars title={t("stats.speedChart", { model: main.model })} summary={tps(main.writeTps)} points={points} color="var(--color-working)" tick={v => String(v)} />
+      </div>
     </section>
   )
 }

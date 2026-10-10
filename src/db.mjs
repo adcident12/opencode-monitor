@@ -109,7 +109,9 @@ export function openDb(dataDir) {
         substr(json_extract(data,'$.state.input.name'),1,100) skill,
         substr(json_extract(data,'$.state.error'),1,200) error
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
-    messages: db.prepare(`select session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
+    messages: db.prepare(`select id, session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
+        json_extract(data,'$.providerID') provider_id,
+        json_extract(data,'$.modelID') model_id,
         json_extract(data,'$.tokens.input') tokens_input,
         json_extract(data,'$.tokens.output') tokens_output,
         json_extract(data,'$.tokens.reasoning') tokens_reasoning,
@@ -118,6 +120,16 @@ export function openDb(dataDir) {
         json_extract(data,'$.cost') cost
       from message where time_created >= ?`),
     compactions: db.prepare("select session_id, time_created from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'"),
+    // Per model request: when the first token arrived, and when the model stopped writing
+    // (the end of its last text, or the moment its last tool call was complete and could run).
+    steps: db.prepare(`select message_id,
+        min(case when json_extract(data,'$.type') = 'step-start' then time_created end) first_token,
+        max(case json_extract(data,'$.type')
+          when 'tool' then json_extract(data,'$.state.time.start')
+          when 'text' then json_extract(data,'$.time.end')
+          when 'reasoning' then json_extract(data,'$.time.end') end) written
+      from part where time_created >= ? and json_extract(data,'$.type') in ('step-start','tool','text','reasoning')
+      group by message_id`),
   };
   // Update times of each tool call, from OpenCode's event log. Indexed by session, so only
   // the sessions that had prompts are read. Absent in versions without the event table.
@@ -134,6 +146,7 @@ export function openDb(dataDir) {
       tools: since => statsStmt.tools.all(since),
       messages: since => statsStmt.messages.all(since),
       compactions: since => statsStmt.compactions.all(since),
+      steps: since => statsStmt.steps.all(since),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),

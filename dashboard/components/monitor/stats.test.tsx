@@ -26,6 +26,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
     server("github", { enabled: false, type: "remote" }),
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
+  speed: { models: [{ model: "local-llama/qwen3.8-27b-v3", requests: 118, writeTps: 31.6, readTps: 540, firstTokenMs: 1200, daily: [] }] },
   usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
   stuckMs: 600_000,
   daily: [],
@@ -72,6 +73,17 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("Model speed in Stats", () => {
+  it("shows writing and reading apart for each model", async () => {
+    renderStats()
+    const row = (await screen.findByText("local-llama/qwen3.8-27b-v3")).closest("tr")!
+    expect(within(row).getByText("31.6 tok/s")).toBeInTheDocument()
+    expect(within(row).getByText("540 tok/s")).toBeInTheDocument()
+    expect(within(row).getByText("1.2s")).toBeInTheDocument()
+    expect(within(row).getByText("118 requests")).toBeInTheDocument()
   })
 })
 

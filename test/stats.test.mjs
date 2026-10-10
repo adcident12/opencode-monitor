@@ -180,3 +180,35 @@ test('tokens: what was sent and written, the share served from cache, and how bi
   assert.equal(s.daily.find(d => d.date === dayKey(at)).tokens, 45_500 + 122_000 + 500);
   assert.equal(run({}).usage.start, null);
 });
+
+test('model speed: tokens per second while writing, and while reading a new prompt', () => {
+  const at = NOW - 3 * HOUR;
+  const reply = (id, model, offset, input, output, extra = {}) => ({
+    id, session_id: 's1', role: 'assistant', provider_id: 'local', model_id: model, time_created: at + offset, completed: at + offset + 10 * MIN,
+    tokens_input: input, tokens_cache_read: 0, tokens_cache_write: 0, tokens_output: output, tokens_reasoning: 0, cost: 0, ...extra,
+  });
+  const s = run({
+    messages: [
+      reply('m1', 'qwen', 0, 30_000, 300),
+      reply('m2', 'qwen', HOUR, 100, 900),
+      reply('m3', 'qwen', 2 * HOUR, 40, 5), // five tokens say nothing about speed
+      reply('m4', 'bonsai', 2 * HOUR, 2_000, 100),
+      reply('m5', 'qwen', 2 * HOUR, 50, 800), // no timing recorded for it: left out
+    ],
+    steps: new Map([
+      // First token after 60 s, then 10 s of writing. The tool it called ran for minutes after.
+      ['m1', { first_token: at + 60_000, written: at + 70_000 }],
+      ['m2', { first_token: at + HOUR + 1000, written: at + HOUR + 31_000 }],
+      ['m3', { first_token: at + 2 * HOUR + 1000, written: at + 2 * HOUR + 1200 }],
+      ['m4', { first_token: at + 2 * HOUR + 4000, written: at + 2 * HOUR + 9000 }],
+    ]),
+  });
+  const [qwen, bonsai] = s.speed.models;
+  // 1200 tokens over 40 s of writing; 30 000 prompt tokens read in 60 s; the short prompts do not count.
+  assert.deepEqual([qwen.model, qwen.requests, qwen.writeTps, qwen.readTps, qwen.firstTokenMs], ['local/qwen', 3, 30, 500, 1000]);
+  assert.deepEqual([bonsai.model, bonsai.writeTps, bonsai.readTps], ['local/bonsai', 20, 500]);
+  assert.equal(qwen.daily.length, 7);
+  assert.equal(qwen.daily[s.daily.findIndex(d => d.date === dayKey(at))], 30);
+  assert.equal(qwen.daily.filter(v => v != null).length, 1);
+  assert.deepEqual(run({}).speed.models, []);
+});
