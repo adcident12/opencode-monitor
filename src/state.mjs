@@ -41,23 +41,15 @@ export function deriveState({ session, parts, messages, asks, now, thresholds, o
   return result;
 }
 
-function live({ session, parts, messages, asks, now, thresholds }) {
-  const last = messages.at(-1);
-  if (!last) return { state: 'idle', reason: 'empty', since: session.time_created };
+/** The last reply ended in an error: stopped by you, or failed. */
+function afterError(last, since) {
+  return last.error === 'MessageAbortedError'
+    ? { state: 'idle', reason: 'aborted', since }
+    : { state: 'error', reason: 'message_error', detail: last.error, since };
+}
 
-  let lastActivity = Math.max(last.time_created, last.completed ?? 0);
-  for (const p of parts) if (p.time_updated > lastActivity) lastActivity = p.time_updated;
-  const turnStart = messages.findLast(m => m.role === 'user')?.time_created ?? messages[0].time_created;
-
-  if (last.role === 'assistant' && last.error) {
-    return last.error === 'MessageAbortedError'
-      ? { state: 'idle', reason: 'aborted', since: lastActivity }
-      : { state: 'error', reason: 'message_error', detail: last.error, since: lastActivity };
-  }
-
-  // Running tools on older messages are leftovers from a crash or abort, not live work.
-  const running = last.role === 'assistant' ? parts.filter(p => p.message_id === last.id && isRunningTool(p)) : [];
-
+/** A running call that is waiting for you: a question first, then a permission prompt. */
+function waitingOn(running, asks) {
   const question = running.find(p => p.tool === 'question');
   if (question) {
     return {
@@ -74,28 +66,59 @@ function live({ session, parts, messages, asks, now, thresholds }) {
       };
     }
   }
+  return null;
+}
 
-  if (running.length) {
-    const oldest = running.reduce((a, b) => (startOf(b) < startOf(a) ? b : a));
-    const limitMs = minutes(thresholds.stuckToolMinutesByTool?.[oldest.tool] ?? thresholds.stuckToolMinutes);
-    return now - startOf(oldest) > limitMs
-      ? { state: 'stuck', reason: 'tool_long', since: startOf(oldest), current: oldest, limitMs }
-      : { state: 'working', reason: 'tool', since: turnStart, current: oldest };
-  }
+/** Tools are running and none waits for you: working, or stuck when the oldest ran too long. */
+function runningTools(running, { now, thresholds, turnStart }) {
+  const oldest = running.reduce((a, b) => (startOf(b) < startOf(a) ? b : a));
+  const limitMs = minutes(thresholds.stuckToolMinutesByTool?.[oldest.tool] ?? thresholds.stuckToolMinutes);
+  return now - startOf(oldest) > limitMs
+    ? { state: 'stuck', reason: 'tool_long', since: startOf(oldest), current: oldest, limitMs }
+    : { state: 'working', reason: 'tool', since: turnStart, current: oldest };
+}
+
+/** A completed reply that ends the turn; null when it ended in tool calls and more is owed. */
+function afterReply(last) {
+  if (last.role !== 'assistant' || !last.completed) return null;
+  if (last.finish === 'stop') return { state: 'finished', reason: 'done', since: last.completed };
+  if (last.finish === 'length') return { state: 'error', reason: 'length', since: last.completed };
+  if (last.finish !== 'tool-calls') return { state: 'idle', reason: 'unknown_finish', since: last.completed };
+  return null;
+}
+
+/** What the model is doing while it owes the next output. */
+function owedReason(last) {
+  if (last.role === 'user') return 'thinking';
+  return last.completed ? 'between_steps' : 'generating';
+}
+
+// The rules, in order: the first that applies decides.
+function live({ session, parts, messages, asks, now, thresholds }) {
+  const last = messages.at(-1);
+  if (!last) return { state: 'idle', reason: 'empty', since: session.time_created };
+
+  let lastActivity = Math.max(last.time_created, last.completed ?? 0);
+  for (const p of parts) if (p.time_updated > lastActivity) lastActivity = p.time_updated;
+  const turnStart = messages.findLast(m => m.role === 'user')?.time_created ?? messages[0].time_created;
+
+  if (last.role === 'assistant' && last.error) return afterError(last, lastActivity);
+
+  // Running tools on older messages are leftovers from a crash or abort, not live work.
+  const running = last.role === 'assistant' ? parts.filter(p => p.message_id === last.id && isRunningTool(p)) : [];
+  const waiting = waitingOn(running, asks);
+  if (waiting) return waiting;
+  if (running.length) return runningTools(running, { now, thresholds, turnStart });
 
   if (session.time_compacting) return { state: 'working', reason: 'compacting', since: session.time_compacting };
 
-  if (last.role === 'assistant' && last.completed) {
-    if (last.finish === 'stop') return { state: 'finished', reason: 'done', since: last.completed };
-    if (last.finish === 'length') return { state: 'error', reason: 'length', since: last.completed };
-    if (last.finish !== 'tool-calls') return { state: 'idle', reason: 'unknown_finish', since: last.completed };
-  }
+  const ended = afterReply(last);
+  if (ended) return ended;
 
   // The model owes the next output. Slow local models can be quiet for minutes, hence a threshold.
   const limitMs = minutes(thresholds.silentMinutes);
   if (now - lastActivity > limitMs) return { state: 'stuck', reason: 'silent', since: lastActivity, limitMs };
-  const reason = last.role === 'user' ? 'thinking' : last.completed ? 'between_steps' : 'generating';
-  return { state: 'working', reason, since: turnStart };
+  return { state: 'working', reason: owedReason(last), since: turnStart };
 }
 
 // Short text describing what a tool call is doing. Raw: redact before showing.
@@ -156,47 +179,51 @@ function growthOf(sizes) {
   return steps[Math.floor(steps.length / 2)];
 }
 
-/**
- * @param {number|null} [compactAt] context size at which OpenCode compacts (compactionPoint)
- */
-export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null, autoCompact = true }) {
-  let contextTokens = null;
-  let sizes = []; // what each request counted against compaction, since the last compaction
-  let compacting = false; // compacted, and no ordinary request has run since
-  let overflowCompactions = 0; // compactions forced by the model server refusing the request
-  let compactions = 0;
-  let toolCalls = 0;
-  let toolErrors = 0;
-  let lastError = null;
-  const recentTools = [];
-
-  for (const p of parts) {
-    if (p.type === 'step-finish') {
-      const sent = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
-      // The summary that a compaction writes still sends the whole old context, so it says
-      // nothing about the new one. OpenCode marks its message as a summary.
-      if (p.msg_summary) continue;
-      compacting = false;
-      contextTokens = sent;
-      // What OpenCode compares with the compaction point: the request's total.
-      if (sent > 0) sizes.push(p.tokens_total || sent + (p.tokens_output ?? 0));
-    } else if (p.type === 'compaction') {
-      compactions++;
-      if (p.overflow) overflowCompactions++;
-      sizes = [];
-      compacting = true;
-    } else if (p.type === 'tool') {
-      toolCalls++;
-      if (p.status === 'error') {
-        toolErrors++;
-        lastError = { tool: p.tool, text: p.error ?? '', at: p.time_updated };
-      }
-      recentTools.push(p);
-      if (recentTools.length > thresholds.repeatWindow) recentTools.shift();
+/** One pass over a session's parts: context size, compactions, tool calls and their errors. */
+function tallyParts(parts, repeatWindow) {
+  const t = {
+    contextTokens: null,
+    sizes: [], // what each request counted against compaction, since the last compaction
+    compacting: false, // compacted, and no ordinary request has run since
+    overflowCompactions: 0, // compactions forced by the model server refusing the request
+    compactions: 0,
+    toolCalls: 0,
+    toolErrors: 0,
+    lastError: null,
+    recentTools: [],
+  };
+  const onRequest = p => {
+    // The summary that a compaction writes still sends the whole old context, so it says
+    // nothing about the new one. OpenCode marks its message as a summary.
+    if (p.msg_summary) return;
+    const sent = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
+    t.compacting = false;
+    t.contextTokens = sent;
+    // What OpenCode compares with the compaction point: the request's total.
+    if (sent > 0) t.sizes.push(p.tokens_total || sent + (p.tokens_output ?? 0));
+  };
+  const onCompaction = p => {
+    t.compactions++;
+    if (p.overflow) t.overflowCompactions++;
+    t.sizes = [];
+    t.compacting = true;
+  };
+  const onTool = p => {
+    t.toolCalls++;
+    if (p.status === 'error') {
+      t.toolErrors++;
+      t.lastError = { tool: p.tool, text: p.error ?? '', at: p.time_updated };
     }
-  }
+    t.recentTools.push(p);
+    if (t.recentTools.length > repeatWindow) t.recentTools.shift();
+  };
+  const handlers = { 'step-finish': onRequest, compaction: onCompaction, tool: onTool };
+  for (const p of parts) if (Object.hasOwn(handlers, p.type)) handlers[p.type](p);
+  return t;
+}
 
-  // The same tool with the same input several times in a short window usually means a loop.
+/** The same tool with the same input several times in a short window usually means a loop. */
+function findRepeat(recentTools, repeatWarn) {
   let repeat = null;
   const seen = new Map();
   for (const p of recentTools) {
@@ -204,24 +231,30 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
     const entry = seen.get(key) ?? { count: 0, part: p };
     entry.count++;
     seen.set(key, entry);
-    if (entry.count >= thresholds.repeatWarn && (!repeat || entry.count > repeat.count)) repeat = entry;
+    if (entry.count >= repeatWarn && (!repeat || entry.count > repeat.count)) repeat = entry;
   }
+  return repeat;
+}
 
-  // While compacting, the last known size is the old context: not shown as if it were current.
-  if (compacting) contextTokens = null;
-  const contextPct = contextTokens != null && contextLimit ? Math.round((contextTokens / contextLimit) * 100) : null;
-  const ageMs = now - session.time_created;
-
-  // Room left before OpenCode compacts, and roughly how many requests of the usual size fit.
+/**
+ * Room left before OpenCode compacts, and roughly how many requests of the usual size fit.
+ * @returns {{compaction: object|null, soon: boolean}} soon: close enough to warn
+ */
+function compactionRoom(sizes, compactAt, thresholds) {
   const used = sizes.at(-1) ?? null;
+  if (!compactAt || used == null) return { compaction: null, soon: false };
   const growth = growthOf(sizes);
-  const room = compactAt && used != null ? Math.max(0, compactAt - used) : null;
-  const compaction = room == null ? null : { at: compactAt, room, growth, requestsLeft: growth ? Math.floor(room / growth) : null };
-  const soon = compaction != null && (used >= compactAt * (thresholds.compactWarnPct / 100) || (compaction.requestsLeft != null && compaction.requestsLeft <= thresholds.compactWarnRequests));
+  const room = Math.max(0, compactAt - used);
+  const requestsLeft = growth ? Math.floor(room / growth) : null;
+  const nearlyFull = used >= compactAt * (thresholds.compactWarnPct / 100);
+  const fewLeft = requestsLeft != null && requestsLeft <= thresholds.compactWarnRequests;
+  return { compaction: { at: compactAt, room, growth, requestsLeft }, soon: nearlyFull || fewLeft };
+}
 
+/** What is worth a line under the session, as keys of strings. */
+function hintsOf({ contextHigh, compactions, ageMs, repeat, overflowCompactions, toolErrors }, thresholds) {
   const hints = [];
-  // With a known compaction point, warn against it; otherwise fall back to the window size.
-  if (compaction ? soon : contextPct != null && contextPct >= thresholds.contextWarnPct) hints.push('context_high');
+  if (contextHigh) hints.push('context_high');
   if (compactions >= thresholds.compactionWarn) hints.push('many_compactions');
   if (ageMs >= thresholds.sessionAgeWarnHours * 3_600_000) hints.push('old_session');
   if (repeat) hints.push('looping');
@@ -229,6 +262,23 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   // context size is smaller than limit.context in opencode.json.
   if (overflowCompactions) hints.push('server_limit');
   if (toolErrors >= thresholds.toolErrorWarn) hints.push('many_errors');
+  return hints;
+}
+
+/**
+ * @param {number|null} [compactAt] context size at which OpenCode compacts (compactionPoint)
+ */
+export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null, autoCompact = true }) {
+  const { sizes, compacting, overflowCompactions, compactions, toolCalls, toolErrors, lastError, recentTools, ...tally } = tallyParts(parts, thresholds.repeatWindow);
+  const repeat = findRepeat(recentTools, thresholds.repeatWarn);
+
+  // While compacting, the last known size is the old context: not shown as if it were current.
+  const contextTokens = compacting ? null : tally.contextTokens;
+  const contextPct = contextTokens != null && contextLimit ? Math.round((contextTokens / contextLimit) * 100) : null;
+  const { compaction, soon } = compactionRoom(sizes, compactAt, thresholds);
+  // With a known compaction point, warn against it; otherwise fall back to the window size.
+  const contextHigh = compaction ? soon : contextPct != null && contextPct >= thresholds.contextWarnPct;
+  const hints = hintsOf({ contextHigh, compactions, ageMs: now - session.time_created, repeat, overflowCompactions, toolErrors }, thresholds);
 
   return {
     contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction, compacting, overflowCompactions, autoCompact,
@@ -237,6 +287,17 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
     hints,
     suggestNewSession: hints.some(h => h === 'context_high' || h === 'many_compactions' || h === 'old_session'),
   };
+}
+
+/** What a parent running `task` takes from its subagents, or null when nothing changes. */
+function fromChildren(parent, children) {
+  const waiting = children.find(c => c.state === 'waiting');
+  if (waiting) return { state: 'waiting', reason: 'child_waiting', since: waiting.since, prompt: waiting.prompt, viaChild: waiting.id };
+  const stuck = children.find(c => c.state === 'stuck');
+  if (stuck) return { state: 'stuck', reason: 'child_stuck', since: stuck.since, viaChild: stuck.id };
+  const working = children.find(c => c.state === 'working');
+  if (working && parent.state === 'stuck') return { state: 'working', reason: 'subagent', viaChild: working.id };
+  return null;
 }
 
 // A parent running the `task` tool is only as healthy as its subagent session: a permission
@@ -250,18 +311,8 @@ export function bubbleChildren(sessions) {
   }
   for (const parent of sessions) {
     const children = byParent.get(parent.id);
-    if (!children || parent.current?.tool !== 'task') continue;
-    if (parent.state !== 'working' && parent.state !== 'stuck') continue;
-    const waiting = children.find(c => c.state === 'waiting');
-    const stuck = children.find(c => c.state === 'stuck');
-    const working = children.find(c => c.state === 'working');
-    if (waiting) {
-      Object.assign(parent, { state: 'waiting', reason: 'child_waiting', since: waiting.since, prompt: waiting.prompt, viaChild: waiting.id });
-    } else if (stuck) {
-      Object.assign(parent, { state: 'stuck', reason: 'child_stuck', since: stuck.since, viaChild: stuck.id });
-    } else if (working && parent.state === 'stuck') {
-      Object.assign(parent, { state: 'working', reason: 'subagent', viaChild: working.id });
-    }
+    const blockedOnTask = parent.current?.tool === 'task' && (parent.state === 'working' || parent.state === 'stuck');
+    if (children && blockedOnTask) Object.assign(parent, fromChildren(parent, children));
   }
   return sessions;
 }
