@@ -234,6 +234,8 @@
   "setup.fix.no_notification": "A prompt left unanswered will only be seen by opening this page. Set notify.desktop to true, or give notify.discord.webhookUrl, in config.json.",
 
   "history.filter": "Only what needed you",
+  "history.changes": "Changes of state",
+  "history.changesNote": "Recorded while the monitor is running, newest first.",
   "history.after": "after {t} of \"{state}\"",
   "history.firstSeen": "first seen by the monitor",
   "history.empty": "No history yet",

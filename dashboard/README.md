@@ -53,5 +53,11 @@ sizes are a fixed scale defined at the top of `app/globals.css` (`text-2xs` to `
 `text-code` for monospaced text); use those names, not arbitrary values like `text-[0.82rem]`.
 Line heights are loose on purpose, so Thai tone marks are not clipped.
 
+The rhythm of the page is defined once, in `components/monitor/section.tsx`: the space between
+the blocks of a tab (`TAB`), the chapter heading and the rule above it (`Chapter`), the heading
+inside a chapter (`H3`), and table head cells (`TH`). A new tab or section uses these instead of
+its own sizes; that is what keeps the four tabs alike. Before a release, look at every tab at
+360px wide in both languages: the page must not scroll sideways.
+
 Colours for each agent state are tokens in `app/globals.css` (`--waiting`, `--stuck`, ...), with
 separate light and dark values.

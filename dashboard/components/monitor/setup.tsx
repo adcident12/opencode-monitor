@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n"
 import { useSetup } from "@/lib/live"
 import type { SetupReport } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { Chapter, H3, TAB, TH } from "./section"
 import { Dot } from "./state"
 
 /**
@@ -20,10 +21,10 @@ export function Setup({ active }: { active: boolean }) {
   if (!report) return <Skeleton className="h-64 w-full" />
 
   return (
-    <div className="space-y-8">
+    <div className={TAB}>
       <Problems report={report} />
 
-      <Section title={t("setup.opencode")}>
+      <Section id="setup-opencode" title={t("setup.opencode")}>
         <Row file label={t("setup.database")} ok={report.opencode.database.found} value={<Path>{report.opencode.database.path}</Path>} />
         <Row file label={t("setup.log")} ok={report.opencode.log.found} value={<Path>{report.opencode.log.path}</Path>} />
         <Row
@@ -40,17 +41,17 @@ export function Setup({ active }: { active: boolean }) {
         <Row label={t("setup.opencodeVersion")} value={`${report.opencode.version ?? "?"} · ${t("setup.testedWith", { v: report.opencode.tested })}`} />
       </Section>
 
-      <Section title={t("setup.models")} note={t("setup.modelsNote")}>
+      <Section id="setup-models" title={t("setup.models")} note={t("setup.modelsNote")}>
         {report.models.length === 0 && <p className="py-2 text-sm text-muted-foreground">{t("setup.noModels")}</p>}
         {report.models.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th scope="col" className="py-1.5 pr-3 font-normal">{t("stats.speedModel")}</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("setup.context")}</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("setup.output")}</th>
-                  <th scope="col" className="py-1.5 text-right font-normal">{t("setup.compactAt")}</th>
+                <tr className="border-b">
+                  <th scope="col" className={TH}>{t("stats.speedModel")}</th>
+                  <th scope="col" className={cn(TH, "text-right")}>{t("setup.context")}</th>
+                  <th scope="col" className={cn(TH, "text-right")}>{t("setup.output")}</th>
+                  <th scope="col" className={cn(TH, "text-right")}>{t("setup.compactAt")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -79,14 +80,14 @@ export function Setup({ active }: { active: boolean }) {
         </p>
       </Section>
 
-      <Section title={t("setup.notify")}>
+      <Section id="setup-notify" title={t("setup.notify")}>
         <Row label={t("setup.desktop")} ok={report.notify.desktop} value={t(report.notify.desktop ? "setup.yes" : "setup.no")} />
         <Row label={t("setup.discord")} ok={report.notify.discord} value={t(report.notify.discord ? "setup.discordSet" : "setup.no")} />
         <Row label={t("setup.notifyOn")} value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")} />
-        <Sent report={report} />
       </Section>
+      <Sent report={report} />
 
-      <Section title={t("setup.monitor")}>
+      <Section id="setup-monitor" title={t("setup.monitor")}>
         <Row label={t("setup.version")} value={report.monitor.version ?? "?"} />
         <Row label={t("setup.configFile")} ok={report.monitor.configFile?.found ?? false} value={<Path>{report.monitor.configFile?.path ?? ""}</Path>} note={report.monitor.configFile?.found ? undefined : t("setup.configDefaults")} />
         <Row
@@ -114,10 +115,10 @@ function Sent({ report }: { report: SetupReport }) {
     return <span className="font-medium text-error">{text}</span>
   }
   return (
-    <div className="space-y-2 py-3">
+    <div className="space-y-2">
       <div>
-        <h3 className="text-base font-semibold">{t("setup.recent")}</h3>
-        <p className="text-xs text-muted-foreground">{t("setup.recentNote")}</p>
+        <h3 className={H3}>{t("setup.recent")}</h3>
+        <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{t("setup.recentNote")}</p>
       </div>
       {report.notify.recent.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("setup.recentNone")}</p>
@@ -125,11 +126,11 @@ function Sent({ report }: { report: SetupReport }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.recentWhen")}</th>
-                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.recentWhat")}</th>
-                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.desktop")}</th>
-                <th scope="col" className="py-1.5 font-normal">{t("setup.discord")}</th>
+              <tr className="border-b">
+                <th scope="col" className={TH}>{t("setup.recentWhen")}</th>
+                <th scope="col" className={TH}>{t("setup.recentWhat")}</th>
+                <th scope="col" className={TH}>{t("setup.desktop")}</th>
+                <th scope="col" className={TH}>{t("setup.discord")}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -164,10 +165,7 @@ function Problems({ report }: { report: SetupReport }) {
     )
   }
   return (
-    <section aria-labelledby="setup-problems" className="space-y-2">
-      <h2 id="setup-problems" className="text-xl font-semibold">
-        {t("setup.problems")}
-      </h2>
+    <Chapter id="setup-problems" first title={t("setup.problems")}>
       <ul className="divide-y rounded-xl border bg-card">
         {report.problems.map(p => (
           <li key={`${p.code}-${p.subject ?? ""}`} className="space-y-1 px-4 py-3">
@@ -176,19 +174,16 @@ function Problems({ report }: { report: SetupReport }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Chapter>
   )
 }
 
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+/** A chapter whose content is a list of label and value rows, plus whatever follows them. */
+function Section({ id, title, note, children }: { id: string; title: string; note?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2 border-t pt-6">
-      <div>
-        <h2 className="text-xl font-semibold">{title}</h2>
-        {note && <p className="mt-1 max-w-prose text-sm text-muted-foreground">{note}</p>}
-      </div>
-      <dl className="divide-y">{children}</dl>
-    </section>
+    <Chapter id={id} title={title} note={note}>
+      <div className="divide-y">{children}</div>
+    </Chapter>
   )
 }
 
@@ -196,7 +191,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 function Row({ label, value, ok, note, file = false }: { label: string; value: React.ReactNode; ok?: boolean; note?: string; file?: boolean }) {
   const { t } = useI18n()
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-0.5 py-2.5 text-sm sm:grid-cols-[14rem_minmax(0,1fr)]">
+    <dl className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-0.5 py-2.5 text-sm sm:grid-cols-[14rem_minmax(0,1fr)]">
       <dt className="flex items-center gap-2 text-muted-foreground">
         {ok != null && <Dot tone={ok ? "ok" : "unknown"} />}
         {label}
@@ -206,7 +201,7 @@ function Row({ label, value, ok, note, file = false }: { label: string; value: R
         {file && ok === false && <span className="ml-2 text-xs text-waiting">{t("setup.notFound")}</span>}
         {note && <span className="block text-xs text-muted-foreground">{note}</span>}
       </dd>
-    </div>
+    </dl>
   )
 }
 

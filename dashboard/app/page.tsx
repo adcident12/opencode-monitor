@@ -9,6 +9,7 @@ import { useTabIcon } from "@/components/monitor/logo"
 import type { MarkTone } from "@/lib/logo"
 import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
+import { TAB as TAB_SPACE } from "@/components/monitor/section"
 import { Setup } from "@/components/monitor/setup"
 import { Stats } from "@/components/monitor/stats"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -20,7 +21,8 @@ import { useHash, useNow, useSnapshot } from "@/lib/live"
 
 type Tab = "now" | "history" | "stats" | "setup"
 
-const TAB = "flex-none gap-2 px-3.5 text-sm text-foreground/75 data-active:text-foreground"
+// On a phone four labels with icons do not fit: the icons go first, the labels stay.
+const TAB = "flex-none gap-2 px-2.5 text-sm text-foreground/75 data-active:text-foreground sm:px-3.5 [&_svg]:hidden sm:[&_svg]:block"
 
 export default function Page() {
   const { t } = useI18n()
@@ -60,7 +62,7 @@ export default function Page() {
 
       <Tabs value={tab} onValueChange={value => changeTab(value as Tab)} className="gap-6">
         {/* Full-contrast labels with icons, so the other views are seen at a glance. */}
-        <TabsList className="h-10 gap-1 p-1">
+        <TabsList className="h-10 max-w-full gap-1 overflow-x-auto p-1">
           <TabsTrigger value="now" className={TAB}>
             <RadioIcon aria-hidden />
             {t("tab.now")}
@@ -85,7 +87,7 @@ export default function Page() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="now" className="space-y-10">
+        <TabsContent value="now" className={TAB_SPACE}>
           {!snapshot && <Loading />}
 
           {snapshot && (

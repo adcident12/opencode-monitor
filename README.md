@@ -38,7 +38,7 @@ node server.mjs --sample
 | `--assume-running` | Skip the check for a live OpenCode process |
 | `--version` | Print the version, then exit |
 | `--doctor` | Print what the monitor finds on this machine, and what is missing, then exit |
-| `--test-notify` | Send one test notification on each configured channel, then exit |
+| `--test-notify` | Send one sample of every kind of notification that is on (`notify.on`), on each channel, and print how each was received |
 | `--autostart on` / `off` | Start the monitor each time you log in, or stop doing so, then exit |
 
 ### What it found on your machine

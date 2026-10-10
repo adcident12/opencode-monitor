@@ -14,14 +14,13 @@ import { useStats } from "@/lib/live"
 import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
+import { Chapter, H3, TAB, TH } from "./section"
 import { SessionFilter } from "./session-filter"
 
 const RANGES = [7, 14, 30] as const
-// Headings of the sections inside a chapter.
 // A ranked row: the figure, what it was, and when and where, each in its own column so nothing wraps under another.
 // On a phone the third column has no room, so when and where go under the label instead.
 const ROW = "grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 sm:grid-cols-[3.75rem_minmax(0,1fr)_auto]"
-const H3 = "text-base font-semibold"
 
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 
@@ -37,7 +36,7 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
   if (stats && stats.sessions !== choices) setChoices(stats.sessions)
 
   return (
-    <div className="space-y-8">
+    <div className={TAB}>
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
         <Select value={String(days)} onValueChange={value => setDays(Number(value))} items={RANGES.map(d => ({ value: String(d), label: t("stats.range", { n: d }) }))}>
@@ -147,11 +146,11 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th scope="col" className="py-1.5 pr-3 font-normal" />
-              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("compare.before", { days: before.days, sessions: before.sessions })}</th>
-              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("compare.after", { days: after.days, sessions: after.sessions })}</th>
-              <th scope="col" className="py-1.5 text-right font-normal">{t("compare.change")}</th>
+            <tr className="border-b">
+              <th scope="col" className={TH} />
+              <th scope="col" className={cn(TH, "text-right")}>{t("compare.before", { days: before.days, sessions: before.sessions })}</th>
+              <th scope="col" className={cn(TH, "text-right")}>{t("compare.after", { days: after.days, sessions: after.sessions })}</th>
+              <th scope="col" className={cn(TH, "text-right")}>{t("compare.change")}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -209,15 +208,9 @@ type GroupId = (typeof GROUPS)[number]
 function Group({ id, note, children }: { id: GroupId; note?: string; children: React.ReactNode }) {
   const { t } = useI18n()
   return (
-    <section id={`stats-${id}`} aria-labelledby={`stats-${id}-title`} className="scroll-mt-6 space-y-7 border-t pt-8">
-      <div className="space-y-1">
-        <h2 id={`stats-${id}-title`} className="text-xl font-semibold">
-          {t(`stats.group.${id}`)}
-        </h2>
-        {note && <p className="max-w-prose text-sm text-muted-foreground">{note}</p>}
-      </div>
+    <Chapter id={`stats-${id}`} title={t(`stats.group.${id}`)} note={note}>
       {children}
-    </section>
+    </Chapter>
   )
 }
 
@@ -589,11 +582,11 @@ function Speed({ stats }: { stats: StatsData }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th scope="col" className="py-1.5 pr-3 font-normal">{t("stats.speedModel")}</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("stats.speedWrite")}</th>
-                <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("stats.speedRead")}</th>
-                <th scope="col" className="py-1.5 text-right font-normal">{t("stats.speedFirst")}</th>
+              <tr className="border-b">
+                <th scope="col" className={TH}>{t("stats.speedModel")}</th>
+                <th scope="col" className={cn(TH, "text-right")}>{t("stats.speedWrite")}</th>
+                <th scope="col" className={cn(TH, "text-right")}>{t("stats.speedRead")}</th>
+                <th scope="col" className={cn(TH, "text-right")}>{t("stats.speedFirst")}</th>
               </tr>
             </thead>
             <tbody className="divide-y">

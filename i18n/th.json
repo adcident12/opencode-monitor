@@ -234,6 +234,8 @@
   "setup.fix.no_notification": "ถ้ามีการถามค้างไว้ จะเห็นได้ก็ต่อเมื่อเปิดหน้านี้ดูเอง ให้ตั้ง notify.desktop เป็น true หรือใส่ notify.discord.webhookUrl ใน config.json",
 
   "history.filter": "เฉพาะรายการที่ต้องรอคุณ",
+  "history.changes": "การเปลี่ยนสถานะ",
+  "history.changesNote": "บันทึกเฉพาะช่วงที่ monitor เปิดอยู่ ล่าสุดอยู่บน",
   "history.after": "หลังจาก \"{state}\" อยู่ {t}",
   "history.firstSeen": "monitor เห็นครั้งแรก",
   "history.empty": "ยังไม่มีประวัติ",

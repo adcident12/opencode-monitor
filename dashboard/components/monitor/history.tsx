@@ -12,6 +12,7 @@ import { useI18n } from "@/lib/i18n"
 import { useHistory, useHistorySessions, useStats } from "@/lib/live"
 import type { HistoryEvent, Stats } from "@/lib/types"
 import { Code } from "./details"
+import { Chapter, TAB, TH } from "./section"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
@@ -34,29 +35,29 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
   const paid = sorted.some(r => r.cost > 0)
 
   return (
-    <section aria-labelledby="effort-title" className="space-y-2">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div>
-          <h3 id="effort-title" className="text-base font-semibold">
-            {t("effort.title")}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t("effort.note", { n: EFFORT_DAYS })}</p>
-        </div>
+    <Chapter
+      id="history-effort"
+      first
+      title={t("effort.title")}
+      note={t("effort.note", { n: EFFORT_DAYS })}
+      action={
         <Button variant="outline" size="sm" onClick={() => download(`opencode-sessions-last-${EFFORT_DAYS}-days.csv`, sessionsCsv(sorted))}>
           <DownloadIcon aria-hidden />
           {t("csv.sessions")}
         </Button>
-      </div>
+      }
+    >
+      <div className="space-y-2">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th scope="col" className="py-1.5 pr-3 font-normal">{t("effort.session")}</th>
-              <th scope="col" className="py-1.5 pr-3 font-normal">{t("effort.active")}</th>
-              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("effort.wait")}</th>
-              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("effort.compactions")}</th>
-              <th scope="col" className={cn("py-1.5 text-right font-normal", paid && "pr-3")}>{t("effort.tokens")}</th>
-              {paid && <th scope="col" className="py-1.5 text-right font-normal">{t("effort.cost")}</th>}
+            <tr className="border-b">
+              <th scope="col" className={TH}>{t("effort.session")}</th>
+              <th scope="col" className={TH}>{t("effort.active")}</th>
+              <th scope="col" className={cn(TH, "text-right")}>{t("effort.wait")}</th>
+              <th scope="col" className={cn(TH, "text-right")}>{t("effort.compactions")}</th>
+              <th scope="col" className={cn(TH, "text-right")}>{t("effort.tokens")}</th>
+              {paid && <th scope="col" className={cn(TH, "text-right")}>{t("effort.cost")}</th>}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -96,7 +97,8 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
           {t("stats.showAll", { n: picked.length - EFFORT_ROWS })}
         </button>
       )}
-    </section>
+      </div>
+    </Chapter>
   )
 }
 
@@ -123,7 +125,10 @@ export function History({ count, active, session, onSession }: { count: number |
   const time = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
 
   return (
-    <div className="space-y-5">
+    <div className={TAB}>
+      {stats && <Effort rows={stats.sessions} selected={session} onSelect={onSession} />}
+
+      <Chapter id="history-changes" first={!stats} title={t("history.changes")} note={t("history.changesNote")}>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
         <SessionFilter value={session} onChange={onSession} sessions={sessions} current={session && !sessions.some(s => s.id === session) ? { id: session, title: "", project: "" } : null} />
         <div className="flex items-center gap-2.5">
@@ -133,8 +138,6 @@ export function History({ count, active, session, onSession }: { count: number |
           </Label>
         </div>
       </div>
-
-      {stats && <Effort rows={stats.sessions} selected={session} onSelect={onSession} />}
 
       {!days.length && !loading && (
         <div className="rounded-xl border border-dashed px-6 py-14 text-center">
@@ -181,6 +184,7 @@ export function History({ count, active, session, onSession }: { count: number |
           {more === 0 && truncated && <p className="text-xs text-muted-foreground">{t("history.truncated")}</p>}
         </div>
       )}
+      </Chapter>
     </div>
   )
 }
