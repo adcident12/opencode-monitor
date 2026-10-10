@@ -26,6 +26,11 @@ export async function main(argv) {
     console.log(HELP);
     return;
   }
+  if (args.autostart) {
+    const { autostart } = await import('./autostart.mjs');
+    console.log(await autostart(args.autostart, { root: ROOT, args }));
+    return;
+  }
   if (args.sample) {
     const { buildSample } = await import('../scripts/make-sample.mjs');
     args.dataDir = buildSample(join(ROOT, 'sample'));

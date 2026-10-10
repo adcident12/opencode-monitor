@@ -37,6 +37,19 @@ node server.mjs --sample
 | `--no-notify` | No desktop or Discord notifications |
 | `--assume-running` | Skip the check for a live OpenCode process |
 | `--test-notify` | Send one test notification on each configured channel, then exit |
+| `--autostart on` / `off` | Start the monitor each time you log in, or stop doing so, then exit |
+
+### Keep it running
+
+The monitor is only useful while it runs, and a prompt left unanswered overnight is exactly when a forgotten terminal has been closed. On Windows:
+
+```sh
+node server.mjs --autostart on
+```
+
+registers a scheduled task named `opencode-monitor` for your user (no administrator rights needed) that starts the monitor at each login, without a console window. Options given with it (`--port`, `--data-dir`, `--config`, `--lang`, `--no-notify`) are kept. `schtasks /Run /TN opencode-monitor` starts it right away, and `node server.mjs --autostart off` removes the task. The task points at this folder and at the Node you ran it with, so run it again after moving either.
+
+On macOS and Linux this is not implemented; add `node server.mjs` to launchd or a systemd user unit.
 
 ## What the states mean
 
@@ -208,6 +221,7 @@ src/history.mjs         record of state changes (data/history.jsonl)
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications
 src/process.mjs         is OpenCode running
+src/autostart.mjs       --autostart: the scheduled task that starts the monitor at login (Windows)
 src/opencode-config.mjs model limits, MCP names, model server addresses
 public/                 the page, built from dashboard/ (do not edit by hand)
 dashboard/              source of the page: Next.js, Tailwind CSS, shadcn/ui

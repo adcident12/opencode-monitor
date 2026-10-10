@@ -73,6 +73,7 @@ export function parseArgs(argv) {
     else if (arg === '--no-notify') args.noNotify = true;
     else if (arg === '--assume-running') args.assumeRunning = true;
     else if (arg === '--test-notify') args.testNotify = true;
+    else if (arg === '--autostart') args.autostart = value();
     else if (arg === '--help' || arg === '-h') args.help = true;
     else throw new UserError(`Unknown option ${arg}. Try --help.`);
   }
@@ -89,6 +90,8 @@ export const HELP = `Usage: node server.mjs [options]
   --no-notify        Do not send desktop or Discord notifications.
   --assume-running   Skip the "is OpenCode running" process check.
   --test-notify      Send one test notification on each configured channel, then exit.
+  --autostart on|off Start the monitor each time you log in, with the options given here
+                     (Windows: a scheduled task for your user). Then exit.
 `;
 
 export function defaultDataDir(env = process.env) {
