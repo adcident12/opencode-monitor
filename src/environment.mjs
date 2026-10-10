@@ -2,32 +2,46 @@
 // services listed in the config. Checks run in the background on their own interval.
 import { connect } from 'node:net';
 import { isLocalHost } from './audit.mjs';
+import { mergeServers } from './mcp.mjs';
 
 const TIMEOUT_MS = 4000;
 
 /**
  * MCP status is inferred, because OpenCode only logs failures:
- *   failed  - the running OpenCode logged a failure and no tool of that server has worked since
- *   ok      - a tool of that server completed (and after any logged failure)
+ *   failed  - the running OpenCode logged a failure, or a tool call could not reach the
+ *             server, and no tool of that server has worked since
+ *   ok      - a tool of that server completed (and after any failure)
  *   unknown - no evidence either way (never used in the sessions on screen)
+ * Connections closed because OpenCode itself quit are not failures (see markShutdowns).
+ *
+ * @param {object} input
+ * @param {{name, type, enabled, scope}[]} input.servers  global and project servers, merged
+ * @param {Map<string, {okAt: number|null, connErrAt: number|null}>} input.use  per server
  */
 export function mcpStatus({ servers, failures, lastRun, use, opencodeRunning }) {
   const names = new Map(servers.map(s => [s.name, s]));
-  // A server defined in a project-level config is unknown to us until it fails.
-  for (const [name, failure] of failures) if (!names.has(name) && failure.run === lastRun) names.set(name, { name, type: 'local', enabled: true });
+  // A server from a config we could not read is unknown to us until it fails.
+  for (const [name, failure] of failures) if (!names.has(name) && failure.run === lastRun) names.set(name, { name, type: 'local', enabled: true, scope: 'project' });
 
   return [...names.values()].map(server => {
-    const failure = failures.get(server.name);
-    const lastOkAt = use.get(server.name)?.okAt ?? null;
-    const failedNow = Boolean(failure) && failure.run === lastRun && (lastOkAt == null || lastOkAt < failure.t);
+    const { okAt: lastOkAt = null, connErrAt = null } = use.get(server.name) ?? {};
+    const worksSince = t => lastOkAt != null && lastOkAt >= t;
+    const logged = failures.get(server.name);
+    // Whichever is newer: what the log said, or a call that found the connection gone.
+    const candidates = [
+      logged && logged.run === lastRun && !worksSince(logged.t) ? { t: logged.t, kind: logged.kind } : null,
+      connErrAt != null && !worksSince(connErrAt) ? { t: connErrAt, kind: 'closed' } : null,
+    ].filter(Boolean).sort((a, b) => b.t - a.t);
+    const failure = candidates[0] ?? null;
     let status;
     if (!server.enabled) status = 'disabled';
     else if (opencodeRunning === false) status = 'unknown';
-    else if (failedNow) status = 'failed';
+    else if (failure) status = 'failed';
     else status = lastOkAt ? 'ok' : 'unknown';
     return {
       name: server.name,
       type: server.type,
+      scope: server.scope ?? 'global',
       status,
       kind: status === 'failed' ? failure.kind : null,
       failedAt: status === 'failed' ? failure.t : null,
@@ -109,13 +123,22 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
     }
   }
 
-  /** @param {Map<string, {okAt: number}>} mcpUse last successful tool call per MCP server */
-  function view(mcpUse) {
+  /**
+   * @param {Map<string, {okAt: number|null, connErrAt: number|null}>} mcpUse per MCP server
+   * @param {object[]} [projectServers] what the project configs of the sessions on screen add
+   */
+  function view(mcpUse, projectServers = []) {
     return {
       checkedAt,
       models,
       services,
-      mcp: mcpStatus({ servers: opencode.mcp, failures: log.mcpFailures(), lastRun: log.lastRun(), use: mcpUse, opencodeRunning: probe.running }),
+      mcp: mcpStatus({
+        servers: mergeServers(opencode.mcp, projectServers),
+        failures: log.mcpFailures(),
+        lastRun: log.lastRun(),
+        use: mcpUse,
+        opencodeRunning: probe.running,
+      }),
     };
   }
 

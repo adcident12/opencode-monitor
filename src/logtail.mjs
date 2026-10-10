@@ -1,9 +1,11 @@
 // Follows OpenCode's log file for two things the database does not record:
 // permission/question prompts, and MCP servers failing.
 import { openSync, readSync, closeSync, fstatSync } from 'node:fs';
+import { latestFailures, markShutdowns } from './mcp.mjs';
 
 const MAX_INITIAL_BYTES = 64 * 1024 * 1024;
 const MAX_ASKS = 5000;
+const MAX_MCP_EVENTS = 5000;
 
 // Anchored to the fixed prefix so text inside a logged command cannot pose as an event.
 const PREFIX = /^timestamp=(\S+) level=\S+ run=(\S+) /;
@@ -60,7 +62,10 @@ export function createLogTail(path) {
   let offset = 0;
   let carry = '';
   let asks = [];
-  let mcpFailures = new Map(); // server name -> its latest failure
+  let mcpEvents = []; // every MCP failure line read, oldest first
+  let mcpMarked = []; // the same, each marked as a shutdown or not
+  let mcpFailures = new Map(); // server name -> its latest failure that was not a shutdown
+  let firstAt = null; // time of the oldest line read: nothing is known from before it
   let replies = new Map(); // question id -> when it was answered
   let lastRun = null; // id of the OpenCode process that wrote the newest line
   let runEnds = new Map(); // run id -> time of its last line
@@ -80,7 +85,10 @@ export function createLogTail(path) {
         offset = 0;
         carry = '';
         asks = [];
+        mcpEvents = [];
+        mcpMarked = [];
         mcpFailures = new Map();
+        firstAt = null;
         replies = new Map();
         runEnds = new Map();
         lastRun = null;
@@ -100,7 +108,10 @@ export function createLogTail(path) {
         if (!prefix) continue;
         lastRun = prefix[2];
         const at = Date.parse(prefix[1]);
-        if (!Number.isNaN(at)) runEnds.set(lastRun, at);
+        if (!Number.isNaN(at)) {
+          runEnds.set(lastRun, at);
+          firstAt ??= at;
+        }
         if (line.includes('message=asking')) {
           const ask = parseAskLine(line);
           if (ask) asks.push(ask);
@@ -109,9 +120,14 @@ export function createLogTail(path) {
           if (reply) replies.set(reply.id, reply.t);
         } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
           const failure = parseMcpLine(line);
-          if (failure) mcpFailures.set(failure.name, failure);
+          if (failure) mcpEvents.push(failure);
         }
       }
+      if (mcpEvents.length > MAX_MCP_EVENTS) mcpEvents = mcpEvents.slice(-MAX_MCP_EVENTS);
+      // Whether a close was a shutdown depends on what its run wrote afterwards, so every
+      // read can change the answer for the newest lines.
+      mcpMarked = markShutdowns(mcpEvents, runEnds, lastRun);
+      mcpFailures = latestFailures(mcpMarked);
       if (asks.length > MAX_ASKS) asks = asks.slice(-MAX_ASKS);
       if (replies.size > MAX_ASKS) replies = new Map([...replies].slice(-MAX_ASKS));
     } finally {
@@ -119,5 +135,14 @@ export function createLogTail(path) {
     }
   }
 
-  return { poll, asks: () => asks, replies: () => replies, runEnds: () => runEnds, mcpFailures: () => mcpFailures, lastRun: () => lastRun };
+  return {
+    poll,
+    asks: () => asks,
+    replies: () => replies,
+    runEnds: () => runEnds,
+    mcpFailures: () => mcpFailures,
+    mcpEvents: () => mcpMarked,
+    firstAt: () => firstAt,
+    lastRun: () => lastRun,
+  };
 }

@@ -5,13 +5,19 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { duration, NEEDS_YOU, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
+import { useHistory, useHistorySessions } from "@/lib/live"
 import type { HistoryEvent } from "@/lib/types"
 import { Code } from "./details"
+import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
-export function History({ events }: { events: HistoryEvent[] }) {
+/** @param count  number of recorded entries, from the live snapshot: a change means "fetch again" */
+export function History({ count, active }: { count: number | null; active: boolean }) {
   const { t, lang } = useI18n()
   const [onlyAttention, setOnlyAttention] = useState(false)
+  const [session, setSession] = useState<string | null>(null)
+  const events = useHistory(count, active, session)
+  const sessions = useHistorySessions(count, active)
 
   const days = useMemo(() => {
     const day = new Intl.DateTimeFormat(lang, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
@@ -29,17 +35,20 @@ export function History({ events }: { events: HistoryEvent[] }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-2.5">
-        <Switch id="only-attention" checked={onlyAttention} onCheckedChange={setOnlyAttention} />
-        <Label htmlFor="only-attention" className="font-normal text-muted-foreground">
-          {t("history.filter")}
-        </Label>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <SessionFilter value={session} onChange={setSession} sessions={sessions} />
+        <div className="flex items-center gap-2.5">
+          <Switch id="only-attention" checked={onlyAttention} onCheckedChange={setOnlyAttention} />
+          <Label htmlFor="only-attention" className="font-normal text-muted-foreground">
+            {t("history.filter")}
+          </Label>
+        </div>
       </div>
 
       {!days.length && (
         <div className="rounded-xl border border-dashed px-6 py-14 text-center">
-          <p className="font-medium">{t("history.empty")}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t("history.emptyBody")}</p>
+          <p className="font-medium">{t(session || onlyAttention ? "history.emptyFiltered" : "history.empty")}</p>
+          {!session && !onlyAttention && <p className="mt-1 text-sm text-muted-foreground">{t("history.emptyBody")}</p>}
         </div>
       )}
 

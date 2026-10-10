@@ -101,6 +101,8 @@ export interface CheckedTarget {
 export interface McpServer {
   name: string
   type: "local" | "remote"
+  /** "project": defined only in a project's own OpenCode config. */
+  scope: "global" | "project"
   status: "ok" | "failed" | "unknown" | "disabled"
   kind: "unavailable" | "closed" | null
   failedAt: number | null
@@ -134,6 +136,35 @@ export interface HistoryEvent {
   detail: string | null
 }
 
+/** A session that History or Stats can be narrowed to. */
+export interface SessionChoice {
+  id: string
+  title: string
+  project: string
+}
+
+/** One MCP server over the stats period. */
+export interface McpStat {
+  name: string
+  type: "local" | "remote"
+  enabled: boolean
+  scope: "global" | "project"
+  calls: number
+  /** Calls the tool itself reported as failed. */
+  errors: number
+  /** Calls where the server did not answer: connection gone or request timed out. */
+  faults: number
+  avgMs: number | null
+  lastUsedAt: number | null
+  sessions: number
+  /** null while a single session is shown: the log does not say which session it was. */
+  disconnects: number | null
+  startFailures: number | null
+  unused: boolean
+  tools: { tool: string; count: number; errors: number; faults: number }[]
+  moreTools: number
+}
+
 export interface DayStats {
   date: string
   activeMs: number
@@ -149,6 +180,11 @@ export interface DayStats {
 
 export interface Stats {
   range: { from: number; to: number; days: number }
+  session: SessionChoice | null
+  sessions: (SessionChoice & { toolCalls: number; lastAt: number })[]
+  mcp: McpStat[]
+  /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
+  mcpLogFrom: number | null
   stuckMs: number
   daily: DayStats[]
   totals: {

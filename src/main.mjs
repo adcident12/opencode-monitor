@@ -8,7 +8,7 @@ import { ROOT, HELP, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
 import { createRedactor } from './redact.mjs';
-import { loadOpencodeConfig } from './opencode-config.mjs';
+import { createProjectMcp, loadOpencodeConfig } from './opencode-config.mjs';
 import { createEnvironment } from './environment.mjs';
 import { createGitProbe } from './git.mjs';
 import { createLeftoverProbe } from './leftovers.mjs';
@@ -51,11 +51,13 @@ export async function main(argv) {
   const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck });
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
   const environment = createEnvironment({ cfg, opencode, log, probe });
+  // Off for --sample: fake sessions name directories that may exist on this machine.
+  const projectMcp = args.sample ? null : createProjectMcp();
   const git = createGitProbe({ enabled: cfg.work.git });
   // Off for --sample: fake sessions must never be matched against real processes.
   const leftovers = createLeftoverProbe({ enabled: cfg.work.processes && !args.sample, ignoreNames: cfg.processNames });
   const monitor = createMonitor({
-    db, log, cfg, probe, environment, git, leftovers,
+    db, log, cfg, probe, environment, git, leftovers, projectMcp,
     redact: createRedactor(cfg.redact),
     modelLimits: opencode.limits,
     mcpNames: opencode.mcp.map(server => server.name),
@@ -86,7 +88,7 @@ export async function main(argv) {
   tick();
   setInterval(tick, cfg.pollMs);
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact) });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp });
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
@@ -94,7 +96,7 @@ export async function main(argv) {
       res.writeHead(403).end();
       return;
     }
-    const path = new URL(req.url, `http://${HOST}`).pathname;
+    const { pathname: path, searchParams: query } = new URL(req.url, `http://${HOST}`);
     const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
     if (path === '/api/state') {
@@ -105,15 +107,16 @@ export async function main(argv) {
       clients.add(res);
       req.on('close', () => clients.delete(res));
     } else if (path === '/api/stats') {
-      const days = Number(new URL(req.url, `http://${HOST}`).searchParams.get('days'));
       try {
-        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(days)));
+        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(Number(query.get('days')), query.get('session'))));
       } catch (err) {
         console.warn(`Stats failed: ${err.code ?? err.message}`);
         res.writeHead(503, headers).end('Stats are not available right now.');
       }
     } else if (path === '/api/history') {
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.list()));
+      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.list({ session: query.get('session') })));
+    } else if (path === '/api/history/sessions') {
+      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.sessions()));
     } else {
       const found = await lookup(path).catch(() => null);
       if (!found) {

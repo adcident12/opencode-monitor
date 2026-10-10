@@ -2,17 +2,28 @@
 // so each computation blocks the server briefly; caching keeps that to once a minute at most.
 import { computeStats } from './stats.mjs';
 import { clip } from './redact.mjs';
+import { mergeServers } from './mcp.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
 const CACHE_MS = 60_000;
+const MAX_CACHED = 24;
+// Session ids are used as cache keys and compared with database rows, nothing else.
+const SESSION_ID = /^[A-Za-z0-9_-]{1,80}$/;
 
-export function createStatsSource({ db, log, cfg, redact }) {
+/**
+ * @param {object} deps
+ * @param {object[]} [deps.mcpServers]  MCP servers from the global config
+ * @param {object} [deps.projectMcp]    from createProjectMcp
+ */
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null }) {
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
-  const cache = new Map(); // days -> { at, value }
+  const cache = new Map(); // "days|session" -> { at, value }
 
-  return function stats(days, now = Date.now()) {
+  return function stats(days, sessionId = null, now = Date.now()) {
     if (!STATS_DAYS.includes(days)) days = 14;
-    const hit = cache.get(days);
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) sessionId = null;
+    const key = `${days}|${sessionId ?? ''}`;
+    const hit = cache.get(key);
     if (hit && now - hit.at < CACHE_MS) return hit.value;
 
     const since = now - (days + 1) * 86_400_000;
@@ -35,8 +46,13 @@ export function createStatsSource({ db, log, cfg, redact }) {
     }
     for (const times of eventTimes.values()) times.sort((a, b) => a - b);
 
+    const sessions = db.stats.sessions(since);
+    // Servers a project config adds count only for the projects in the range.
+    const projectServers = projectMcp?.forDirs(sessions.map(s => s.directory)) ?? [];
     const value = computeStats({
-      sessions: db.stats.sessions(since),
+      sessions,
+      sessionId,
+      mcp: { servers: mergeServers(mcpServers, projectServers), events: log.mcpEvents(), logFrom: log.firstAt() },
       tools,
       messages: db.stats.messages(since),
       compactions: db.stats.compactions(since),
@@ -50,7 +66,8 @@ export function createStatsSource({ db, log, cfg, redact }) {
       stuckMs: cfg.thresholds.stuckToolMinutes * 60_000,
       show,
     });
-    cache.set(days, { at: now, value });
+    if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
+    cache.set(key, { at: now, value });
     return value;
   };
 }

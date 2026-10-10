@@ -112,3 +112,41 @@ test('days: one bucket per calendar day, oldest first, agent time clipped to the
   assert.equal(s.daily.at(-1).activeMs, 30 * MIN);
   assert.equal(s.totals.activeMs, 30 * MIN, 'a reply from a month ago is outside the range');
 });
+
+test('one session: its own calls, prompts and subagents, and nothing from the others', () => {
+  const at = NOW - 3 * HOUR;
+  const s = run({
+    sessions: [
+      { id: 's1', parent_id: null, directory: '/work/shop', title: 'Shop', time_created: NOW - 30 * HOUR },
+      { id: 's1-sub', parent_id: 's1', directory: '/work/shop', title: 'Explore', time_created: NOW - 4 * HOUR },
+      { id: 's2', parent_id: null, directory: '/work/blog', title: 'Blog', time_created: NOW - 30 * HOUR },
+    ],
+    tools: [
+      tool('a', 's1', 'bash', at, at + MIN),
+      tool('b', 's1-sub', 'graft_find_code', at + MIN, at + 2 * MIN),
+      tool('c', 's2', 'bash', at + 10 * MIN, at + 11 * MIN),
+      tool('d', 's2', 'graft_find_code', at + 20 * MIN, at + 21 * MIN, { status: 'error', error: 'MCP error -32000: Connection closed' }),
+    ],
+    messages: [
+      { session_id: 's1', role: 'assistant', time_created: at, completed: at + 5 * MIN },
+      { session_id: 's2', role: 'assistant', time_created: at, completed: at + 30 * MIN },
+    ],
+    compactions: [{ session_id: 's2', time_created: at }],
+    asks: [{ t: at + 10 * MIN, run: 'r1', kind: 'permission', permission: 'bash', patterns: 'npm test' }],
+    currentRun: 'r1',
+    sessionId: 's1',
+    mcp: { servers: [{ name: 'graft', type: 'local', enabled: true, scope: 'global' }], events: [{ t: at, run: 'r1', kind: 'closed', name: 'graft', shutdown: false }], logFrom: at },
+  });
+  assert.deepEqual([s.totals.toolCalls, s.totals.activeMs, s.totals.compactions, s.totals.prompts, s.totals.sessions], [2, 5 * MIN, 0, 0, 1]);
+  assert.deepEqual(s.tools.map(x => x.tool).sort(), ['bash', 'graft_find_code']);
+  assert.deepEqual([s.session.id, s.session.title], ['s1', 'Shop']);
+  // The list to choose from is never narrowed, and subagent calls count under their parent.
+  assert.deepEqual(s.sessions.map(x => [x.id, x.project, x.toolCalls]), [['s2', 'blog', 2], ['s1', 'shop', 2]]);
+  // Per server: the subagent's call is in, the other session's failure is out, and the
+  // disconnect from the log is not attributed to any one session.
+  assert.deepEqual([s.mcp[0].calls, s.mcp[0].faults, s.mcp[0].disconnects], [1, 0, null]);
+
+  const all = run({ tools: [tool('d', 's1', 'graft_find_code', at, at + MIN, { status: 'error', error: 'MCP error -32000: Connection closed' })],
+    mcp: { servers: [{ name: 'graft', type: 'local', enabled: true, scope: 'global' }], events: [{ t: at, run: 'r1', kind: 'closed', name: 'graft', shutdown: false }], logFrom: at } });
+  assert.deepEqual([all.session, all.mcp[0].calls, all.mcp[0].faults, all.mcp[0].disconnects, all.mcpLogFrom], [null, 1, 1, 1, at]);
+});

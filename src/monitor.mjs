@@ -4,6 +4,7 @@ import { basename, relative, isAbsolute } from 'node:path';
 import { deriveState, deriveHealth, deriveProgress, describePart, bubbleChildren } from './state.mjs';
 import { classifyPart, approvalOf, FLAG_KINDS } from './audit.mjs';
 import { clip } from './redact.mjs';
+import { createServerMatcher, faultOf } from './mcp.mjs';
 import { OUTPUT_TAIL_CHARS } from './db.mjs';
 
 const SUMMARY_CHARS = 240;
@@ -25,18 +26,16 @@ function touch(files, path, at) {
  * @param {object} deps.db, deps.log, deps.cfg, deps.probe
  * @param {(text: string) => string} deps.redact
  * @param {Map<string, number>} deps.modelLimits
- * @param {string[]} [deps.mcpNames]   configured MCP server names
+ * @param {string[]} [deps.mcpNames]   MCP server names from the global config
+ * @param {object} [deps.projectMcp]   from createProjectMcp: servers project configs add
  * @param {object} [deps.environment]  from createEnvironment
  * @param {object} [deps.git]          from createGitProbe
  */
-export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNames = [], environment = null, git = null, leftovers = null }) {
+export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
   const ignoredRules = new Set(cfg.review?.ignoreRules ?? []);
-  // Longest first, so "chrome-devtools_click" is not attributed to a server named "chrome".
-  const servers = [...mcpNames].sort((a, b) => b.length - a.length);
-  const serverOf = tool => servers.find(name => tool.startsWith(name + '_')) ?? null;
 
   // Last lines a running command has printed, and when the last of them arrived.
   function outputOf(part) {
@@ -49,22 +48,27 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
   }
 
   // Per-session facts that only change when parts change: flagged calls, files touched,
-  // and the last time each MCP server answered.
+  // and when each tool last worked or last found its server gone. Kept per tool name, not
+  // per MCP server: which server a tool belongs to can change when a project config does.
   function digestOf(sorted) {
     const flagged = [];
     const files = new Map(); // path -> last touched
-    const mcpUse = new Map(); // server -> { okAt }
+    const toolUse = new Map(); // tool name -> { okAt, connErrAt }
     for (const p of sorted) {
       if (p.type === 'patch' && p.fileList) {
         for (const file of p.fileList) touch(files, file, p.time_created);
       } else if (p.type === 'tool') {
         if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) touch(files, p.file, p.time_updated);
         if (p.flags.length) flagged.push(p);
-        const server = p.status === 'completed' ? serverOf(p.tool) : null;
-        if (server) mcpUse.set(server, { okAt: p.time_updated });
+        const lost = p.status === 'error' && faultOf(p.error) === 'connection';
+        if (p.status === 'completed' || lost) {
+          const use = toolUse.get(p.tool) ?? { okAt: null, connErrAt: null };
+          use[lost ? 'connErrAt' : 'okAt'] = p.time_updated;
+          toolUse.set(p.tool, use);
+        }
       }
     }
-    return { flagged, files, mcpUse };
+    return { flagged, files, toolUse };
   }
 
   function loadParts(sessionId) {
@@ -293,11 +297,21 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       const listed = new Set(rows.map(r => r.id));
       for (const id of cache.keys()) if (!listed.has(id)) cache.delete(id);
 
-      const mcpUse = new Map();
+      const projectServers = projectMcp?.forDirs(directories) ?? [];
+      const serverOf = createServerMatcher([...mcpNames, ...projectServers.map(s => s.name)]);
+      const newer = (a, b) => (a == null || b > a ? b : a);
+      const mcpUse = new Map(); // server -> { okAt, connErrAt }, the newest of each
       for (const entry of cache.values()) {
-        for (const [server, use] of entry.digest.mcpUse) if (!(mcpUse.get(server)?.okAt >= use.okAt)) mcpUse.set(server, use);
+        for (const [tool, use] of entry.digest.toolUse) {
+          const server = serverOf(tool)?.server;
+          if (!server) continue;
+          const known = mcpUse.get(server) ?? { okAt: null, connErrAt: null };
+          if (use.okAt != null) known.okAt = newer(known.okAt, use.okAt);
+          if (use.connErrAt != null) known.connErrAt = newer(known.connErrAt, use.connErrAt);
+          mcpUse.set(server, known);
+        }
       }
-      previous = { sessions, environment: environment?.view(mcpUse) ?? null };
+      previous = { sessions, environment: environment?.view(mcpUse, projectServers) ?? null };
       return { ...base, stale: false, ...previous };
     } catch (err) {
       // Usually a brief lock while OpenCode writes. Keep showing the last good data, marked stale.

@@ -67,7 +67,7 @@ Each session also shows its health: context used against the model's limit, numb
 A strip at the top shows the things the agent depends on:
 
 - **Model server**: providers in OpenCode's config that have their own `baseURL` are asked for `<baseURL>/models` (no credentials sent; any answer below HTTP 500 counts as up). By default only addresses on this machine or network are checked; set `environment.modelServers` to `"all"` to include others, or `"off"`.
-- **MCP servers**: OpenCode only logs MCP failures, so status is inferred. *Failed* means the running OpenCode logged the server failing and none of its tools has worked since. *OK* means one of its tools completed. *No signal* means neither.
+- **MCP servers**: OpenCode only logs MCP failures, so status is inferred. *Failed* means the running OpenCode logged the server failing, or a tool call found the connection gone, and none of its tools has worked since. *OK* means one of its tools completed. *No signal* means neither. Servers that a project's own `opencode.json` adds or switches on are included for the sessions on screen. Connections that close because OpenCode itself quit are not failures.
 - **Services**: anything you list under `services` in `config.json`, by URL or by host and port.
 
 With `notify.environment` on, you are notified once when any of these goes down.
@@ -101,13 +101,16 @@ The **Stats** tab looks back over the last 7, 14, or 30 days, from OpenCode's ow
 - how long prompts waited for you in total, the typical time to answer, and the longest waits;
 - how many tool calls hung (ran longer than `stuckToolMinutes`), and the slowest ones;
 - time the agent spent working, per day;
-- calls per tool and how many failed, how often graft was used instead of read/grep/glob, files read again and again in one session, and skills loaded.
+- calls per tool and how many failed, how often graft was used instead of read/grep/glob, files read again and again in one session, and skills loaded;
+- one row per **MCP server**: calls, time per call, when it was last used, how often its connection dropped or it failed to start, and its most used tools. Failures are split in two: *failed* is a tool reporting an error (a script with a typo), *no answer* is the server itself not responding (connection closed, request timed out). Servers that are switched on but were never called are named, because each one still adds its tool list to every prompt.
+
+Pick a session next to the period to see the same figures for that session and its subagents only.
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
 
 ## History
 
-The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Tick "Only what needed you" to see just the waits, hangs, and errors.
+The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Tick "Only what needed you" to see just the waits, hangs, and errors, or pick one session to follow it from start to finish.
 
 History is recorded only while the monitor is running, into `data/history.jsonl` (git-ignored, one JSON object per line, already redacted). Entries older than `history.retentionDays` are removed at startup. Set `history.enabled` to `false` to turn it off. Delete the file to clear it.
 
@@ -150,6 +153,7 @@ By default a Discord message carries only the state, the project folder name, th
 - `opencode.db` in OpenCode's data directory (`~/.local/share/opencode`, or `$XDG_DATA_HOME/opencode`), opened read-only: sessions, messages, and parts.
 - `log/opencode.log` in the same directory: the only place permission prompts are recorded.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
+- Each project directory's own OpenCode config (`opencode.json[c]`, also under `.opencode/`), for the names of MCP servers it adds or switches on. Only small regular files on a local disk are read, and only names, types and the enabled flag are kept.
 - The process list, to tell whether OpenCode is running.
 - Each project directory: one file, `.git/HEAD`, for the branch name. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. Commits and uncommitted changes are therefore not shown.
 - HTTP or TCP checks against the model server and the services you configured.
@@ -160,7 +164,10 @@ By default a Discord message carries only the state, the project folder name, th
 - **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Reports welcome.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
-- MCP status is inferred from failure lines in the log plus successful tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
+- MCP status is inferred from failure lines in the log plus tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
+- A closed MCP connection is taken as OpenCode shutting down when it is the last thing a finished run logged, or when two or more servers close within two seconds. Several servers really dying in the same moment would be missed, and with a single server configured a shutdown of the running OpenCode looks like a failure.
+- MCP tool calls are attributed by name (`<server>_<tool>`). A server whose project config has since been deleted or renamed is not recognised, and its calls stay in the plain tool list.
+- Dropped connections and failed starts are counted from OpenCode's log, which does not say which session they happened in and is eventually rotated. They are left out when one session is selected, and the page says so when the log starts later than the period shown.
 - Secret detection in tool results reads only the first 8,000 characters of each result.
 - Only the branch name is read from a repository, from `.git/HEAD`. A worktree or submodule (where `.git` is a file pointing elsewhere), a `.git` or `HEAD` that is a link, and a project on a network path are not read; they show "git state unreadable" with a warning, never a clean result.
 - Between checking `.git/HEAD` and opening it there is a short window in which a process racing the monitor could swap it for a link. Node offers no way to close that window completely; what is read is only ever interpreted as a branch name.
@@ -179,6 +186,7 @@ src/state.mjs           state and health rules (pure, unit-tested)
 src/monitor.mjs         polling, caching, redaction of the snapshot
 src/audit.mjs           rules for risky, outbound, and secret-touching calls
 src/environment.mjs     MCP, model server, and service checks
+src/mcp.mjs             MCP figures: which server a tool belongs to, real failures vs shutdowns (pure)
 src/git.mjs             branch name per project (reads .git/HEAD only)
 src/stats.mjs           figures for the Stats tab (pure); stats-source.mjs reads and caches them
 src/leftovers.mjs       background processes still running, matched to the command that started them

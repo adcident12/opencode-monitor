@@ -5,12 +5,13 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { duration, rough } from "@/lib/format"
+import { duration, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useStats } from "@/lib/live"
-import type { DayStats, Stats as StatsData } from "@/lib/types"
+import type { DayStats, McpStat, Stats as StatsData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
+import { SessionFilter } from "./session-filter"
 
 const RANGES = [7, 14, 30] as const
 
@@ -19,7 +20,11 @@ const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 export function Stats() {
   const { t } = useI18n()
   const [days, setDays] = useState<number>(14)
-  const { stats, failed } = useStats(days, true)
+  const [session, setSession] = useState<string | null>(null)
+  const { stats, failed } = useStats(days, session, true)
+  // The list comes with the figures; keep the last one so the filter does not empty while loading.
+  const [choices, setChoices] = useState<StatsData["sessions"]>([])
+  if (stats && stats.sessions !== choices) setChoices(stats.sessions)
 
   return (
     <div className="space-y-8">
@@ -36,7 +41,8 @@ export function Stats() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-sm text-muted-foreground">{t("stats.source")}</p>
+        <SessionFilter value={session} onChange={setSession} sessions={choices} current={stats?.session} />
+        <p className="text-sm text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
       </div>
 
       {failed && !stats && <p className="text-sm text-error">{t("stats.failed")}</p>}
@@ -120,6 +126,8 @@ function Figures({ stats }: { stats: StatsData }) {
           </Ranked>
         </div>
       </div>
+
+      <McpServers stats={stats} />
 
       {(totals.abandoned > 0 || totals.abandonedCalls > 0) && (
         <p className="text-sm text-muted-foreground">{t("stats.abandonedNote", { prompts: totals.abandoned, calls: totals.abandonedCalls })}</p>
@@ -255,6 +263,89 @@ function ToolUse({ stats }: { stats: StatsData }) {
       {graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
     </section>
   )
+}
+
+/**
+ * One row per MCP server. Failures are split in two on purpose: a tool that reported an
+ * error was reached and answered, a server that did not answer is a different problem.
+ */
+function McpServers({ stats }: { stats: StatsData }) {
+  const { t, lang } = useI18n()
+  if (!stats.mcp.length) return null
+  const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  const unused = stats.mcp.filter(m => m.unused)
+  // Failures logged before the oldest log line we have are unknown, not zero.
+  const logShort = !stats.session && stats.mcpLogFrom != null && stats.mcpLogFrom > stats.range.from
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="font-medium">{t("stats.mcp")}</h3>
+        <p className="text-xs text-muted-foreground">{t("stats.mcpNote")}</p>
+      </div>
+      <ul className="divide-y border-y">
+        {stats.mcp.map(m => (
+          <McpRow key={m.name} server={m} when={when} />
+        ))}
+      </ul>
+      {unused.length > 0 && <p className="text-sm text-muted-foreground">{t(stats.session ? "stats.mcpUnusedSession" : "stats.mcpUnused", { names: unused.map(m => m.name).join(", ") })}</p>}
+      {stats.session && <p className="text-xs text-muted-foreground">{t("stats.mcpNoLogForSession")}</p>}
+      {logShort && <p className="text-xs text-muted-foreground">{t("stats.mcpLogFrom", { t: when.format(stats.mcpLogFrom!) })}</p>}
+    </section>
+  )
+}
+
+function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeFormat }) {
+  const { t } = useI18n()
+  const summary = (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 py-2.5 text-left sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className={cn("truncate font-mono text-[0.82rem]", !m.enabled && "text-muted-foreground")}>{m.name}</span>
+        {!m.enabled && <Tag>{t("stats.mcpOff")}</Tag>}
+        {m.scope === "project" && <Tag>{t("stats.mcpProject")}</Tag>}
+        {m.unused && <Tag tone="warn">{t("stats.mcpNeverUsed")}</Tag>}
+      </span>
+      <span className="col-span-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.82rem] tabular-nums sm:col-span-1">
+        <span>{t("stats.mcpCalls", { n: m.calls })}</span>
+        {m.errors > 0 && <span className="text-muted-foreground">{t("stats.mcpErrors", { n: m.errors })}</span>}
+        {m.faults > 0 && <span className="font-medium text-error">{t("stats.mcpFaults", { n: m.faults })}</span>}
+        {(m.disconnects ?? 0) > 0 && <span className="font-medium text-error">{t("stats.mcpDisconnects", { n: m.disconnects! })}</span>}
+        {(m.startFailures ?? 0) > 0 && <span className="font-medium text-error">{t("stats.mcpStartFailures", { n: m.startFailures! })}</span>}
+        {m.avgMs != null && <span className="text-muted-foreground">{t("stats.mcpAvg", { t: quick(m.avgMs) })}</span>}
+      </span>
+      <span className="row-start-1 text-right text-xs text-muted-foreground sm:col-start-3">{m.lastUsedAt ? when.format(m.lastUsedAt) : "–"}</span>
+    </div>
+  )
+  if (!m.tools.length) return <li>{summary}</li>
+
+  return (
+    <li>
+      <Collapsible>
+        <CollapsibleTrigger className="block w-full rounded-sm outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("stats.mcpShowTools", { name: m.name })}>
+          {summary}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ul className="space-y-1 pb-3 pl-3 text-[0.8rem]">
+            {m.tools.map(x => (
+              <li key={x.tool} className="flex flex-wrap items-baseline gap-x-3">
+                <span className="font-mono text-[0.78rem]">{x.tool}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  ×{x.count}
+                  {x.errors > 0 && <> · {t("stats.mcpErrors", { n: x.errors })}</>}
+                  {x.faults > 0 && <span className="text-error"> · {t("stats.mcpFaults", { n: x.faults })}</span>}
+                </span>
+              </li>
+            ))}
+            {m.moreTools > 0 && <li className="text-muted-foreground">{t("stats.mcpMoreTools", { n: m.moreTools })}</li>}
+          </ul>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  )
+}
+
+function Tag({ tone, children }: { tone?: "warn"; children: React.ReactNode }) {
+  return <span className={cn("rounded-full border px-1.5 text-[0.68rem] leading-5 whitespace-nowrap text-muted-foreground", tone === "warn" && "border-waiting/50 text-waiting")}>{children}</span>
 }
 
 function Loading() {

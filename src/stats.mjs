@@ -1,11 +1,13 @@
 // Looking back over days rather than at the moment: how long prompts waited for you, which
 // calls hung, how the agent spends its tool calls. Pure: rows in, figures out.
 import { promptFits } from './audit.mjs';
+import { computeMcpStats } from './mcp.mjs';
 
 const ASK_MATCH_MS = 2000;
 // An update to a tool call this soon after its prompt is the prompt being drawn, not answered.
 const ANSWER_MIN_MS = 500;
 const TOP = 10;
+const MAX_SESSIONS_LISTED = 100;
 
 /** Local calendar day, YYYY-MM-DD. */
 export function dayKey(t) {
@@ -93,9 +95,25 @@ function nearest(sorted, t, fits) {
   return best;
 }
 
+/** The session itself and every subagent session under it. */
+function withDescendants(sessions, sessionId) {
+  const scope = new Set([sessionId]);
+  // Parents are not guaranteed to come before their children, so repeat until nothing is added.
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const s of sessions) {
+      if (s.parent_id && scope.has(s.parent_id) && !scope.has(s.id)) {
+        scope.add(s.id);
+        grew = true;
+      }
+    }
+  }
+  return scope;
+}
+
 /**
  * @param {object} input
- * @param {object[]} input.sessions   id, title, directory, parent_id, time_created
+ * @param {object[]} input.sessions   id, title, directory, parent_id, time_created, time_updated
  * @param {object[]} input.tools      tool parts started in the range
  * @param {object[]} input.messages   session_id, role, time_created, completed
  * @param {object[]} input.compactions session_id, time_created
@@ -103,25 +121,30 @@ function nearest(sorted, t, fits) {
  * @param {Map<string, number>} input.replies question id -> answer time
  * @param {Map<string, number[]>} input.eventTimes tool part id -> update times, ascending
  * @param {(text: string) => string} input.show redact and shorten for display
+ * @param {string|null} [input.sessionId] count only this session and its subagents
+ * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
+ *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, currentRun = null, runEnds = new Map() }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, currentRun = null, runEnds = new Map(), sessionId = null, mcp = null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0 }]));
   const bucket = t => daily.get(dayKey(t));
   const sessionById = new Map(sessions.map(s => [s.id, s]));
+  const scope = sessionId ? withDescendants(sessions, sessionId) : null;
+  const inScope = id => !scope || scope.has(id);
   const where = id => {
     const s = sessionById.get(id);
     const directory = s?.directory ?? '';
     return { project: show(directory.split(/[\\/]/).filter(Boolean).pop() ?? '', 80), title: show(s?.title ?? '', 120) };
   };
 
-  for (const s of sessions) if (s.time_created >= from && !s.parent_id) bucket(s.time_created) && bucket(s.time_created).sessions++;
-  for (const c of compactions) bucket(c.time_created) && bucket(c.time_created).compactions++;
+  for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) bucket(s.time_created) && bucket(s.time_created).sessions++;
+  for (const c of compactions) if (inScope(c.session_id)) bucket(c.time_created) && bucket(c.time_created).compactions++;
 
   // Agent time: from each model request to its reply, clipped to the range.
   for (const m of messages) {
-    if (m.role !== 'assistant') continue;
+    if (m.role !== 'assistant' || !inScope(m.session_id)) continue;
     const start = Math.max(m.time_created, from);
     const end = Math.min(m.completed ?? m.time_created, now);
     if (end > start && bucket(start)) bucket(start).activeMs += end - start;
@@ -130,7 +153,10 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   // Prompts: how long each one waited for an answer.
   const inRange = asks.filter(a => a.t >= from && a.t <= now);
   const movedOn = nextMessageFinder(messages);
-  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now, movedOn, currentRun, runEnds });
+  // Matched against every session's calls first, so a prompt is never pinned on this session
+  // just because the call it really belonged to was left out.
+  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now, movedOn, currentRun, runEnds })
+    .filter(p => !scope || (p.part && scope.has(p.part.session_id)));
   const waitByPart = new Map();
   const deadAt = new Map(); // tool part id -> when the process that prompted for it went away
   for (const p of prompts) if (p.part && p.abandonedAt != null) deadAt.set(p.part.id, p.abandonedAt);
@@ -150,10 +176,22 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const skills = new Map();
   let graft = 0;
   let explore = 0;
+  const calls = []; // every call counted below, for the per-server figures
+  const perRoot = new Map(); // top-level session id -> { toolCalls, lastAt }, whatever the filter
+  const rootOf = id => {
+    let s = sessionById.get(id);
+    for (let depth = 0; s?.parent_id && sessionById.has(s.parent_id) && depth < 20; depth++) s = sessionById.get(s.parent_id);
+    return s?.id ?? id;
+  };
   for (const p of tools) {
     const t = startOf(p);
     const b = bucket(t);
     if (!b) continue;
+    const root = perRoot.get(rootOf(p.session_id)) ?? { toolCalls: 0, lastAt: 0 };
+    root.toolCalls++;
+    root.lastAt = Math.max(root.lastAt, t);
+    perRoot.set(rootOf(p.session_id), root);
+    if (!inScope(p.session_id)) continue;
     b.toolCalls++;
     const entry = perTool.get(p.tool) ?? { tool: p.tool, count: 0, errors: 0, totalMs: 0 };
     entry.count++;
@@ -164,12 +202,13 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // A call with no end either still runs, or was left behind when its session moved on.
     const unfinished = p.ended == null && (p.status === 'running' || p.status === 'pending');
     const leftAt = unfinished ? (movedOn(p.session_id, t) ?? deadAt.get(p.id) ?? null) : null;
+    let runMs = null;
     if (leftAt != null) {
       // Left behind by a crash or abort: how long it "ran" says nothing about the command.
       b.abandoned++;
     } else {
       const end = p.ended ?? (unfinished ? now : null);
-      const runMs = end == null ? null : Math.max(0, end - t - (waitByPart.get(p.id) ?? 0));
+      runMs = end == null ? null : Math.max(0, end - t - (waitByPart.get(p.id) ?? 0));
       if (runMs != null) {
         entry.totalMs += runMs;
         if (runMs > stuckMs) b.stuck++;
@@ -177,6 +216,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
       }
     }
     perTool.set(p.tool, entry);
+    calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: unfinished ? null : runMs });
     if (isGraft(p.tool)) graft++;
     else if (isExploreTool(p.tool)) explore++;
     if (p.tool === 'read' && p.file) reads.set(`${p.session_id}|${p.file}`, (reads.get(`${p.session_id}|${p.file}`) ?? 0) + 1);
@@ -202,6 +242,16 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
   return {
     range: { from, to: now, days },
+    session: sessionId ? { id: sessionId, ...where(sessionId) } : null,
+    // What can be filtered on: top-level sessions with tool calls in the range, newest first.
+    sessions: [...perRoot]
+      .sort((a, b) => b[1].lastAt - a[1].lastAt)
+      .slice(0, MAX_SESSIONS_LISTED)
+      .map(([id, use]) => ({ id, ...where(id), toolCalls: use.toolCalls, lastAt: use.lastAt })),
+    // The log does not say which session a server failed in, so with a session filter the
+    // failure counts are left out rather than shown for the wrong session.
+    mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
+    mcpLogFrom: mcp?.logFrom ?? null,
     stuckMs,
     daily: [...daily.values()],
     totals,

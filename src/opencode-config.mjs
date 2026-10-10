@@ -1,9 +1,14 @@
 // Reads the few facts the monitor needs from OpenCode's own config: model context limits,
 // MCP server names, and model server addresses. Those files also hold API keys and MCP
 // credentials; nothing else is kept, and nothing read here is ever written anywhere.
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { isSafeLocalPath } from './git.mjs';
+
+const PROJECT_CONFIG_FILES = ['opencode.json', 'opencode.jsonc', join('.opencode', 'opencode.json'), join('.opencode', 'opencode.jsonc')];
+const PROJECT_CONFIG_MAX_BYTES = 256 * 1024;
+const MAX_NAME = 64;
 
 // JSON with // and /* */ comments and trailing commas -> plain JSON.
 export function stripJsonc(text) {
@@ -51,9 +56,72 @@ function readJson(path) {
   }
 }
 
+function mcpEntries(config) {
+  const entries = [];
+  for (const [name, server] of Object.entries(config?.mcp ?? {})) {
+    if (!server || typeof server !== 'object' || !name || name.length > MAX_NAME) continue;
+    // A project entry that only flips "enabled" has no type of its own.
+    const type = ['local', 'remote'].includes(server.type) ? server.type : null;
+    entries.push({ name, type, enabled: server.enabled !== false });
+  }
+  return entries;
+}
+
+// A small regular file on a local disk, or nothing. Project directories are not trusted.
+function readProjectJson(path) {
+  try {
+    const info = lstatSync(path);
+    if (!info.isFile() || info.size > PROJECT_CONFIG_MAX_BYTES) return null;
+  } catch {
+    return null;
+  }
+  return readJson(path);
+}
+
+/**
+ * MCP servers that project-level configs define or switch on. A server enabled only inside
+ * one project is invisible in the global config, and its tools would belong to nobody.
+ * Only names, types and the enabled flag are kept; commands and credentials are not.
+ */
+export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = {}) {
+  const cache = new Map(); // directory -> { at, entries }
+
+  function read(dir) {
+    const hit = cache.get(dir);
+    if (hit && now() - hit.at < everyMs) return hit.entries;
+    const entries = [];
+    if (isSafeLocalPath(dir)) {
+      for (const file of PROJECT_CONFIG_FILES) entries.push(...mcpEntries(readProjectJson(join(dir, file))));
+    }
+    cache.set(dir, { at: now(), entries });
+    return entries;
+  }
+
+  /** @returns {{name: string, type: string|null, enabled: boolean}[]} one entry per name */
+  function forDirs(dirs) {
+    const wanted = new Set(dirs.filter(Boolean));
+    const byName = new Map();
+    for (const dir of wanted) {
+      for (const entry of read(dir)) {
+        const known = byName.get(entry.name);
+        if (known) {
+          known.enabled ||= entry.enabled;
+          known.type ??= entry.type;
+        } else {
+          byName.set(entry.name, { ...entry });
+        }
+      }
+    }
+    if (cache.size > 200) for (const dir of cache.keys()) if (!wanted.has(dir)) cache.delete(dir);
+    return [...byName.values()];
+  }
+
+  return { forDirs };
+}
+
 /**
  * @returns {{
- *   limits: Map<string, number>,                         "provider/model" -> context window
+ *   limits: Map<string, number>,                        "provider/model" -> context window
  *   mcp: {name: string, type: string, enabled: boolean}[],
  *   providers: {id: string, baseURL: string}[]           only providers with their own address
  * }}
@@ -75,11 +143,7 @@ export function loadOpencodeConfig(configDir, env = process.env) {
       const baseURL = provider?.options?.baseURL;
       if (typeof baseURL === 'string' && /^https?:\/\//i.test(baseURL)) providers.set(id, { id, baseURL });
     }
-    for (const [serverName, server] of Object.entries(config.mcp ?? {})) {
-      if (server && typeof server === 'object') {
-        mcp.set(serverName, { name: serverName, type: server.type === 'remote' ? 'remote' : 'local', enabled: server.enabled !== false });
-      }
-    }
+    for (const entry of mcpEntries(config)) mcp.set(entry.name, { ...entry, type: entry.type ?? 'local' });
   }
   return { limits, mcp: [...mcp.values()], providers: [...providers.values()] };
 }

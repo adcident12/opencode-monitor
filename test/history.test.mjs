@@ -51,3 +51,14 @@ test('works in memory without a file, and can be switched off', () => {
   off.record([s('a', 'stuck')], T);
   assert.equal(off.count, 0);
 });
+
+test('one session can be picked out, from the whole record and not only the newest entries', () => {
+  const history = createHistory({ file: null, retentionDays: 30, now: T });
+  history.record([s('a', 'working'), s('b', 'working')], T);
+  for (let i = 1; i <= 400; i++) history.record([s('a', 'working'), s('b', i % 2 ? 'waiting' : 'working')], T + i * 1000);
+  history.record([s('a', 'finished'), s('b', 'working')], T + 500_000);
+
+  assert.deepEqual(history.list({ session: 'a' }).map(e => e.to), ['finished', 'working']);
+  assert.equal(history.list().length, 300);
+  assert.deepEqual(history.sessions().map(x => [x.id, x.title, x.count]), [['a', 'T-a', 2], ['b', 'T-b', 401]]);
+});

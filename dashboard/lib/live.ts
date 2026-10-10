@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import type { HistoryEvent, Snapshot, Stats } from "./types"
+import type { HistoryEvent, SessionChoice, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -35,21 +35,41 @@ export function useNow(skew: number): number {
   return now
 }
 
-/** History list, re-fetched only when the server says its count changed. */
-export function useHistory(count: number | null, enabled: boolean) {
-  const [events, setEvents] = useState<HistoryEvent[]>([])
+const sessionQuery = (session: string | null) => (session ? `session=${encodeURIComponent(session)}` : "")
+
+/** History list, re-fetched only when the server says its count changed, or the filter did. */
+export function useHistory(count: number | null, enabled: boolean, session: string | null = null) {
+  const [state, setState] = useState<{ session: string | null; events: HistoryEvent[] }>({ session, events: [] })
   useEffect(() => {
     if (!enabled || count == null) return
     let live = true
-    fetch("/api/history")
+    fetch(`/api/history?${sessionQuery(session)}`)
       .then(res => res.json())
-      .then(list => live && setEvents(list))
+      .then(events => live && setState({ session, events }))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [count, enabled, session])
+  // Entries of another session are not shown as if they were this one's.
+  return state.session === session ? state.events : []
+}
+
+/** Every session the history has an entry for, most recently changed first. */
+export function useHistorySessions(count: number | null, enabled: boolean) {
+  const [sessions, setSessions] = useState<SessionChoice[]>([])
+  useEffect(() => {
+    if (!enabled || count == null) return
+    let live = true
+    fetch("/api/history/sessions")
+      .then(res => res.json())
+      .then(list => live && setSessions(list))
       .catch(() => {})
     return () => {
       live = false
     }
   }, [count, enabled])
-  return events
+  return sessions
 }
 
 const onHashChange = (notify: () => void) => {
@@ -68,15 +88,16 @@ export function useHash(): [string, (hash: string) => void] {
 }
 
 /** Figures for the stats tab; refreshed every minute while the tab is open. */
-export function useStats(days: number, enabled: boolean) {
-  const [state, setState] = useState<{ days: number; stats: Stats | null; failed: boolean }>({ days, stats: null, failed: false })
+export function useStats(days: number, session: string | null, enabled: boolean) {
+  const key = `${days}|${session ?? ""}`
+  const [state, setState] = useState<{ key: string; stats: Stats | null; failed: boolean }>({ key, stats: null, failed: false })
   useEffect(() => {
     if (!enabled) return
     let live = true
     const load = () =>
-      fetch(`/api/stats?days=${days}`)
+      fetch(`/api/stats?days=${days}&${sessionQuery(session)}`)
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
-        .then(stats => live && setState({ days, stats, failed: false }))
+        .then(stats => live && setState({ key, stats, failed: false }))
         .catch(() => live && setState(s => ({ ...s, failed: true })))
     load()
     const timer = setInterval(load, 60_000)
@@ -84,7 +105,7 @@ export function useStats(days: number, enabled: boolean) {
       live = false
       clearInterval(timer)
     }
-  }, [days, enabled])
-  // Figures for another range are not shown as if they were for this one.
-  return { stats: state.days === days ? state.stats : null, failed: state.failed }
+  }, [days, session, key, enabled])
+  // Figures for another range or session are not shown as if they were for this one.
+  return { stats: state.key === key ? state.stats : null, failed: state.failed }
 }

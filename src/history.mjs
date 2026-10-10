@@ -82,7 +82,13 @@ export function createHistory({ file, retentionDays, enabled = true, now = Date.
     get count() {
       return events.length;
     },
-    /** Newest first. */
-    list: (limit = 300) => events.slice(-limit).reverse(),
+    /** Newest first; with a session id, only that session's changes. */
+    list: ({ limit = 300, session = null } = {}) => (session ? events.filter(e => e.id === session) : events).slice(-limit).reverse(),
+    /** Every session that has an entry, most recently changed first. */
+    sessions: () => {
+      const seen = new Map();
+      for (const e of events) seen.set(e.id, { id: e.id, title: e.title, project: e.project, lastAt: e.t, count: (seen.get(e.id)?.count ?? 0) + 1 });
+      return [...seen.values()].sort((a, b) => b.lastAt - a.lastAt);
+    },
   };
 }

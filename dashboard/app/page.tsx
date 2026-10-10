@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { childrenOf, groupByUrgency } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
-import { useHash, useHistory, useNow, useSnapshot } from "@/lib/live"
+import { useHash, useNow, useSnapshot } from "@/lib/live"
 
 type Tab = "now" | "history" | "stats"
 
@@ -27,7 +27,6 @@ export default function Page() {
   const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
 
   const historyEnabled = snapshot?.historyCount != null
-  const events = useHistory(snapshot?.historyCount ?? null, tab === "history")
   const sessions = snapshot?.sessions ?? []
   const { attention, working, rest } = groupByUrgency(sessions)
 
@@ -113,7 +112,7 @@ export default function Page() {
 
         {historyEnabled && (
           <TabsContent value="history">
-            <History events={events} />
+            <History count={snapshot?.historyCount ?? null} active={tab === "history"} />
           </TabsContent>
         )}
 

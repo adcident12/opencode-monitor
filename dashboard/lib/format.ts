@@ -25,6 +25,12 @@ export function duration(ms: number): string {
   return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
+/** 320 ms, 1.4s, 2m 05s — for how long one tool call takes. */
+export function quick(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return ms < 60_000 ? `${(ms / 1000).toFixed(1)}s` : duration(ms)
+}
+
 /** Coarse: 10m, 2h 5m — for thresholds and ages where seconds are noise. */
 export function rough(ms: number): string {
   return ms < 3_600_000 ? `${Math.round(ms / 60_000)}m` : duration(ms)
