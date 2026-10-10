@@ -39,13 +39,35 @@ export function stripJsonc(text) {
   return out;
 }
 
-function collectLimits(limits, providers) {
+function collectLimits(limits, providers, reserves = new Map()) {
   for (const [providerId, provider] of Object.entries(providers ?? {})) {
     for (const [modelId, model] of Object.entries(provider?.models ?? {})) {
+      const key = `${providerId}/${modelId}`;
       const context = model?.limit?.context;
-      if (Number.isFinite(context) && context > 0) limits.set(`${providerId}/${modelId}`, context);
+      if (Number.isFinite(context) && context > 0) limits.set(key, context);
+      // What compaction needs: the output it keeps free, and an explicit input limit if any.
+      const output = model?.limit?.output;
+      const input = model?.limit?.input;
+      if ((Number.isFinite(output) && output > 0) || (Number.isFinite(input) && input > 0)) {
+        reserves.set(key, { output: Number.isFinite(output) && output > 0 ? output : null, input: Number.isFinite(input) && input > 0 ? input : null });
+      }
     }
   }
+}
+
+// OpenCode never reserves more than this for the reply, whatever the model allows.
+export const OUTPUT_TOKEN_MAX = 32_000;
+
+/**
+ * The context size at which OpenCode compacts a session: an explicit input limit, or the
+ * context window less the output it keeps free for the reply. Measured against the
+ * compactions in real sessions: they all happened just above this line.
+ * @returns {number|null}
+ */
+export function compactionPoint(context, reserve) {
+  if (reserve?.input) return reserve.input;
+  if (!context) return null;
+  return context - Math.min(reserve?.output ?? OUTPUT_TOKEN_MAX, OUTPUT_TOKEN_MAX);
 }
 
 function readJson(path) {
@@ -128,22 +150,23 @@ export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = 
  */
 export function loadOpencodeConfig(configDir, env = process.env) {
   const limits = new Map();
+  const reserves = new Map(); // "provider/model" -> { output, input }
   const mcp = new Map();
   const providers = new Map();
 
   // Catalogue OpenCode caches for built-in providers; user config below overrides it.
   const cacheDir = env.XDG_CACHE_HOME ? join(env.XDG_CACHE_HOME, 'opencode') : join(homedir(), '.cache', 'opencode');
-  collectLimits(limits, readJson(join(cacheDir, 'models.json')));
+  collectLimits(limits, readJson(join(cacheDir, 'models.json')), reserves);
 
   for (const name of ['opencode.json', 'opencode.jsonc']) {
     const config = readJson(join(configDir, name));
     if (!config) continue;
-    collectLimits(limits, config.provider);
+    collectLimits(limits, config.provider, reserves);
     for (const [id, provider] of Object.entries(config.provider ?? {})) {
       const baseURL = provider?.options?.baseURL;
       if (typeof baseURL === 'string' && /^https?:\/\//i.test(baseURL)) providers.set(id, { id, baseURL });
     }
     for (const entry of mcpEntries(config)) mcp.set(entry.name, { ...entry, type: entry.type ?? 'local' });
   }
-  return { limits, mcp: [...mcp.values()], providers: [...providers.values()] };
+  return { limits, reserves, mcp: [...mcp.values()], providers: [...providers.values()] };
 }

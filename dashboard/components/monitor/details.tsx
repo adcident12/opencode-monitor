@@ -85,9 +85,18 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
       bad: warn("context_high"),
       value:
         h.contextPct != null ? (
-          <span className="inline-flex items-center gap-2">
-            <Progress value={Math.min(100, h.contextPct)} className={cn("w-20", warn("context_high") && "[&_[data-slot=progress-indicator]]:bg-stuck")} aria-label={t("health.context")} />
-            {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
+          <span className="block space-y-0.5">
+            <span className="inline-flex items-center gap-2">
+              <ContextBar session={session} high={warn("context_high")} />
+              {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
+            </span>
+            {h.compaction && (
+              <span className={cn("block text-xs", warn("context_high") ? "text-stuck" : "font-normal text-muted-foreground")}>
+                {h.compaction.room === 0
+                  ? t("health.compactNow")
+                  : t(h.compaction.requestsLeft == null ? "health.compactRoom" : "health.compactRoomRequests", { room: kilo(h.compaction.room), n: h.compaction.requestsLeft ?? 0 })}
+              </span>
+            )}
           </span>
         ) : (
           t("health.contextUnknown", { n: kilo(h.contextTokens) })
@@ -110,12 +119,31 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   )
 }
 
+/**
+ * The context window as a bar, with a tick where OpenCode will compact: the part of the bar
+ * that matters is the stretch up to the tick, not the whole window.
+ */
+function ContextBar({ session, high }: { session: Session; high: boolean }) {
+  const { t } = useI18n()
+  const h = session.health
+  const tick = h.compaction && h.contextLimit ? Math.min(100, (h.compaction.at / h.contextLimit) * 100) : null
+  return (
+    <span className="relative inline-block w-24">
+      <Progress value={Math.min(100, h.contextPct ?? 0)} className={cn("w-full", high && "[&_[data-slot=progress-indicator]]:bg-stuck")} aria-label={t("health.context")} />
+      {tick != null && <span aria-hidden className="absolute -top-1 h-3 w-px bg-foreground/60" style={{ left: `${tick}%` }} />}
+    </span>
+  )
+}
+
 export function Hints({ session, now }: { session: Session; now: number }) {
   const { t } = useI18n()
   const h = session.health
   if (!h.hints.length) return null
   const text: Record<string, () => string> = {
-    context_high: () => t("hint.context_high", { pct: h.contextPct ?? 0 }),
+    context_high: () =>
+      h.compaction
+        ? t(h.compaction.requestsLeft == null ? "hint.compact_soon" : "hint.compact_soon_requests", { room: kilo(h.compaction.room), n: h.compaction.requestsLeft ?? 0 })
+        : t("hint.context_high", { pct: h.contextPct ?? 0 }),
     many_compactions: () => t("hint.many_compactions", { n: h.compactions }),
     old_session: () => t("hint.old_session", { t: rough(now - session.createdAt) }),
     looping: () => t("hint.looping", { tool: h.repeat?.tool ?? "", n: h.repeat?.count ?? 0, text: h.repeat?.text ?? "" }),

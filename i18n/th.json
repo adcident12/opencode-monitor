@@ -54,6 +54,9 @@
   "progress.lastActivity": "ความเคลื่อนไหวล่าสุด",
 
   "health.context": "Context",
+  "health.compactRoom": "เหลือ {room} ก่อนถูก compact",
+  "health.compactRoomRequests": "เหลือ {room} ก่อนถูก compact ประมาณ {n} request",
+  "health.compactNow": "ถึงจุดที่ OpenCode จะ compact แล้ว",
   "health.contextUnknown": "{n} token (ไม่ทราบเพดานของ model)",
   "health.compactions": "จำนวน compaction",
   "health.age": "อายุ session",
@@ -61,6 +64,8 @@
   "health.lastError": "Tool error ล่าสุด ({tool})",
 
   "hint.context_high": "Context เต็มไปแล้ว {pct}%",
+  "hint.compact_soon": "เหลืออีกราว {room} token ก่อน OpenCode จะ compact session นี้และลืมรายละเอียดไป",
+  "hint.compact_soon_requests": "เหลืออีกราว {room} token หรือประมาณ {n} request ก่อน OpenCode จะ compact session นี้และลืมรายละเอียดไป",
   "hint.many_compactions": "ย่อบทสนทนาไปแล้ว {n} ครั้ง รายละเอียดช่วงแรกน่าจะหายไป",
   "hint.old_session": "Session นี้เปิดมาแล้ว {t}",
   "hint.looping": "เรียก {tool} แบบเดิมซ้ำ {n} ครั้งในช่วงหลัง: {text}",

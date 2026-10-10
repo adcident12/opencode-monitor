@@ -141,8 +141,27 @@ export function deriveProgress({ parts, messages, todos = [], maxSteps = 6 }) {
   };
 }
 
-export function deriveHealth({ session, parts, now, thresholds, contextLimit }) {
+// How many recent requests set the pace of growth.
+const GROWTH_WINDOW = 8;
+
+/**
+ * Typical growth per request: the median increase between consecutive requests since the
+ * last compaction. A median, so one huge file read does not make every request look huge.
+ */
+function growthOf(sizes) {
+  const steps = [];
+  for (let i = Math.max(1, sizes.length - GROWTH_WINDOW); i < sizes.length; i++) if (sizes[i] > sizes[i - 1]) steps.push(sizes[i] - sizes[i - 1]);
+  if (steps.length < 2) return null;
+  steps.sort((a, b) => a - b);
+  return steps[Math.floor(steps.length / 2)];
+}
+
+/**
+ * @param {number|null} [compactAt] context size at which OpenCode compacts (compactionPoint)
+ */
+export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null }) {
   let contextTokens = null;
+  let sizes = []; // what each request counted against compaction, since the last compaction
   let compactions = 0;
   let toolCalls = 0;
   let toolErrors = 0;
@@ -151,9 +170,13 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit }) 
 
   for (const p of parts) {
     if (p.type === 'step-finish') {
-      contextTokens = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
+      const sent = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
+      contextTokens = sent;
+      // OpenCode counts the reply too when it decides to compact.
+      if (sent > 0) sizes.push(sent + (p.tokens_output ?? 0));
     } else if (p.type === 'compaction') {
       compactions++;
+      sizes = [];
     } else if (p.type === 'tool') {
       toolCalls++;
       if (p.status === 'error') {
@@ -179,15 +202,23 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit }) 
   const contextPct = contextTokens != null && contextLimit ? Math.round((contextTokens / contextLimit) * 100) : null;
   const ageMs = now - session.time_created;
 
+  // Room left before OpenCode compacts, and roughly how many requests of the usual size fit.
+  const used = sizes.at(-1) ?? null;
+  const growth = growthOf(sizes);
+  const room = compactAt && used != null ? Math.max(0, compactAt - used) : null;
+  const compaction = room == null ? null : { at: compactAt, room, growth, requestsLeft: growth ? Math.floor(room / growth) : null };
+  const soon = compaction != null && (used >= compactAt * (thresholds.compactWarnPct / 100) || (compaction.requestsLeft != null && compaction.requestsLeft <= thresholds.compactWarnRequests));
+
   const hints = [];
-  if (contextPct != null && contextPct >= thresholds.contextWarnPct) hints.push('context_high');
+  // With a known compaction point, warn against it; otherwise fall back to the window size.
+  if (compaction ? soon : contextPct != null && contextPct >= thresholds.contextWarnPct) hints.push('context_high');
   if (compactions >= thresholds.compactionWarn) hints.push('many_compactions');
   if (ageMs >= thresholds.sessionAgeWarnHours * 3_600_000) hints.push('old_session');
   if (repeat) hints.push('looping');
   if (toolErrors >= thresholds.toolErrorWarn) hints.push('many_errors');
 
   return {
-    contextTokens, contextLimit: contextLimit ?? null, contextPct,
+    contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction,
     compactions, toolCalls, toolErrors, lastError,
     repeat: repeat ? { count: repeat.count, tool: repeat.part.tool, text: describePart(repeat.part) } : null,
     hints,

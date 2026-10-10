@@ -41,7 +41,8 @@ const PART_COLUMNS = `
   json_extract(data,'$.reason') reason,
   json_extract(data,'$.tokens.input') tokens_input,
   json_extract(data,'$.tokens.cache.read') tokens_cache_read,
-  json_extract(data,'$.tokens.cache.write') tokens_cache_write`;
+  json_extract(data,'$.tokens.cache.write') tokens_cache_write,
+  json_extract(data,'$.tokens.output') tokens_output`;
 
 export function openDb(dataDir) {
   const path = join(dataDir, 'opencode.db');

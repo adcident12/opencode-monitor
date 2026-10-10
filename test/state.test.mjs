@@ -133,3 +133,33 @@ test('a long task with a working subagent is not stuck', () => {
   ]);
   assert.deepEqual([list[0].state, list[0].reason], ['working', 'subagent']);
 });
+
+test('health: room before OpenCode compacts, and roughly how many requests that is', async () => {
+  const { compactionPoint } = await import('../src/opencode-config.mjs');
+  // 131 072 window, 32 768 output configured: OpenCode reserves at most 32 000.
+  const at = compactionPoint(131_072, { output: 32_768, input: null });
+  assert.equal(at, 99_072);
+  assert.equal(compactionPoint(131_072, { output: 8192, input: null }), 122_880);
+  assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }), 150_000);
+  assert.equal(compactionPoint(null, null), null);
+
+  const step = (sent, out = 500) => ({ type: 'step-finish', tokens_input: 1000, tokens_cache_read: sent - 1000, tokens_cache_write: 0, tokens_output: out });
+  const health = parts => deriveHealth({ session: { time_created: NOW - MIN }, parts, now: NOW, thresholds, contextLimit: 131_072, compactAt: at });
+
+  // Before the compaction: 60k, irrelevant. After it, growth of about 6k per request.
+  const calm = health([step(60_000), { type: 'compaction' }, step(30_000), step(36_000), step(42_000), step(48_000)]);
+  assert.deepEqual(calm.health ?? calm.compaction, { at, room: at - 48_500, growth: 6000, requestsLeft: 8 });
+  assert.ok(!calm.hints.includes('context_high'));
+
+  // Three requests left: warned, though the window itself is only 69% full.
+  const close = health([step(70_000), step(76_000), step(82_000), step(88_000)]);
+  assert.equal(close.compaction.requestsLeft, 1);
+  assert.ok(close.hints.includes('context_high'));
+  assert.equal(close.contextPct, 67);
+
+  // Too few requests to tell a pace: the room is still known.
+  const fresh = health([step(30_000)]);
+  assert.deepEqual([fresh.compaction.room, fresh.compaction.growth, fresh.compaction.requestsLeft], [at - 30_500, null, null]);
+  // Without a compaction point the old rule applies, against the window.
+  assert.equal(deriveHealth({ session: { time_created: NOW }, parts: [step(120_000)], now: NOW, thresholds, contextLimit: 131_072 }).compaction, null);
+});

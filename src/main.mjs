@@ -69,6 +69,7 @@ export async function main(argv) {
     db, log, cfg, probe, environment, git, leftovers, projectMcp,
     redact: createRedactor(cfg.redact),
     modelLimits: opencode.limits,
+    modelReserves: opencode.reserves,
     mcpNames: opencode.mcp.map(server => server.name),
   });
   const notify = createNotifier(cfg.notify, loadTranslator(cfg.lang));

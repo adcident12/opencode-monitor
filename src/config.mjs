@@ -34,6 +34,9 @@ export const DEFAULTS = {
     stuckToolMinutesByTool: { task: 60 },
     silentMinutes: 10,
     contextWarnPct: 80,
+    // Warn before OpenCode compacts: this full against its compaction point, or this few requests left.
+    compactWarnPct: 85,
+    compactWarnRequests: 3,
     compactionWarn: 3,
     sessionAgeWarnHours: 6,
     repeatWarn: 3,

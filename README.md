@@ -74,7 +74,7 @@ For a session that is still going, the page also shows how far it has got:
 
 OpenCode stores a model reply only when it starts and when it ends, so while the model is writing there is no partial text to show, only how long it has been quiet.
 
-Each session also shows its health: context used against the model's limit, number of compactions, session age, failed tool calls, and whether the same command keeps repeating. When these look bad the page suggests starting a new session.
+Each session also shows its health: context used against the model's limit, number of compactions, session age, failed tool calls, and whether the same command keeps repeating. The context bar has a tick where OpenCode will compact the session: the context window less the output it keeps free for the reply (at most 32,000 tokens), or the model's `limit.input` if one is set. Under the bar the page says how many tokens are left before that and, from how much the last few requests grew, roughly how many requests. It warns once the session is 85% of the way there or 3 requests away (`thresholds.compactWarnPct`, `thresholds.compactWarnRequests`). When these look bad the page suggests starting a new session.
 
 ## Environment
 
@@ -145,6 +145,8 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | --- | --- | --- |
 | `thresholds.stuckToolMinutes` | 10 | A tool call running longer than this is "probably stuck" |
 | `thresholds.stuckToolMinutesByTool` | `{ "task": 60 }` | Per-tool overrides |
+| `thresholds.compactWarnPct` | 85 | Warn when the context is this full against the point where OpenCode compacts |
+| `thresholds.compactWarnRequests` | 3 | ...or when this few requests of the usual size are left before it |
 | `thresholds.silentMinutes` | 10 | Silence from the model before "probably stuck". Raise it for slow local models |
 | `lookbackHours` | 24 | Only sessions active in this window are listed |
 | `contextLimit.models` | `{}` | Context window per `provider/model`, if it cannot be read from OpenCode's config |

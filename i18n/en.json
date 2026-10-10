@@ -54,6 +54,9 @@
   "progress.lastActivity": "Last activity",
 
   "health.context": "Context",
+  "health.compactRoom": "{room} left before it is compacted",
+  "health.compactRoomRequests": "{room} left before it is compacted · about {n} requests at this pace",
+  "health.compactNow": "at the point where OpenCode compacts",
   "health.contextUnknown": "{n} tokens (model limit unknown)",
   "health.compactions": "Compactions",
   "health.age": "Session age",
@@ -61,6 +64,8 @@
   "health.lastError": "Last tool error ({tool})",
 
   "hint.context_high": "Context is {pct}% full.",
+  "hint.compact_soon": "About {room} tokens left before OpenCode compacts this session and forgets the details.",
+  "hint.compact_soon_requests": "About {room} tokens left before OpenCode compacts this session and forgets the details (requests left at this pace: about {n}).",
   "hint.many_compactions": "Compacted {n} times, so early details are probably lost.",
   "hint.old_session": "This session has been open for {t}.",
   "hint.looping": "The same {tool} call ran {n} times recently: {text}",

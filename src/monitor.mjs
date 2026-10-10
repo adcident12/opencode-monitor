@@ -5,6 +5,7 @@ import { deriveState, deriveHealth, deriveProgress, describePart, bubbleChildren
 import { classifyPart, approvalOf, FLAG_KINDS } from './audit.mjs';
 import { clip } from './redact.mjs';
 import { createServerMatcher, faultOf } from './mcp.mjs';
+import { compactionPoint } from './opencode-config.mjs';
 import { OUTPUT_TAIL_CHARS } from './db.mjs';
 
 const SUMMARY_CHARS = 240;
@@ -31,7 +32,7 @@ function touch(files, path, at) {
  * @param {object} [deps.environment]  from createEnvironment
  * @param {object} [deps.git]          from createGitProbe
  */
-export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
+export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
@@ -141,7 +142,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     model ??= lastAssistant?.model_id;
     const key = `${provider}/${model}`;
     const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? modelLimits.get(key) ?? cfg.contextLimit.default;
-    return { model: model ?? null, limit: limit ?? null };
+    return { model: model ?? null, limit: limit ?? null, compactAt: compactionPoint(limit ?? null, modelReserves.get(key)) };
   }
 
   const shortPath = (file, root) => {
@@ -259,8 +260,8 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     const { sorted: parts, maxUpdated, digest } = loadParts(session.id);
     const messages = db.lastMessages(session.id);
     const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running });
-    const { model, limit } = contextLimitFor(session, messages);
-    const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit });
+    const { model, limit, compactAt } = contextLimitFor(session, messages);
+    const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt });
     const progress = deriveProgress({ parts, messages, todos: db.todos(session.id) });
 
     return {
