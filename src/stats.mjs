@@ -168,6 +168,8 @@ export function summarize(stats, model = null) {
     toolErrorPct: totals.toolCalls ? Math.round((totals.toolErrors / totals.toolCalls) * 1000) / 10 : null,
     mcpNoAnswerPct: mcpCalls ? Math.round((stats.mcp.reduce((n, m) => n + m.faults, 0) / mcpCalls) * 1000) / 10 : null,
     cachedPct: usage.cachedPct,
+    // What OpenCode recorded as spent, per session; null for models that cost nothing.
+    costPerSession: usage.cost > 0 && totals.sessions ? Math.round((usage.cost / totals.sessions) * 100) / 100 : null,
     writeTps: speed?.writeTps ?? null,
     firstTokenMs: speed?.firstTokenMs ?? null,
     medianAnswerMs: totals.medianAnswerMs,
@@ -276,6 +278,7 @@ function tallyRequests(ctx, messages, steps) {
     usage.reasoning += m.tokens_reasoning ?? 0;
     usage.cost += m.cost ?? 0;
     b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
+    b.cost += m.cost ?? 0;
     const timing = timingOf(m, steps.get(m.id));
     if (timing) timed.push(timing);
     const first = firstRequest.get(m.session_id);
@@ -373,7 +376,7 @@ function tallyTools(ctx, tools, timing, stuckMs) {
   return { perTool, slow, reads, skills, explore, calls, perRoot };
 }
 
-const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tokens: 0 });
+const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tokens: 0, cost: 0 });
 
 /**
  * What each top-level session cost in the range, subagents included, whatever the filter:
@@ -393,6 +396,7 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
     if (end > m.time_created) bump(m.session_id, 'activeMs', end - m.time_created);
     const tokens = tokensSent(m) + (m.tokens_output ?? 0);
     if (tokens > 0) bump(m.session_id, 'tokens', tokens);
+    if (m.cost > 0) bump(m.session_id, 'cost', m.cost);
   }
   for (const c of compactions) if (c.time_created >= ctx.from) bump(c.session_id, 'compactions', 1);
   for (const p of prompts) if (p.part) bump(p.part.session_id, 'waitMs', p.waitMs);
@@ -419,7 +423,7 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
 export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
-  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0 }]));
+  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0 }]));
   const bucket = t => daily.get(dayKey(t));
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const scope = sessionId ? withDescendants(sessions, sessionId) : null;
@@ -477,7 +481,10 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     sessions: [...perRoot]
       .sort((a, b) => b[1].lastAt - a[1].lastAt)
       .slice(0, MAX_SESSIONS_LISTED)
-      .map(([id, use]) => ({ id, ...where(id), toolCalls: use.toolCalls, lastAt: use.lastAt, ...(effort.get(id) ?? EMPTY_EFFORT) })),
+      .map(([id, use]) => {
+        const e = effort.get(id) ?? EMPTY_EFFORT;
+        return { id, ...where(id), toolCalls: use.toolCalls, lastAt: use.lastAt, ...e, cost: Math.round(e.cost * 10_000) / 10_000 };
+      }),
     // The log does not say which session a server failed in, so with a session filter the
     // failure counts are left out rather than shown for the wrong session.
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
@@ -500,7 +507,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
       start: startSizes.length ? { median: median(startSizes), min: Math.min(...startSizes), max: Math.max(...startSizes), sessions: startSizes.length } : null,
     },
     stuckMs,
-    daily: [...daily.values()],
+    daily: [...daily.values()].map(d => ({ ...d, cost: Math.round(d.cost * 10_000) / 10_000 })),
     totals,
     waits: [...prompts]
       .sort((a, b) => b.waitMs - a.waitMs)

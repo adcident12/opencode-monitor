@@ -170,6 +170,7 @@ export interface PeriodSummary {
   toolErrorPct: number | null
   mcpNoAnswerPct: number | null
   cachedPct: number | null
+  costPerSession: number | null
   writeTps: number | null
   firstTokenMs: number | null
   medianAnswerMs: number | null
@@ -217,13 +218,15 @@ export interface DayStats {
   compactions: number
   sessions: number
   tokens: number
+  /** As OpenCode recorded it; 0 for a model that costs nothing. */
+  cost: number
 }
 
 export interface Stats {
   range: { from: number; to: number; days: number }
   session: SessionChoice | null
   /** Top-level sessions in the range with what each cost, whatever session is selected. */
-  sessions: (SessionChoice & { toolCalls: number; lastAt: number; activeMs: number; waitMs: number; compactions: number; tokens: number })[]
+  sessions: (SessionChoice & { toolCalls: number; lastAt: number; activeMs: number; waitMs: number; compactions: number; tokens: number; cost: number })[]
   mcp: McpStat[]
   /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
   mcpLogFrom: number | null

@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { dailyCsv, download } from "@/lib/csv"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { compact, duration, quick, rough } from "@/lib/format"
+import { compact, duration, money, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useStats } from "@/lib/live"
 import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
@@ -130,6 +130,7 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
     { key: "toolErrorPct", better: "lower", show: pct },
     { key: "mcpNoAnswerPct", better: "lower", show: pct },
     { key: "cachedPct", better: "higher", show: pct },
+    { key: "costPerSession", better: "lower", show: money },
     { key: "writeTps", better: "higher", show: n => t("stats.speedTps", { n: n < 100 ? n.toFixed(1) : Math.round(n) }) },
     { key: "firstTokenMs", better: "lower", show: quick },
     { key: "toolCallsPerSession", better: null, show: each },
@@ -633,11 +634,20 @@ function Usage({ stats }: { stats: StatsData }) {
         <Tile label={t("stats.usageNew")} value={compact(usage.input + usage.cacheWrite)} note={t("stats.usageNewNote")} />
         <Tile label={t("stats.usageOutput")} value={compact(usage.output)} note={usage.reasoning ? t("stats.usageReasoning", { n: compact(usage.reasoning) }) : ""} />
         {usage.cost > 0 ? (
-          <Tile label={t("stats.usageCost")} value={`$${usage.cost.toFixed(2)}`} note={t("stats.usageCostNote")} />
+          <Tile label={t("stats.usageCost")} value={money(usage.cost)} note={t("stats.usageCostNote")} />
         ) : (
           usage.start && <Tile label={t("stats.usageStart")} value={compact(usage.start.median)} note={t("stats.usageStartRange", { min: compact(usage.start.min), max: compact(usage.start.max), n: usage.start.sessions })} />
         )}
       </div>
+      {usage.cost > 0 && (
+        <Bars
+          title={t("stats.costChart")}
+          summary={money(usage.cost)}
+          points={stats.daily.map(d => ({ date: d.date, value: Math.round(d.cost * 100) / 100, text: money(d.cost) }))}
+          color="var(--color-working)"
+          tick={v => `$${v}`}
+        />
+      )}
       {usage.start && (
         <p className="max-w-prose text-sm text-muted-foreground">
           {usage.cost > 0 && <>{t("stats.usageStartLine", { median: compact(usage.start.median), n: usage.start.sessions })} </>}

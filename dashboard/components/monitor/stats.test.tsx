@@ -18,7 +18,7 @@ const server = (name: string, extra: Partial<McpStat> = {}): McpStat => ({
 const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   range: { from: NOW - 14 * 86_400_000, to: NOW, days: 14 },
   session: null,
-  sessions: [{ id: "ses_shop", title: "Checkout flow", project: "shop", toolCalls: 12, lastAt: NOW, activeMs: 3_600_000, waitMs: 0, compactions: 0, tokens: 0 }],
+  sessions: [{ id: "ses_shop", title: "Checkout flow", project: "shop", toolCalls: 12, lastAt: NOW, activeMs: 3_600_000, waitMs: 0, compactions: 0, tokens: 0, cost: 0 }],
   mcp: [
     server("chrome-devtools", { calls: 40, errors: 6, faults: 2, avgMs: 1400, lastUsedAt: NOW, sessions: 3, disconnects: 1, tools: [{ tool: "evaluate_script", count: 30, errors: 6, faults: 0 }] }),
     server("memory", { unused: true }),
@@ -40,7 +40,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
 
 const summary = (extra: Partial<PeriodSummary> = {}): PeriodSummary => ({
   days: 10, sessions: 12, startTokens: 43_500, compactionsPerSession: 2.4, rereadsPerSession: 1.5, toolCallsPerSession: 90, toolErrorPct: 4,
-  mcpNoAnswerPct: 0.5, cachedPct: 93, writeTps: 14.4, firstTokenMs: 2100, medianAnswerMs: 23_000, ...extra,
+  mcpNoAnswerPct: 0.5, cachedPct: 93, costPerSession: null, writeTps: 14.4, firstTokenMs: 2100, medianAnswerMs: 23_000, ...extra,
 })
 
 let requested: string[] = []

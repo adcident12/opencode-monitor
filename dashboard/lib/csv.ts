@@ -37,17 +37,17 @@ export function download(name: string, text: string) {
 const minutes = (ms: number) => Math.round(ms / 6000) / 10
 
 /** Per day: the figures behind the Stats charts, in minutes and plain counts. */
-export function dailyCsv(days: { date: string; activeMs: number; waitMs: number; prompts: number; stuck: number; abandoned: number; toolCalls: number; toolErrors: number; compactions: number; sessions: number; tokens: number }[]) {
+export function dailyCsv(days: { date: string; activeMs: number; waitMs: number; prompts: number; stuck: number; abandoned: number; toolCalls: number; toolErrors: number; compactions: number; sessions: number; tokens: number; cost: number }[]) {
   return toCsv(
-    ["date", "agent_minutes", "waiting_minutes", "prompts", "hung_calls", "abandoned_calls", "tool_calls", "tool_errors", "compactions", "sessions", "tokens"],
-    days.map(d => [d.date, minutes(d.activeMs), minutes(d.waitMs), d.prompts, d.stuck, d.abandoned, d.toolCalls, d.toolErrors, d.compactions, d.sessions, d.tokens]),
+    ["date", "agent_minutes", "waiting_minutes", "prompts", "hung_calls", "abandoned_calls", "tool_calls", "tool_errors", "compactions", "sessions", "tokens", "cost_usd"],
+    days.map(d => [d.date, minutes(d.activeMs), minutes(d.waitMs), d.prompts, d.stuck, d.abandoned, d.toolCalls, d.toolErrors, d.compactions, d.sessions, d.tokens, d.cost]),
   )
 }
 
 /** Per session: what each one took. */
-export function sessionsCsv(rows: { id: string; title: string; project: string; activeMs: number; waitMs: number; compactions: number; tokens: number; toolCalls: number; lastAt: number }[]) {
+export function sessionsCsv(rows: { id: string; title: string; project: string; activeMs: number; waitMs: number; compactions: number; tokens: number; cost: number; toolCalls: number; lastAt: number }[]) {
   return toCsv(
-    ["session_id", "title", "project", "agent_minutes", "waiting_minutes", "compactions", "tokens", "tool_calls", "last_activity"],
-    rows.map(r => [r.id, r.title, r.project, minutes(r.activeMs), minutes(r.waitMs), r.compactions, r.tokens, r.toolCalls, new Date(r.lastAt).toISOString()]),
+    ["session_id", "title", "project", "agent_minutes", "waiting_minutes", "compactions", "tokens", "cost_usd", "tool_calls", "last_activity"],
+    rows.map(r => [r.id, r.title, r.project, minutes(r.activeMs), minutes(r.waitMs), r.compactions, r.tokens, r.cost, r.toolCalls, new Date(r.lastAt).toISOString()]),
   )
 }

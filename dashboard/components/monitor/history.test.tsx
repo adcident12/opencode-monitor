@@ -23,7 +23,7 @@ beforeEach(() => {
     requested.push(url)
     if (url.startsWith("/api/history/sessions")) return Response.json([])
     if (url.startsWith("/api/stats")) {
-      const row = (id: string, title: string, activeMs: number, compactions: number) => ({ id, title, project: "shop", toolCalls: 10, lastAt: NOW, activeMs, waitMs: 60_000, compactions, tokens: 120_000 })
+      const row = (id: string, title: string, activeMs: number, compactions: number) => ({ id, title, project: "shop", toolCalls: 10, lastAt: NOW, activeMs, waitMs: 60_000, compactions, tokens: 120_000, cost: id === "ses_big" ? 4.2 : 0 })
       return Response.json({ sessions: [row("ses_small", "Small fix", 600_000, 0), row("ses_big", "Big refactor", 7_200_000, 4)] })
     }
     if (url.startsWith("/api/history")) {
@@ -59,6 +59,9 @@ describe("What each session took", () => {
     )
     const rows = await screen.findAllByRole("button", { name: /Big refactor|Small fix/ })
     expect(rows.map(r => r.textContent)).toEqual(["Big refactor", "Small fix"])
+    // Someone paid for a model here, so what each session cost is shown.
+    expect(screen.getByRole("columnheader", { name: "Cost" })).toBeInTheDocument()
+    expect(screen.getByText("$4.20")).toBeInTheDocument()
     await userEvent.click(rows[0])
     expect(picked).toEqual(["ses_big"])
   })

@@ -40,6 +40,12 @@ export function kilo(n: number): string {
   return `${Math.round(n / 1000)}k`
 }
 
+/** $0.004, $0.35, $12.40, $1,250 — money as OpenCode recorded it, which is in US dollars. */
+export function money(n: number): string {
+  if (n > 0 && n < 0.01) return `$${n.toFixed(3)}`
+  return n < 100 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`
+}
+
 /** 840, 32.4k, 1.2M, 40.5M — token counts, where three digits are all anyone reads. */
 export function compact(n: number): string {
   if (n < 1000) return String(Math.round(n))

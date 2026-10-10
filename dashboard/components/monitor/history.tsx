@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { compact, duration, rough } from "@/lib/format"
+import { compact, duration, money, rough } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { DownloadIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,8 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
   if (!picked.length) return null
   const shown = all || selected ? picked : picked.slice(0, EFFORT_ROWS)
   const max = Math.max(1, ...sorted.map(r => r.activeMs))
+  // People on a local model spend nothing: for them the column would be a row of dashes.
+  const paid = sorted.some(r => r.cost > 0)
 
   return (
     <section aria-labelledby="effort-title" className="space-y-2">
@@ -53,7 +55,8 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
               <th scope="col" className="py-1.5 pr-3 font-normal">{t("effort.active")}</th>
               <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("effort.wait")}</th>
               <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("effort.compactions")}</th>
-              <th scope="col" className="py-1.5 text-right font-normal">{t("effort.tokens")}</th>
+              <th scope="col" className={cn("py-1.5 text-right font-normal", paid && "pr-3")}>{t("effort.tokens")}</th>
+              {paid && <th scope="col" className="py-1.5 text-right font-normal">{t("effort.cost")}</th>}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -81,7 +84,8 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
                 </td>
                 <td className={cn("py-2 pr-3 text-right tabular-nums whitespace-nowrap", r.waitMs > 0 ? "text-waiting" : "text-muted-foreground")}>{r.waitMs ? duration(r.waitMs) : "–"}</td>
                 <td className={cn("py-2 pr-3 text-right tabular-nums", r.compactions >= 3 ? "text-stuck" : "text-muted-foreground")}>{r.compactions || "–"}</td>
-                <td className="py-2 text-right tabular-nums text-muted-foreground">{r.tokens ? compact(r.tokens) : "–"}</td>
+                <td className={cn("py-2 text-right tabular-nums text-muted-foreground", paid && "pr-3")}>{r.tokens ? compact(r.tokens) : "–"}</td>
+                {paid && <td className="py-2 text-right tabular-nums">{r.cost > 0 ? money(r.cost) : "–"}</td>}
               </tr>
             ))}
           </tbody>

@@ -299,3 +299,27 @@ test('the session list says what each session cost, subagents counted for their 
   assert.deepEqual([shop.activeMs, shop.tokens, shop.compactions, shop.waitMs], [15 * MIN, 12_600, 1, 0]);
   assert.deepEqual([s.sessions.find(x => x.id === 's2').activeMs, s.totals.activeMs], [MIN, MIN]);
 });
+
+test('cost, where OpenCode recorded one: per day, per session, and per session in a comparison', async () => {
+  const { summarize } = await import('../src/stats.mjs');
+  const at = NOW - 3 * HOUR;
+  const paid = (id, session, cost) => ({ id, session_id: session, role: 'assistant', time_created: at, completed: at + MIN, tokens_input: 1000, tokens_cache_read: 0, tokens_output: 100, cost });
+  const input = {
+    sessions: [
+      { id: 's1', parent_id: null, directory: '/work/shop', title: 'Shop', time_created: at },
+      { id: 's1-sub', parent_id: 's1', directory: '/work/shop', title: 'Explore', time_created: at },
+      { id: 's2', parent_id: null, directory: '/work/blog', title: 'Blog', time_created: at },
+    ],
+    tools: [tool('a', 's1', 'bash', at, at + MIN), tool('b', 's2', 'bash', at, at + MIN)],
+    messages: [paid('m1', 's1', 0.1), paid('m2', 's1-sub', 0.2), paid('m3', 's2', 0.05)],
+  };
+  const s = run(input);
+  assert.equal(s.usage.cost.toFixed(2), '0.35');
+  assert.equal(s.daily.find(d => d.date === dayKey(at)).cost, 0.35);
+  // The subagent's cost is the parent's.
+  assert.deepEqual(s.sessions.map(x => [x.id, x.cost]).sort(), [['s1', 0.3], ['s2', 0.05]]);
+  assert.equal(summarize(s).costPerSession, 0.18);
+  // A local model: nothing was spent, and nothing is claimed.
+  const free = run({ ...input, messages: input.messages.map(m => ({ ...m, cost: 0 })) });
+  assert.deepEqual([free.usage.cost, summarize(free).costPerSession, free.sessions[0].cost], [0, null, 0]);
+});
