@@ -44,21 +44,83 @@ async function testDigest(cfg) {
   }
 }
 
-export async function main(argv) {
-  const args = parseArgs(argv);
+/** --help, --version, --autostart: answered without reading any settings. */
+async function ranWithoutConfig(args) {
   if (args.help) {
     console.log(HELP);
-    return;
-  }
-  if (args.version) {
+  } else if (args.version) {
     console.log(VERSION ?? 'unknown');
-    return;
-  }
-  if (args.autostart) {
+  } else if (args.autostart) {
     const { autostart } = await import('./autostart.mjs');
     console.log(await autostart(args.autostart, { root: ROOT, args }));
+  } else {
+    return false;
+  }
+  return true;
+}
+
+async function runTestNotify(cfg) {
+  for (const [channel, outcome] of await testNotify(cfg.notify, loadTranslator(cfg.lang))) console.log(`${channel}: ${outcome}`);
+  if (process.platform === 'win32' && cfg.notify.desktop) {
+    console.log('No pop-up on Windows? Check Do not disturb / Focus, and look in the notification centre (Win+N).');
+  }
+  if (cfg.notify.weekly.enabled) console.log(`weekly summary / Discord: ${await testDigest(cfg)}`);
+}
+
+function runDoctor(cfg) {
+  // Works without a database too: saying that it is missing is the point.
+  const found = existsSync(join(cfg.dataDir, 'opencode.db'));
+  const doctorDb = found ? openDb(cfg.dataDir) : null;
+  const oc = loadOpencodeConfig(cfg.opencodeConfigDir);
+  const opencodeVersion = doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
+  console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang), cfg.lang));
+  doctorDb?.close();
+}
+
+function historyLine(cfg, sample) {
+  if (!cfg.history.enabled) return 'off';
+  if (sample) return 'in memory only';
+  return `${resolve(ROOT, cfg.history.file)} (kept ${cfg.history.retentionDays} days)`;
+}
+
+function announce(cfg, db, sample) {
+  const channels = [cfg.notify.desktop && 'desktop', cfg.notify.discord.webhookUrl && 'Discord'].filter(Boolean);
+  const version = VERSION ? ` ${VERSION}` : '';
+  const notifications = channels.length ? `${channels.join(' + ')} on ${cfg.notify.on.join(', ')}` : 'off';
+  console.log(`opencode-monitor${version}: http://${HOST}:${cfg.port}`);
+  console.log(`  reading ${db.path} (read-only)${sample ? ' — SAMPLE DATA' : ''}`);
+  console.log(`  history: ${historyLine(cfg, sample)}`);
+  console.log(`  notifications: ${notifications}`);
+}
+
+const JSON_TYPE = 'application/json; charset=utf-8';
+const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+
+/** A file of the page, or 404. */
+async function servePage(lookup, path, res) {
+  const found = await lookup(path).catch(() => null);
+  if (!found) {
+    res.writeHead(404, BASE_HEADERS).end('Not found');
     return;
   }
+  // Built assets have content hashes in their names and may be cached; the rest may not.
+  const cache = path.startsWith('/_next/static/') ? 'public, max-age=31536000, immutable' : 'no-store';
+  res.writeHead(200, {
+    ...BASE_HEADERS,
+    'cache-control': cache,
+    'content-type': found.type,
+    'referrer-policy': 'no-referrer',
+    ...(found.csp ? { 'content-security-policy': found.csp } : {}),
+  }).end(found.body);
+}
+
+/**
+ * @returns {Promise<{port: number, close: () => Promise<void>}|undefined>} the running monitor,
+ *   or nothing for the options that print something and are done
+ */
+export async function main(argv) {
+  const args = parseArgs(argv);
+  if (await ranWithoutConfig(args)) return;
   if (args.sample) {
     const { buildSample } = await import('../scripts/make-sample.mjs');
     args.dataDir = buildSample(join(ROOT, 'sample'));
@@ -67,29 +129,14 @@ export async function main(argv) {
   }
 
   const cfg = loadConfig(args);
-  if (args.testNotify) {
-    for (const [channel, outcome] of await testNotify(cfg.notify, loadTranslator(cfg.lang))) console.log(`${channel}: ${outcome}`);
-    if (process.platform === 'win32' && cfg.notify.desktop) {
-      console.log('No pop-up on Windows? Check Do not disturb / Focus, and look in the notification centre (Win+N).');
-    }
-    if (cfg.notify.weekly.enabled) console.log(`weekly summary / Discord: ${await testDigest(cfg)}`);
-    return;
-  }
+  if (args.testNotify) return runTestNotify(cfg);
   if (args.sample) {
     // The sample directory carries its own fake OpenCode config; never mix in the real one.
     cfg.opencodeConfigDir = cfg.dataDir;
     cfg.services = [];
   }
-  if (args.doctor) {
-    // Works without a database too: saying that it is missing is the point.
-    const found = existsSync(join(cfg.dataDir, 'opencode.db'));
-    const doctorDb = found ? openDb(cfg.dataDir) : null;
-    const oc = loadOpencodeConfig(cfg.opencodeConfigDir);
-    const opencodeVersion = doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
-    console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang), cfg.lang));
-    doctorDb?.close();
-    return;
-  }
+  if (args.doctor) return runDoctor(cfg);
+
   const db = openDb(cfg.dataDir);
   const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
   const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck });
@@ -125,6 +172,7 @@ export async function main(argv) {
   const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   // Not for --sample: a summary of fake sessions has no business in a real channel.
   const digest = args.sample ? null : createDigest({ cfg: cfg.notify, stats, send: notify.send, t: loadTranslator(cfg.lang), stateFile: kept('weekly.json') });
+  const historyCount = () => (cfg.history.enabled ? history.count : null);
 
   let latest = '{}';
   const clients = new Set();
@@ -144,14 +192,55 @@ export async function main(argv) {
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
       history.record(snap.sessions, snap.now);
     }
-    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId(), version: VERSION, opencodeTested: TESTED_OPENCODE, opencodeUntested: isUntestedOpencode(snap.opencodeVersion) === true });
+    latest = JSON.stringify({ ...snap, historyCount: historyCount(), build: lookup.buildId(), version: VERSION, opencodeTested: TESTED_OPENCODE, opencodeUntested: isUntestedOpencode(snap.opencodeVersion) === true });
     for (const res of clients) res.write(`data: ${latest}\n\n`);
   };
   tick();
-  setInterval(tick, cfg.pollMs);
+  const timer = setInterval(tick, cfg.pollMs);
 
   const shown = { redact: createRedactor(cfg.redact), configDir: cfg.opencodeConfigDir };
-  const allowedHosts =new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
+  // What each address answers with, as JSON text. `unavailable`: said instead when it throws.
+  const api = {
+    '/api/state': { body: () => latest },
+    '/api/stats': {
+      body: query => JSON.stringify(stats(Number(query.get('days')), query.get('session'), query.get('split'))),
+      unavailable: ['Stats failed', 'Stats are not available right now.'],
+    },
+    '/api/setup': {
+      body: () => JSON.stringify(buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: historyCount(), notifications: notify.recent() })),
+      unavailable: ['Setup report failed', 'The setup report is not available right now.'],
+    },
+    '/api/history': {
+      body: query => JSON.stringify(history.page({
+        before: query.get('before'),
+        after: query.get('after'),
+        limit: query.get('limit') ?? 100,
+        session: query.get('session'),
+        attention: query.get('attention') === '1',
+      })),
+    },
+    '/api/history/sessions': { body: () => JSON.stringify(history.sessions()) },
+    '/api/config-changes': {
+      body: query => {
+        const days = Math.min(30, Math.max(1, Number(query.get('days')) || 30));
+        return JSON.stringify(shownChanges(configWatch.list(Date.now() - days * 86_400_000), shown));
+      },
+    },
+  };
+  const answer = (route, query, res) => {
+    let body;
+    try {
+      body = route.body(query);
+    } catch (err) {
+      if (!route.unavailable) throw err;
+      console.warn(`${route.unavailable[0]}: ${err.code ?? err.message}`);
+      res.writeHead(503, BASE_HEADERS).end(route.unavailable[1]);
+      return;
+    }
+    res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end(body);
+  };
+
+  const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
     if (!allowedHosts.has(req.headers.host) || req.method !== 'GET') {
@@ -159,58 +248,15 @@ export async function main(argv) {
       return;
     }
     const { pathname: path, searchParams: query } = new URL(req.url, `http://${HOST}`);
-    const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
-
-    if (path === '/api/state') {
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(latest);
-    } else if (path === '/api/events') {
-      res.writeHead(200, { ...headers, 'content-type': 'text/event-stream; charset=utf-8', connection: 'keep-alive' });
+    if (path === '/api/events') {
+      res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'text/event-stream; charset=utf-8', connection: 'keep-alive' });
       res.write(`data: ${latest}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
-    } else if (path === '/api/stats') {
-      try {
-        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(Number(query.get('days')), query.get('session'), query.get('split'))));
-      } catch (err) {
-        console.warn(`Stats failed: ${err.code ?? err.message}`);
-        res.writeHead(503, headers).end('Stats are not available right now.');
-      }
-    } else if (path === '/api/setup') {
-      try {
-        const report = buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: cfg.history.enabled ? history.count : null, notifications: notify.recent() });
-        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(report));
-      } catch (err) {
-        console.warn(`Setup report failed: ${err.code ?? err.message}`);
-        res.writeHead(503, headers).end('The setup report is not available right now.');
-      }
-    } else if (path === '/api/history') {
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.page({
-        before: query.get('before'),
-        after: query.get('after'),
-        limit: query.get('limit') ?? 100,
-        session: query.get('session'),
-        attention: query.get('attention') === '1',
-      })));
-    } else if (path === '/api/config-changes') {
-      const days = Math.min(30, Math.max(1, Number(query.get('days')) || 30));
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(shownChanges(configWatch.list(Date.now() - days * 86_400_000), shown)));
-    } else if (path === '/api/history/sessions') {
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.sessions()));
+    } else if (Object.hasOwn(api, path)) {
+      answer(api[path], query, res);
     } else {
-      const found = await lookup(path).catch(() => null);
-      if (!found) {
-        res.writeHead(404, headers).end('Not found');
-        return;
-      }
-      // Built assets have content hashes in their names and may be cached; the rest may not.
-      const cache = path.startsWith('/_next/static/') ? 'public, max-age=31536000, immutable' : 'no-store';
-      res.writeHead(200, {
-        ...headers,
-        'cache-control': cache,
-        'content-type': found.type,
-        'referrer-policy': 'no-referrer',
-        ...(found.csp ? { 'content-security-policy': found.csp } : {}),
-      }).end(found.body);
+      await servePage(lookup, path, res);
     }
   });
 
@@ -220,10 +266,17 @@ export async function main(argv) {
       : err));
     server.listen(cfg.port, HOST, resolve);
   });
+  announce(cfg, db, args.sample);
 
-  console.log(`opencode-monitor${VERSION ? ` ${VERSION}` : ''}: http://${HOST}:${cfg.port}`);
-  console.log(`  reading ${db.path} (read-only)${args.sample ? ' — SAMPLE DATA' : ''}`);
-  const channels = [cfg.notify.desktop && 'desktop', cfg.notify.discord.webhookUrl && 'Discord'].filter(Boolean);
-  console.log(`  history: ${!cfg.history.enabled ? 'off' : args.sample ? 'in memory only' : `${resolve(ROOT, cfg.history.file)} (kept ${cfg.history.retentionDays} days)`}`);
-  console.log(`  notifications: ${channels.length ? `${channels.join(' + ')} on ${cfg.notify.on.join(', ')}` : 'off'}`);
+  return {
+    port: cfg.port,
+    /** Stops polling, ends open page connections, and lets go of the port and the database. */
+    close: async () => {
+      clearInterval(timer);
+      for (const res of clients) res.end();
+      server.closeAllConnections();
+      await new Promise(done => server.close(done));
+      db.close();
+    },
+  };
 }

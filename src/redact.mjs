@@ -18,7 +18,7 @@ const RULES = [
   // Tokens with a recognisable prefix: SonarQube, GitHub, GitLab, OpenAI-style, Slack, AWS, Google, JWT
   [/\b(?:sq[upa]_[0-9a-f]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{5,})/g, MASK],
   // Authorization header values
-  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, `$1 ${MASK}`],
+  [/\b(Bearer|Basic)\s+[a-z0-9._~+/=-]{8,}/gi, `$1 ${MASK}`],
   // --password value, --token=value
   // (name parts are length-capped so long unbroken output cannot make these patterns slow)
   [new RegExp(String.raw`(--?[\w-]{0,40}${SECRET_NAME}[\w-]{0,40}(?:\s+|=))("[^"]*"|'[^']*'|\S+)`, 'gi'), keepHarmless],

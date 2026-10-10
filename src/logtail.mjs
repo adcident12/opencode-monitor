@@ -31,7 +31,7 @@ const LINES_AFTER_DISPOSE = 3;
 export function liveRuns(runs) {
   const open = [...runs].filter(([, r]) => r.afterDispose == null || r.afterDispose > LINES_AFTER_DISPOSE);
   if (!open.length) return new Set();
-  const newest = open.reduce((a, b) => (b[1].last >= a[1].last ? b : a));
+  const newest = open.reduce((a, b) => (b[1].last >= a[1].last ? b : a), open[0]);
   return new Set(open.filter(([, r]) => r.last >= newest[1].first).map(([id]) => id));
 }
 
@@ -40,7 +40,7 @@ const REPLY = /^timestamp=(\S+) level=\S+ run=\S+ message=replied requestID=(que
 /** The answer to a question prompt: { t, id }. Permission answers are not logged. */
 export function parseReplyLine(line) {
   const m = REPLY.exec(line);
-  const t = m ? Date.parse(m[1]) : NaN;
+  const t = m ? Date.parse(m[1]) : Number.NaN;
   return Number.isNaN(t) ? null : { t, id: m[2] };
 }
 

@@ -48,7 +48,7 @@ export function resolveUnder(dir, urlPath) {
   }
   if (decoded.includes('\0') || decoded.includes('\\')) return null;
   const relative = normalize(decoded).replace(/^[/\\]+/, '');
-  if (relative.split(/[/\\]/).some(part => part === '..')) return null;
+  if (relative.split(/[/\\]/).includes('..')) return null;
   const file = join(dir, relative);
   return file === dir || file.startsWith(dir + sep) ? file : null;
 }

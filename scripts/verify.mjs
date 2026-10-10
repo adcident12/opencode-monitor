@@ -246,7 +246,10 @@ if (existsSync(logPath)) {
 const bad = rows.filter(r => !r.ok);
 let area = '';
 for (const r of rows) {
-  if (r.area !== area) console.log(`\n${(area = r.area)}`);
+  if (r.area !== area) {
+    area = r.area;
+    console.log(`\n${area}`);
+  }
   console.log(`  ${r.ok ? 'ok  ' : 'DIFF'} ${r.name.padEnd(46)} ${String(r.independent).padStart(14)} ${r.ok ? '' : `  monitor shows ${r.monitor}`}`);
 }
 console.log(`\n${rows.length - bad.length} of ${rows.length} figures agree with an independent count of this machine's data.`);

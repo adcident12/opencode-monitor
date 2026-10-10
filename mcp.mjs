@@ -23,7 +23,9 @@ process.emitWarning = function (warning, ...rest) {
 };
 
 const { mcpMain } = await import('./src/mcp-main.mjs');
-mcpMain(process.argv.slice(2)).catch(err => {
+try {
+  await mcpMain(process.argv.slice(2));
+} catch (err) {
   console.error(err?.userFacing ? `opencode-monitor: ${err.message}` : err);
   process.exit(1);
-});
+}

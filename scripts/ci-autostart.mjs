@@ -10,6 +10,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSample } from './make-sample.mjs';
+import { POWERSHELL } from '../src/programs.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4399;
@@ -82,7 +83,7 @@ if (!off.ok) fail('--autostart off did not succeed');
 if (process.platform === 'win32') {
   // Removing the task does not stop what it started; do that here.
   try {
-    execFileSync('powershell.exe', ['-NoProfile', '-Command', `Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`]);
+    execFileSync(POWERSHELL, ['-NoProfile', '-Command', `Get-NetTCPConnection -LocalPort ${PORT} -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`]);
   } catch {
     // Nothing was listening.
   }

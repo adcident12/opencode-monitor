@@ -9,6 +9,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { UserError } from './config.mjs';
+import { LAUNCHCTL, POWERSHELL } from './programs.mjs';
+import { trimEndOf } from './text.mjs';
 
 export const TASK_NAME = 'opencode-monitor';
 
@@ -21,7 +23,8 @@ export function quoteArg(value) {
   const text = String(value);
   if (/["\r\n\0]/.test(text)) throw new UserError(`Cannot start automatically with this in a path or option: ${text}`);
   // A trailing backslash would escape the closing quote.
-  return /[\s&|<>^%]/.test(text) || !text ? `"${text.replace(/\\+$/, m => m + m)}"` : text;
+  const body = trimEndOf(text, '\\');
+  return /[\s&|<>^%]/.test(text) || !text ? `"${body}${'\\'.repeat((text.length - body.length) * 2)}"` : text;
 }
 
 /**
@@ -51,7 +54,7 @@ if (Get-ScheduledTask -TaskName $env:OCM_TASK -ErrorAction SilentlyContinue) { U
 
 function powershell(script, env) {
   return new Promise((resolve, reject) => {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+    execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command', script],
       { windowsHide: true, timeout: 30_000, env: { ...process.env, ...env } },
       (err, stdout, stderr) => (err ? reject(new UserError(`Windows refused: ${(stderr || err.message).trim().split('\n')[0]}`)) : resolve(stdout.trim())));
   });
@@ -152,7 +155,7 @@ async function autostartUnix(mode, { platform, root, args, home, exec, files }) 
   if (mode === 'off') {
     const was = files.exists(unit.path);
     // Stopping fails when it was never loaded; removing the file is what matters.
-    if (mac) await exec('launchctl', ['bootout', `${domain}/${LABEL}`]).catch(() => {});
+    if (mac) await exec(LAUNCHCTL, ['bootout', `${domain}/${LABEL}`]).catch(() => {});
     else await exec('systemctl', ['--user', 'disable', '--now', UNIT]).catch(() => {});
     files.remove(unit.path);
     if (!mac) await exec('systemctl', ['--user', 'daemon-reload']).catch(() => {});
@@ -160,8 +163,8 @@ async function autostartUnix(mode, { platform, root, args, home, exec, files }) 
   }
   files.write(unit.path, unit.text);
   if (mac) {
-    await exec('launchctl', ['bootout', `${domain}/${LABEL}`]).catch(() => {}); // replace one already loaded
-    await exec('launchctl', ['bootstrap', domain, unit.path]);
+    await exec(LAUNCHCTL, ['bootout', `${domain}/${LABEL}`]).catch(() => {}); // replace one already loaded
+    await exec(LAUNCHCTL, ['bootstrap', domain, unit.path]);
   } else {
     await exec('systemctl', ['--user', 'daemon-reload']);
     await exec('systemctl', ['--user', 'enable', '--now', UNIT]);

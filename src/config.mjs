@@ -139,6 +139,22 @@ export function defaultOpencodeConfigDir(env = process.env) {
   return env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'opencode') : join(homedir(), '.config', 'opencode');
 }
 
+/** Refuses settings the monitor cannot run with, in words that say which one. */
+function validate(cfg) {
+  if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new UserError(`Invalid port: ${cfg.port}`);
+  if (!(cfg.pollMs >= 500)) throw new UserError('pollMs must be at least 500.');
+  if (!['off', 'local', 'all'].includes(cfg.environment.modelServers)) throw new UserError('environment.modelServers must be "off", "local", or "all".');
+  if (!Array.isArray(cfg.services)) throw new UserError('services must be a list.');
+  const hook = cfg.notify.discord.webhookUrl;
+  if (hook && !/^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(hook)) {
+    throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
+  }
+
+  const { weekday, hour } = cfg.notify.weekly;
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new UserError('notify.weekly.hour must be 0 to 23.');
+}
+
 export function loadConfig(args = {}, env = process.env) {
   const path = resolve(args.config ?? join(ROOT, 'config.json'));
   let fromFile = {};
@@ -160,18 +176,7 @@ export function loadConfig(args = {}, env = process.env) {
   if (args.assumeRunning) cfg.processCheck = false;
   if (args.noNotify) cfg.notify = merge(cfg.notify, { desktop: false, discord: { webhookUrl: '' } });
 
-  if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new UserError(`Invalid port: ${cfg.port}`);
-  if (!(cfg.pollMs >= 500)) throw new UserError('pollMs must be at least 500.');
-  if (!['off', 'local', 'all'].includes(cfg.environment.modelServers)) throw new UserError('environment.modelServers must be "off", "local", or "all".');
-  if (!Array.isArray(cfg.services)) throw new UserError('services must be a list.');
-  const hook = cfg.notify.discord.webhookUrl;
-  if (hook && !/^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(hook)) {
-    throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
-  }
-
-  const { weekday, hour } = cfg.notify.weekly;
-  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new UserError('notify.weekly.hour must be 0 to 23.');
+  validate(cfg);
 
   // Where the settings came from, for --doctor and the setup page.
   cfg.configFile = { path, found: existsSync(path) };

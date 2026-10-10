@@ -202,7 +202,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
         });
       }
     }
-    return { failed: leftovers.failed(), items: items.sort((a, b) => b.startedAt - a.startedAt) };
+    return { failed: leftovers.failed(), items: items.toSorted((a, b) => b.startedAt - a.startedAt) };
   }
 
   // Tool calls worth a second look, newest first, with who let each one run.

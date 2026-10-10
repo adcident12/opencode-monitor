@@ -54,9 +54,9 @@ export default function Page() {
       <UpdateBanner served={snapshot?.build ?? null} />
       <Header snapshot={snapshot} connected={connected} tone={tone} />
       {snapshot?.opencodeUntested && (
-        <p role="status" className="rounded-lg bg-waiting-soft/60 px-3.5 py-2.5 text-sm text-waiting">
+        <output className="block rounded-lg bg-waiting-soft/60 px-3.5 py-2.5 text-sm text-waiting">
           {t("oc.untested", { version: snapshot.opencodeVersion ?? "", tested: snapshot.opencodeTested ?? "" })}
-        </p>
+        </output>
       )}
       <Environment environment={snapshot?.environment ?? null} />
 

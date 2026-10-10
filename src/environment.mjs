@@ -3,6 +3,7 @@
 import { connect } from 'node:net';
 import { isLocalHost } from './audit.mjs';
 import { mergeServers } from './mcp.mjs';
+import { trimEndOf } from './text.mjs';
 
 const TIMEOUT_MS = 4000;
 
@@ -97,9 +98,9 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
   const mode = cfg.environment.modelServers;
   const modelTargets = opencode.providers
     .filter(p => mode === 'all' || (mode === 'local' && isLocalHost(targetOf(p.baseURL))))
-    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(p.baseURL.replace(/\/+$/, '') + '/models') }));
+    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(`${trimEndOf(p.baseURL, '/')}/models`) }));
   const serviceTargets = (cfg.services ?? [])
-    .filter(s => s && s.name && (s.url || (s.host && s.port)))
+    .filter(s => s?.name && (s.url || (s.host && s.port)))
     .map(s => (s.url
       ? { name: String(s.name), target: targetOf(s.url), run: () => httpCheck(s.url) }
       : { name: String(s.name), target: `${s.host}:${s.port}`, run: () => tcpCheck(s.host, Number(s.port)) }));

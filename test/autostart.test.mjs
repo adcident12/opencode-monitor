@@ -61,7 +61,7 @@ test('Linux: a systemd user unit whose command line a path cannot bend', () => {
 });
 
 test('macOS and Linux: on writes the unit and tells the system; off undoes both', async () => {
-  for (const [platform, tool] of [['darwin', 'launchctl'], ['linux', 'systemctl']]) {
+  for (const [platform, tool] of [['darwin', '/bin/launchctl'], ['linux', 'systemctl']]) {
     const written = new Map();
     const calls = [];
     const files = { write: (path, text) => written.set(path, text), remove: path => written.delete(path), exists: path => written.has(path) };

@@ -31,7 +31,7 @@ export function Header({ snapshot, connected, tone }: { snapshot: Snapshot | nul
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground" role="status">
+      <output className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-2">
           <Dot tone={live ? "ok" : "bad"} />
           {t(!connected ? "conn.lost" : snapshot?.stale ? "conn.stale" : "conn.live")}
@@ -40,7 +40,7 @@ export function Header({ snapshot, connected, tone }: { snapshot: Snapshot | nul
           <Dot tone={running === true ? "ok" : running === false ? "bad" : "unknown"} />
           {t(running === true ? "oc.running" : running === false ? "oc.stopped" : "oc.unknown")}
         </span>
-      </div>
+      </output>
 
       <div className="flex items-center gap-2">
         <Select value={lang} onValueChange={value => setLang(value as Lang)} items={LANGUAGES.map(l => ({ value: l.code, label: l.label }))}>

@@ -10,20 +10,40 @@ const PROJECT_CONFIG_FILES = ['opencode.json', 'opencode.jsonc', join('.opencode
 const PROJECT_CONFIG_MAX_BYTES = 256 * 1024;
 const MAX_NAME = 64;
 
+/** Where the comment starting at `i` ends, or `i` itself when no comment starts there. */
+function commentEnd(text, i) {
+  if (text.startsWith('//', i)) {
+    const end = text.indexOf('\n', i);
+    return end === -1 ? text.length : end;
+  }
+  if (text.startsWith('/*', i)) {
+    const end = text.indexOf('*/', i + 2);
+    return end === -1 ? text.length : end + 2;
+  }
+  return i;
+}
+
 /** Past any space and comments from `j`. */
 function skipBlank(text, j) {
   for (;;) {
     while (j < text.length && /\s/.test(text[j])) j++;
-    if (text.startsWith('//', j)) {
-      const end = text.indexOf('\n', j);
-      j = end === -1 ? text.length : end;
-    } else if (text.startsWith('/*', j)) {
-      const end = text.indexOf('*/', j + 2);
-      j = end === -1 ? text.length : end + 2;
-    } else {
-      return j;
-    }
+    const end = commentEnd(text, j);
+    if (end === j) return j;
+    j = end;
   }
+}
+
+/** Just past the closing quote of the string that opens at `i`. */
+function stringEnd(text, i) {
+  let j = i + 1;
+  while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+  return j + 1;
+}
+
+/** A comma with only space and comments between it and the closing bracket. */
+function isTrailingComma(text, i) {
+  const next = text[skipBlank(text, i + 1)];
+  return next === '}' || next === ']';
 }
 
 // JSON with // and /* */ comments and trailing commas -> plain JSON.
@@ -32,25 +52,10 @@ export function stripJsonc(text) {
   let i = 0;
   while (i < text.length) {
     const ch = text[i];
-    if (ch === '"') {
-      let j = i + 1;
-      while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
-      out += text.slice(i, j + 1);
-      i = j + 1;
-    } else if (ch === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i++;
-    } else if (ch === '/' && text[i + 1] === '*') {
-      const end = text.indexOf('*/', i + 2);
-      i = end === -1 ? text.length : end + 2;
-    } else if (ch === ',') {
-      // Trailing, when only space and comments stand between it and the closing bracket.
-      const j = skipBlank(text, i + 1);
-      if (text[j] !== '}' && text[j] !== ']') out += ch;
-      i++;
-    } else {
-      out += ch;
-      i++;
-    }
+    const end = ch === '"' ? stringEnd(text, i) : commentEnd(text, i);
+    if (ch === '"') out += text.slice(i, end);
+    else if (end === i && !(ch === ',' && isTrailingComma(text, i))) out += ch;
+    i = Math.max(end, i + 1);
   }
   return out;
 }

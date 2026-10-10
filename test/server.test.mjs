@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -21,11 +22,12 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 const PORT = await freePort();
 const OTHER_PORT = await freePort();
+const INNER_PORT = await freePort();
 
 // fetch() will not let a test set the Host header, so use node:http directly.
-function get(path, host = `127.0.0.1:${PORT}`) {
+function get(path, host = null, port = PORT) {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port: PORT, path, headers: { host } }, res => {
+    const req = request({ host: '127.0.0.1', port, path, headers: { host: host ?? `127.0.0.1:${port}` } }, res => {
       let body = '';
       res.on('data', chunk => (body += chunk));
       res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], csp: res.headers['content-security-policy'], body }));
@@ -97,6 +99,84 @@ test('server: sample mode serves the page, the state, and the history; refuses f
   } finally {
     child.kill();
   }
+});
+
+/** Runs `fn` with what it prints collected instead of shown. */
+async function printed(fn) {
+  const lines = [];
+  const { log, warn } = console;
+  console.log = (...parts) => lines.push(parts.join(' '));
+  console.warn = (...parts) => lines.push(parts.join(' '));
+  try {
+    const result = await fn();
+    return { result, text: lines.join('\n') };
+  } finally {
+    Object.assign(console, { log, warn });
+  }
+}
+
+// The same monitor inside this process, so that it can be stopped: what the spawned one
+// above cannot show is that it lets go of everything when asked.
+test('server: started and stopped in this process; every address answers', async () => {
+  const { main } = await import('../src/main.mjs');
+  const here = (path, host = null) => get(path, host, INNER_PORT);
+  const { result: monitor, text } = await printed(() => main(['--sample', '--port', String(INNER_PORT)]));
+  try {
+    assert.equal(monitor.port, INNER_PORT);
+    assert.match(text, /SAMPLE DATA/);
+    assert.match(text, /history: in memory only\n {2}notifications: off/);
+
+    for (const path of ['/api/state', '/api/stats?days=14', '/api/setup', '/api/history?limit=2&attention=1', '/api/history/sessions', '/api/config-changes']) {
+      const res = await here(path);
+      assert.deepEqual([res.status, res.type], [200, 'application/json; charset=utf-8'], path);
+      JSON.parse(res.body);
+    }
+    assert.equal(JSON.parse((await here('/api/history?limit=2')).body).events.length, 2);
+    const page = await here('/');
+    assert.equal(page.status, 200);
+    assert.match(page.csp, /default-src/);
+    assert.equal((await here('/no-such-file')).status, 404);
+    assert.equal((await here('/api/nope')).status, 404);
+    assert.equal((await here('/', 'evil.example')).status, 403);
+    // "constructor" is a property of every object; it must not be taken for an address.
+    assert.equal((await here('/constructor')).status, 404);
+
+    // The live stream sends the state at once.
+    const first = await new Promise((resolve, reject) => {
+      const req = request({ host: '127.0.0.1', port: INNER_PORT, path: '/api/events', headers: { host: `127.0.0.1:${INNER_PORT}` } }, res => {
+        res.once('data', chunk => {
+          resolve({ type: res.headers['content-type'], chunk: String(chunk) });
+          req.destroy();
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(first.type, 'text/event-stream; charset=utf-8');
+    assert.match(first.chunk, /^data: \{/);
+  } finally {
+    await monitor.close();
+  }
+  // Stopped: the port is free again.
+  await assert.rejects(here('/api/state'), /ECONNREFUSED/);
+  const again = createServer();
+  await new Promise((resolve, reject) => again.once('error', reject).listen(INNER_PORT, '127.0.0.1', resolve));
+  await new Promise(resolve => again.close(resolve));
+});
+
+test('the options that print and are done: --version, --help, --doctor', async () => {
+  const { main } = await import('../src/main.mjs');
+  const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  assert.equal((await printed(() => main(['--version']))).text, version);
+  assert.match((await printed(() => main(['--help']))).text, /--data-dir <path>/);
+  // A data directory with no database: the report still comes, and says what is missing.
+  // Its own empty settings file, so the test does not depend on this machine's config.json.
+  const settings = join(mkdtempSync(join(tmpdir(), 'ocm-doctor-')), 'config.json');
+  writeFileSync(settings, '{}');
+  const doctor = await printed(() => main(['--doctor', '--config', settings, '--data-dir', join(ROOT, 'test', 'no-such-dir'), '--no-notify']));
+  assert.equal(doctor.result, undefined);
+  assert.match(doctor.text, /opencode\.db/);
+  assert.match(doctor.text, /Weekly summary: off/);
 });
 
 test('server: clear messages for a missing database and a bad option', async () => {

@@ -10,7 +10,7 @@ const testDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'test');
 const files = readdirSync(testDir).filter(name => name.endsWith('.test.mjs')).map(name => join(testDir, name));
 
 // Annotation text is a single line; GitHub decodes these escapes.
-const oneLine = text => String(text).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+const oneLine = text => String(text).replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
 
 const stream = run({ files, concurrency: true });
 stream.on('test:fail', event => {

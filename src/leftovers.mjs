@@ -7,6 +7,8 @@
 // background-flagged call, and sharing distinctive words with that command. Its children
 // (the node behind an npm, say) come along, since they are what actually holds the port.
 import { execFile } from 'node:child_process';
+import { NETSTAT, POWERSHELL } from './programs.mjs';
+import { fields, trimEndOf, trimStartOf } from './text.mjs';
 
 const START_WINDOW_MS = 60_000;
 const EARLY_MS = 3_000;
@@ -21,8 +23,8 @@ export function tokens(command) {
   const words = String(command ?? '').toLowerCase().match(/[a-z0-9_.@:-]{2,}/g) ?? [];
   const out = new Set();
   for (const raw of words) {
-    const word = raw.replace(/^[-:.]+|[-:.]+$/g, '').replace(/\.(cmd|exe|ps1)$/, '');
-    if (word.length < 2 || COMMON.has(word) || COMMON.has(word.replace(/-/g, ''))) continue;
+    const word = trimEndOf(trimStartOf(raw, '-:.'), '-:.').replace(/\.(cmd|exe|ps1)$/, '');
+    if (word.length < 2 || COMMON.has(word) || COMMON.has(word.replaceAll('-', ''))) continue;
     if (/^\d+$/.test(word) && word.length < 4) continue; // "2", "12": noise; "3000", "5173": ports
     out.add(word);
   }
@@ -102,7 +104,7 @@ export function parseWindowsProcesses(json) {
     pid: p.ProcessId,
     ppid: p.ParentProcessId,
     // Windows PowerShell 5.1 writes dates as "/Date(1700000000000)/".
-    startedAt: Number(/\d{10,}/.exec(String(p.CreationDate ?? ''))?.[0] ?? NaN),
+    startedAt: Number(/\d{10,}/.exec(String(p.CreationDate ?? ''))?.[0] ?? Number.NaN),
     name: String(p.Name ?? ''),
     command: String(p.CommandLine ?? ''),
   })).filter(p => Number.isFinite(p.startedAt));
@@ -124,18 +126,19 @@ export function parseNetstat(text) {
 /** ps "etime": [[dd-]hh:]mm:ss -> seconds. */
 export function parseEtime(text) {
   const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim());
-  if (!m) return NaN;
+  if (!m) return Number.NaN;
   return ((Number(m[1] ?? 0) * 24 + Number(m[2] ?? 0)) * 60 + Number(m[3])) * 60 + Number(m[4]);
 }
 
 export function parsePs(text, now) {
   const out = [];
   for (const line of text.split('\n')) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
-    const seconds = m ? parseEtime(m[3]) : NaN;
-    if (!m || Number.isNaN(seconds)) continue;
-    const command = m[4].trim();
-    out.push({ pid: Number(m[1]), ppid: Number(m[2]), startedAt: now - seconds * 1000, name: command.split(/\s+/)[0].split('/').pop(), command });
+    const m = fields(line, 3);
+    if (!m || !/^\d+$/.test(m[0]) || !/^\d+$/.test(m[1])) continue;
+    const seconds = parseEtime(m[2]);
+    if (Number.isNaN(seconds)) continue;
+    const command = m[3];
+    out.push({ pid: Number(m[0]), ppid: Number(m[1]), startedAt: now - seconds * 1000, name: command.split(/\s+/)[0].split('/').pop(), command });
   }
   return out;
 }
@@ -160,8 +163,8 @@ async function readProcessTable() {
   const now = Date.now();
   if (process.platform === 'win32') {
     const [procs, net] = await Promise.all([
-      run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WIN_PROCESSES]),
-      run('netstat', ['-ano', '-p', 'TCP']).catch(() => ''),
+      run(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command', WIN_PROCESSES]),
+      run(NETSTAT, ['-ano', '-p', 'TCP']).catch(() => ''),
     ]);
     return { processes: parseWindowsProcesses(procs), ports: parseNetstat(net) };
   }

@@ -40,9 +40,9 @@ const RISKY = [
 ];
 
 // A command built at run time cannot be judged by reading it. Say so instead of staying quiet.
-const HIDDEN = /\beval\s|\b(?:iex|Invoke-Expression)\b|-(?:EncodedCommand|enc|ec)\s+[A-Za-z0-9+/=]{16,}|\bbase64\s+(?:-d|--decode)\b|\bFromBase64String\b|\b(?:sh|bash|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-\w+\s+)*(?:-c|\/c|-Command)\s+["']?\$\(|\|\s*(?:sh|bash|zsh)\b|\bxargs\s+(?:-\S+\s+)*(?:sh|bash|rm)\b|\$\{?IFS\b/i;
+const HIDDEN = /\beval\s|\b(?:iex|Invoke-Expression)\b|-(?:EncodedCommand|enc|ec)\s+[a-z0-9+/=]{16,}|\bbase64\s+(?:-d|--decode)\b|\bFromBase64String\b|\b(?:sh|bash|zsh|pwsh|powershell|cmd)(?:\.exe)?\s+(?:-\w+\s+)*(?:-c|\/c|-Command)\s+["']?\$\(|\|\s*(?:sh|bash|zsh)\b|\bxargs\s+(?:-\S+\s+)*(?:sh|bash|rm)\b|\$\{?IFS\b/i;
 // A variable in command position ($RM -rf x, & $tool args): the program run is not in the text.
-const VARIABLE_COMMAND = /(?:^|[;&|\n]\s*|&\s+)\$\{?[A-Za-z_]\w*\}?[ \t]+[-\w"'./~]/m;
+const VARIABLE_COMMAND = /(?:^|[;&|])[ \t]*\$\{?[A-Za-z_]\w*\}?[ \t]+[-\w"'./~]/m;
 
 // The shell joins continued lines and drops quotes, carets and backslash escapes before
 // running a word, so r"m" -rf, 'rm' -rf and r\m -rf are all rm -rf. Rules are tried on

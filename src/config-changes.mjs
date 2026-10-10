@@ -10,6 +10,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFil
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { stripJsonc } from './opencode-config.mjs';
+import { compareText } from './text.mjs';
 
 const DAY_MS = 86_400_000;
 const MAX_DEPTH = 10;
@@ -52,6 +53,11 @@ export function flattenSettings(config) {
   return out;
 }
 
+function kindOf(before, after) {
+  if (before === undefined) return 'added';
+  return after === undefined ? 'removed' : 'changed';
+}
+
 const hidden = v => typeof v === 'string' && v.startsWith('#');
 
 /**
@@ -65,10 +71,10 @@ export function diffSettings(before, after) {
     const a = before.has(path) ? before.get(path) : undefined;
     const b = after.has(path) ? after.get(path) : undefined;
     if (a === b) continue;
-    const kind = a === undefined ? 'added' : b === undefined ? 'removed' : 'changed';
+    const kind = kindOf(a, b);
     all.push(hidden(a) || hidden(b) ? { path, kind, hidden: true } : { path, kind, from: a ?? null, to: b ?? null });
   }
-  all.sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : 0));
+  all.sort((x, y) => compareText(x.path, y.path));
   return { changes: all.slice(0, MAX_CHANGES), more: Math.max(0, all.length - MAX_CHANGES) };
 }
 

@@ -54,5 +54,6 @@ export async function mcpMain(argv) {
     db.close();
     process.exit(0);
   });
-  console.error(`opencode-monitor MCP${VERSION ? ` ${VERSION}` : ''}: reading ${db.path} (read-only)`);
+  const version = VERSION ? ` ${VERSION}` : '';
+  console.error(`opencode-monitor MCP${version}: reading ${db.path} (read-only)`);
 }

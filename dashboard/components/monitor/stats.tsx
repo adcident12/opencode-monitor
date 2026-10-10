@@ -103,7 +103,7 @@ const SHOWN_SETTINGS = 4
  */
 function ConfigChanges({ changes, days, split, onCompare }: { changes: ConfigChange[]; days: number; split: string | null; onCompare: (day: string) => void }) {
   const { t, lang } = useI18n()
-  const splittable = useSplittable(days).map(dayOf)
+  const splittable = new Set(useSplittable(days).map(dayOf))
   if (!changes.length) return null
   const when = new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
   const told = (s: ConfigChange["changes"][number]) => {
@@ -114,7 +114,7 @@ function ConfigChanges({ changes, days, split, onCompare }: { changes: ConfigCha
   }
   const action = (day: string) => {
     if (split === day) return <span className="text-sm whitespace-nowrap text-muted-foreground">{t("config.comparing")}</span>
-    if (!splittable.includes(day)) return <span className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">{t("config.tooEarly")}</span>
+    if (!splittable.has(day)) return <span className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">{t("config.tooEarly")}</span>
     return (
       <Button variant="outline" size="sm" className="self-start" onClick={() => onCompare(day)}>
         {t("config.compare")}
@@ -202,18 +202,17 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
   const { before, after } = compare
   const day = new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(new Date(`${compare.split}T12:00:00`))
   const pct = (n: number) => `${n}%`
-  const each = (n: number) => String(n)
   const metrics: Metric[] = [
     { key: "startTokens", better: "lower", show: compact },
-    { key: "compactionsPerSession", better: "lower", show: each },
-    { key: "rereadsPerSession", better: "lower", show: each },
+    { key: "compactionsPerSession", better: "lower", show: String },
+    { key: "rereadsPerSession", better: "lower", show: String },
     { key: "toolErrorPct", better: "lower", show: pct },
     { key: "mcpNoAnswerPct", better: "lower", show: pct },
     { key: "cachedPct", better: "higher", show: pct },
     { key: "costPerSession", better: "lower", show: money },
     { key: "writeTps", better: "higher", show: n => t("stats.speedTps", { n: n < 100 ? n.toFixed(1) : Math.round(n) }) },
     { key: "firstTokenMs", better: "lower", show: quick },
-    { key: "toolCallsPerSession", better: null, show: each },
+    { key: "toolCallsPerSession", better: null, show: String },
     { key: "medianAnswerMs", better: null, show: duration },
   ]
   const thin = Math.min(before.sessions, after.sessions) < 3
@@ -737,7 +736,7 @@ function Speed({ stats }: { stats: StatsData }) {
             </tbody>
           </table>
         </div>
-        <Bars title={t("stats.speedChart", { model: main.model })} summary={tps(main.writeTps)} points={points} color="var(--color-working)" tick={v => String(v)} />
+        <Bars title={t("stats.speedChart", { model: main.model })} summary={tps(main.writeTps)} points={points} color="var(--color-working)" tick={String} />
       </div>
     </section>
   )

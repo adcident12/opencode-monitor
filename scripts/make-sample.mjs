@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { compareText } from '../src/text.mjs';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -212,7 +213,8 @@ export function buildSample(dir, now = Date.now()) {
   }, null, 2));
 
   db.close();
-  logLines.sort();
+  // Each line starts with its time in ISO form, so order by text is order by time.
+  logLines.sort(compareText);
   writeFileSync(join(dir, 'log', 'opencode.log'), logLines.join('\n') + '\n');
   return dir;
 }

@@ -97,7 +97,7 @@ export function turnsOf(ctx, { messages, where, show }) {
     t.ending = endingOf(last, ctx.now, t.followed);
     t.ms = last ? Math.max(0, (last.completed ?? last.time_created) - t.at) : 0;
     ended[t.ending]++;
-    if (t.ending === 'cut') cut.push({ at: last.time_created, model: last.model_id ? show(`${last.provider_id ?? ''}/${last.model_id}`.replace(/^\//, ''), 80) : null, ...where(t.session) });
+    if (last && t.ending === 'cut') cut.push({ at: last.time_created, model: last.model_id ? show(`${last.provider_id ?? ''}/${last.model_id}`.replace(/^\//, ''), 80) : null, ...where(t.session) });
   }
   const finished = inRange.filter(t => t.ending !== 'open');
   return {
@@ -106,7 +106,7 @@ export function turnsOf(ctx, { messages, where, show }) {
     medianSteps: median(finished.map(t => t.replies.length)),
     medianMs: median(finished.map(t => t.ms)),
     longestMs: finished.length ? Math.max(...finished.map(t => t.ms)) : null,
-    cut: cut.sort((a, b) => b.at - a.at).slice(0, TOP),
+    cut: cut.toSorted((a, b) => b.at - a.at).slice(0, TOP),
   };
 }
 

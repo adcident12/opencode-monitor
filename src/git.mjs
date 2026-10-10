@@ -57,7 +57,7 @@ export function isSafeLocalPath(path) {
 
 /** Accepts only the two forms git itself writes; anything else yields no branch. */
 export function parseHead(text) {
-  const ref = /^ref: refs\/heads\/([^\s\u0000-\u001f]{1,250})\n?$/.exec(text)?.[1];
+  const ref = /^ref: refs\/heads\/([^\s\u0000-\u0008\u000e-\u001f]{1,250})\n?$/.exec(text)?.[1];
   if (ref) return { branch: ref, detached: false };
   const hash = /^([0-9a-f]{40}(?:[0-9a-f]{24})?)\n?$/i.exec(text)?.[1];
   return hash ? { branch: hash.slice(0, 7), detached: true } : { branch: null, detached: false };

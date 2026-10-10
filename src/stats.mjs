@@ -41,7 +41,7 @@ const median = values => {
 
 const startOf = p => p.started ?? p.time_created;
 const isExploreTool = tool => tool === 'read' || tool === 'grep' || tool === 'glob';
-const isGraft = tool => /^graft_/.test(tool);
+const isGraft = tool => tool.startsWith('graft_');
 
 /**
  * Pairs each prompt from the log with what answered it.
@@ -439,7 +439,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const where = id => {
     const s = sessionById.get(id);
     const directory = s?.directory ?? '';
-    return { project: show(directory.split(/[\\/]/).filter(Boolean).pop() ?? '', 80), title: show(s?.title ?? '', 120) };
+    return { project: show(directory.split(/[\\/]/).findLast(Boolean) ?? '', 80), title: show(s?.title ?? '', 120) };
   };
 
   for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) bucket(s.time_created) && bucket(s.time_created).sessions++;
@@ -535,7 +535,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
         ...(p.part ? where(p.part.session_id) : { project: '', title: '' }),
       })),
     slow: slow
-      .sort((a, b) => b.runMs - a.runMs)
+      .toSorted((a, b) => b.runMs - a.runMs)
       .slice(0, TOP)
       .map(({ p, runMs, running }) => ({ at: startOf(p), tool: p.tool, text: show(describe(p), 200), runMs, status: p.status, running, ...where(p.session_id) })),
     tools: [...perTool.values()].sort((a, b) => b.count - a.count).slice(0, 15),

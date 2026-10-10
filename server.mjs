@@ -19,7 +19,9 @@ process.emitWarning = function (warning, ...rest) {
 };
 
 const { main } = await import('./src/main.mjs');
-main(process.argv.slice(2)).catch(err => {
+try {
+  await main(process.argv.slice(2));
+} catch (err) {
   console.error(err?.userFacing ? `opencode-monitor: ${err.message}` : err);
   process.exit(1);
-});
+}
