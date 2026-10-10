@@ -13,6 +13,9 @@ const MIN_OUTPUT_TOKENS = 20;
 const MIN_PROMPT_TOKENS = 500;
 const MIN_TIMED_MS = 300;
 const TOP_MODELS = 6;
+const MAX_CONTEXT_POINTS = 240;
+// How many requests after a compaction to look at for the context it left behind.
+const SETTLE_REQUESTS = 3;
 
 /** Local calendar day, YYYY-MM-DD. */
 export function dayKey(t) {
@@ -171,6 +174,47 @@ export function summarize(stats, model = null) {
   };
 }
 
+/**
+ * How one session's context filled up: the size of each request, where it was compacted,
+ * and how many files the agent then had to read a second time.
+ * @param {object[]} requests     { t, tokens, model } of the session's own requests, oldest first
+ * @param {number[]} compactions  times, ascending
+ * @param {object[]} reads        { t, file } of its completed read calls, oldest first
+ */
+export function contextTimeline({ requests, compactions, reads, limit = null }) {
+  if (!requests.length) return null;
+  const edges = [...compactions, Infinity];
+  const marks = compactions.map((t, i) => {
+    const seen = new Set(reads.filter(r => r.t < t).map(r => r.file));
+    const again = new Set(reads.filter(r => r.t >= t && r.t < edges[i + 1] && seen.has(r.file)).map(r => r.file));
+    return {
+      t,
+      // Index of the first request after the compaction, to place it on the chart.
+      at: requests.findIndex(r => r.t >= t),
+      before: requests.findLast(r => r.t < t)?.tokens ?? null,
+      // The first request after the marker is usually the summarising call itself, which
+      // still carries the whole context; the smaller context shows a request or two later.
+      after: requests.filter(r => r.t >= t && r.t < edges[i + 1]).slice(0, SETTLE_REQUESTS).reduce((low, r) => (low == null || r.tokens < low ? r.tokens : low), null),
+      reread: again.size,
+    };
+  });
+  // Too many points to draw: keep the largest of each stretch, so no peak is lost.
+  const step = Math.ceil(requests.length / MAX_CONTEXT_POINTS);
+  const points = [];
+  for (let i = 0; i < requests.length; i += step) {
+    const chunk = requests.slice(i, i + step);
+    points.push(chunk.reduce((a, b) => (b.tokens > a.tokens ? b : a)));
+  }
+  return {
+    limit,
+    peak: Math.max(...requests.map(r => r.tokens)),
+    requests: requests.length,
+    points: points.map(p => ({ t: p.t, tokens: p.tokens })),
+    compactions: marks.map(m => ({ ...m, at: m.at === -1 ? null : Math.floor(m.at / step) })),
+    rereadAfterCompaction: marks.reduce((n, m) => n + m.reread, 0),
+  };
+}
+
 /** The session itself and every subagent session under it. */
 function withDescendants(sessions, sessionId) {
   const scope = new Set([sessionId]);
@@ -200,10 +244,11 @@ function withDescendants(sessions, sessionId) {
  * @param {Map<string, number[]>} input.eventTimes tool part id -> update times, ascending
  * @param {(text: string) => string} input.show redact and shorten for display
  * @param {string|null} [input.sessionId] count only this session and its subagents
+ * @param {(provider: string, model: string) => number|null} [input.contextLimit]
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map() }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0 }]));
@@ -225,6 +270,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
   const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
   const timed = []; // requests whose first token and last written token are both known
+  const own = []; // the selected session's own requests, for its context timeline
   for (const m of messages) {
     if (m.role !== 'assistant' || !inScope(m.session_id)) continue;
     const start = Math.max(m.time_created, from);
@@ -234,6 +280,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     const sent = (m.tokens_input ?? 0) + (m.tokens_cache_read ?? 0) + (m.tokens_cache_write ?? 0);
     const b = bucket(m.time_created);
     if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
+    if (m.session_id === sessionId && sent > 0) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
     usage.requests++;
     usage.input += m.tokens_input ?? 0;
     usage.cacheRead += m.tokens_cache_read ?? 0;
@@ -371,6 +418,15 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // failure counts are left out rather than shown for the wrong session.
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
     mcpLogFrom: mcp?.logFrom ?? null,
+    // Only for one session: a context window belongs to a session, not to a period.
+    context: sessionId
+      ? contextTimeline({
+          requests: own.sort((a, b) => a.t - b.t),
+          compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
+          reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
+          limit: own.length ? contextLimit(own.at(-1).provider, own.at(-1).model) : null,
+        })
+      : null,
     speed: computeSpeed({ requests: timed, keys, show }),
     usage: {
       ...usage,

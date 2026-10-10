@@ -27,6 +27,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
   compare: null,
+  context: null,
   speed: { models: [{ model: "local-llama/qwen3.8-27b-v3", requests: 118, writeTps: 31.6, readTps: 540, firstTokenMs: 1200, daily: [] }] },
   usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
   stuckMs: 600_000,
@@ -54,7 +55,8 @@ beforeEach(() => {
         return Response.json(figures({ compare: { split, model: "local-llama/qwen3.8-27b-v3", before: summary(), after } }))
       }
       const one = url.includes("session=ses_shop")
-      return Response.json(figures(one ? { session: { id: "ses_shop", title: "Checkout flow", project: "shop" }, mcp: [server("memory", { unused: true, disconnects: null, startFailures: null })] } : {}))
+      const context = { limit: 131_072, peak: 120_000, requests: 4, rereadAfterCompaction: 3, points: [30_000, 120_000, 35_000, 60_000].map((tokens, i) => ({ t: NOW + i, tokens })), compactions: [{ t: NOW + 2, at: 2, before: 120_000, after: 35_000, reread: 3 }] }
+      return Response.json(figures(one ? { context, session: { id: "ses_shop", title: "Checkout flow", project: "shop" }, mcp: [server("memory", { unused: true, disconnects: null, startFailures: null })] } : {}))
     }
     const code = /\/i18n\/(\w+)\.json$/.exec(url)?.[1] ?? "en"
     return new Response(readFileSync(join(__dirname, "..", "..", "..", "i18n", `${code}.json`), "utf8"))
@@ -153,5 +155,9 @@ describe("MCP servers in Stats", () => {
     expect(requested.some(url => url.includes("session=ses_shop"))).toBe(true)
     expect(screen.queryByText("chrome-devtools")).not.toBeInTheDocument()
     expect(screen.getByText("Switched on but never called in this session: memory.")).toBeInTheDocument()
+    // Its context: how full it got, and what the compaction cost.
+    expect(screen.getByText("peak 120k of 131k (92%)")).toBeInTheDocument()
+    expect(screen.getByText("compacted from 120k to 35.0k")).toBeInTheDocument()
+    expect(screen.getByText("3 files read again afterwards")).toBeInTheDocument()
   })
 })

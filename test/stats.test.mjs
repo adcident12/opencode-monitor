@@ -247,3 +247,31 @@ test('before and after a day: rates and typical values, so halves of different l
   const empty = summarize(run({ sessions: [] }));
   assert.deepEqual([empty.compactionsPerSession, empty.toolErrorPct, empty.writeTps, empty.startTokens], [null, null, null, null]);
 });
+
+test('one session: how its context filled, where it was compacted, and what was read again', () => {
+  const at = NOW - 5 * HOUR;
+  const reply = (offset, sent) => ({
+    id: `m${offset}`, session_id: 's1', role: 'assistant', provider_id: 'local', model_id: 'qwen', time_created: at + offset * MIN, completed: at + offset * MIN + 1000,
+    tokens_input: 1000, tokens_cache_read: sent - 1000, tokens_cache_write: 0, tokens_output: 50, tokens_reasoning: 0, cost: 0,
+  });
+  const read = (id, offset, file, extra = {}) => tool(id, 's1', 'read', at + offset * MIN, at + offset * MIN + 500, { file, ...extra });
+  const input = {
+    // At minute 30.5 the summarising call still sends everything; the next request is the small one.
+    messages: [reply(0, 30_000), reply(10, 80_000), reply(20, 120_000), reply(30.5, 121_000), reply(31, 35_000), reply(40, 60_000),
+      { ...reply(15, 999_000), session_id: 'other' }],
+    compactions: [{ session_id: 's1', time_created: at + 30 * MIN }, { session_id: 'other', time_created: at + 5 * MIN }],
+    tools: [
+      read('r1', 1, '/a.ts'), read('r2', 2, '/b.ts'), read('r3', 3, '/a.ts'),
+      read('r4', 32, '/a.ts'), read('r5', 33, '/a.ts'), read('r6', 34, '/new.ts'),
+      read('r7', 35, '/b.ts', { status: 'error' }), // a read that failed read nothing again
+    ],
+    contextLimit: (provider, model) => (provider === 'local' && model === 'qwen' ? 131_072 : null),
+  };
+  const { context } = run({ ...input, sessionId: 's1' });
+  assert.deepEqual([context.limit, context.peak, context.requests, context.rereadAfterCompaction], [131_072, 121_000, 6, 1]);
+  assert.deepEqual(context.points.map(p => p.tokens), [30_000, 80_000, 120_000, 121_000, 35_000, 60_000]);
+  // Compacted from 120k down to 35k, and one file it had already read was read again.
+  assert.deepEqual(context.compactions, [{ t: at + 30 * MIN, at: 3, before: 120_000, after: 35_000, reread: 1 }]);
+  // A context window belongs to a session: without one selected there is nothing to draw.
+  assert.equal(run(input).context, null);
+});

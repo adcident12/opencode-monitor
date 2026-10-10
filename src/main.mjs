@@ -88,7 +88,7 @@ export async function main(argv) {
   tick();
   setInterval(tick, cfg.pollMs);
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits });
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).

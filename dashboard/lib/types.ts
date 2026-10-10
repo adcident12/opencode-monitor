@@ -204,6 +204,16 @@ export interface Stats {
   mcpLogFrom: number | null
   /** Present when a day to split the period on was asked for and both sides have days. */
   compare: { split: string; model: string | null; before: PeriodSummary; after: PeriodSummary } | null
+  /** Only with one session selected: how its context filled and where it was compacted. */
+  context: {
+    limit: number | null
+    peak: number
+    requests: number
+    points: { t: number; tokens: number }[]
+    /** at: index into points of the first request after the compaction. */
+    compactions: { t: number; at: number | null; before: number | null; after: number | null; reread: number }[]
+    rereadAfterCompaction: number
+  } | null
   /** How fast each model answered, most used first. Rates are tokens per second. */
   speed: {
     models: { model: string; requests: number; writeTps: number | null; readTps: number | null; firstTokenMs: number | null; daily: (number | null)[] }[]

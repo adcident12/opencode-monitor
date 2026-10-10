@@ -1,6 +1,6 @@
 // Gathers the rows the stats page needs and caches the result. node:sqlite is synchronous,
 // so each computation blocks the server briefly; caching keeps that to once a minute at most.
-import { computeStats, dayKey, summarize } from './stats.mjs';
+import { computeStats, summarize } from './stats.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
 
@@ -11,11 +11,6 @@ const MAX_CACHED = 24;
 const SESSION_ID = /^[A-Za-z0-9_-]{1,80}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * @param {object} deps
- * @param {object[]} [deps.mcpServers]  MCP servers from the global config
- * @param {object} [deps.projectMcp]    from createProjectMcp
- */
 /**
  * The same rows counted twice: up to the end of the day before `split`, and from `split` on.
  * null when the day is not inside the range or leaves one side empty.
@@ -30,7 +25,18 @@ function compareAround(split, whole, input) {
   return { split, model, before: summarize(before, model), after: summarize(after, model) };
 }
 
-export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null }) {
+/**
+ * @param {object} deps
+ * @param {object[]} [deps.mcpServers]  MCP servers from the global config
+ * @param {object} [deps.projectMcp]    from createProjectMcp
+ * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
+ */
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map() }) {
+  // The same order the live page uses: config.json first, then OpenCode's own config.
+  const contextLimit = (provider, model) => {
+    const key = `${provider}/${model}`;
+    return cfg.contextLimit?.models?.[key] ?? cfg.contextLimit?.models?.[model] ?? modelLimits.get(key) ?? cfg.contextLimit?.default ?? null;
+  };
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
 
@@ -72,6 +78,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const input = {
       sessions,
       sessionId,
+      contextLimit,
       mcp: { servers: mergeServers(mcpServers, projectServers), events: log.mcpEvents(), logFrom: log.firstAt() },
       tools,
       messages: db.stats.messages(since),

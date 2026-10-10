@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -252,6 +252,7 @@ function Figures({ stats }: { stats: StatsData }) {
         </div>
       </div>
 
+      <Context stats={stats} />
       <Speed stats={stats} />
       <Usage stats={stats} />
       <McpServers stats={stats} />
@@ -395,6 +396,70 @@ function ToolUse({ stats }: { stats: StatsData }) {
         ))}
       </ul>
       {graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
+    </section>
+  )
+}
+
+/**
+ * One session's context window over its requests: how full it got, where it was compacted
+ * (dashed lines), and what each compaction cost in files read a second time.
+ */
+function Context({ stats }: { stats: StatsData }) {
+  const { t, lang } = useI18n()
+  const context = stats.context
+  if (!context || context.points.length < 2) return null
+  const time = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  const data = context.points.map((p, i) => ({ i, tokens: p.tokens, t: p.t }))
+  const peakPct = context.limit ? Math.round((context.peak / context.limit) * 100) : null
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div>
+          <h3 className="font-medium">{t("stats.context")}</h3>
+          <p className="text-xs text-muted-foreground">{t("stats.contextNote", { n: context.requests })}</p>
+        </div>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {peakPct == null ? t("stats.contextPeak", { n: compact(context.peak) }) : t("stats.contextPeakOf", { n: compact(context.peak), limit: compact(context.limit!), pct: peakPct })}
+        </span>
+      </div>
+      <div className="h-52" role="img" aria-label={t("stats.context")}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: -8 }}>
+            <CartesianGrid vertical={false} stroke="var(--color-border)" />
+            <XAxis dataKey="i" type="number" domain={[0, data.length - 1]} tickLine={false} axisLine={false} tick={false} height={6} />
+            <YAxis tickLine={false} axisLine={false} width={52} domain={[0, context.limit ?? "auto"]} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={v => compact(Number(v))} />
+            <Tooltip
+              cursor={{ stroke: "var(--color-muted-foreground)", strokeOpacity: 0.4 }}
+              content={({ active, payload }) => {
+                const item = payload?.[0]?.payload as (typeof data)[number] | undefined
+                if (!active || !item) return null
+                return (
+                  <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                    <p className="text-muted-foreground">{time.format(item.t)}</p>
+                    <p className="font-medium tabular-nums">{t("stats.contextTokens", { n: compact(item.tokens) })}</p>
+                  </div>
+                )
+              }}
+            />
+            {context.compactions.map(c => c.at != null && <ReferenceLine key={c.t} x={c.at} stroke="var(--color-waiting)" strokeDasharray="4 3" />)}
+            <Area dataKey="tokens" type="stepAfter" stroke="var(--color-working)" fill="var(--color-working)" fillOpacity={0.18} strokeWidth={1.5} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      {context.compactions.length > 0 ? (
+        <ol className="divide-y border-y text-[0.82rem]">
+          {context.compactions.map(c => (
+            <li key={c.t} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 py-2">
+              <span className="text-xs text-muted-foreground">{time.format(c.t)}</span>
+              <span className="tabular-nums">{c.before != null && c.after != null ? t("stats.contextCompacted", { before: compact(c.before), after: compact(c.after) }) : t("stats.contextCompactedPlain")}</span>
+              <span className={cn("tabular-nums", c.reread > 0 ? "text-waiting" : "text-muted-foreground")}>{t("stats.contextReread", { n: c.reread })}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t("stats.contextNoCompaction")}</p>
+      )}
     </section>
   )
 }
