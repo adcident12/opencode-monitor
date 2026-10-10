@@ -19,7 +19,7 @@ function useReason() {
 function Project({ session }: { session: Session }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<span tabIndex={0} />} className="rounded-sm font-mono text-[0.78rem] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <TooltipTrigger render={<span tabIndex={0} />} className="rounded-sm font-mono text-code text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {session.project}
       </TooltipTrigger>
       <TooltipContent>{session.directory}</TooltipContent>
@@ -77,7 +77,7 @@ function Subagents({ items, now }: { items: Session[]; now: number }) {
     <div className="space-y-1.5 border-t border-border/70 pt-2">
       <p className="text-xs text-muted-foreground">{t("subagents")}</p>
       {items.map(child => (
-        <div key={child.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.85rem]">
+        <div key={child.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <StateBadge state={child.state} label={t(`state.${child.state}`)} className="h-5 text-xs" />
           <span className="min-w-0 break-words">{child.title || child.id}</span>
           <span className={cn("tabular-nums", STATE_STYLE[child.state].text)}>{duration(now - child.since)}</span>
@@ -106,10 +106,10 @@ export function AttentionCard({ session, subagents, now, history = false }: { se
               <StateBadge state={session.state} label={t(`state.${session.state}`)} />
               <Project session={session} />
             </div>
-            <h3 className="text-lg leading-snug font-medium break-words">{session.title || session.id}</h3>
+            <h3 className="text-lg font-medium break-words">{session.title || session.id}</h3>
           </div>
           <div className="text-right">
-            <p className={cn("font-light tabular-nums leading-none tracking-tight text-[clamp(2.25rem,6vw,3.25rem)]", style.text)} aria-label={t("time.for", { t: duration(now - session.since) })}>
+            <p className={cn("font-light tabular-nums leading-none text-[clamp(2.25rem,6vw,3.25rem)]", style.text)} aria-label={t("time.for", { t: duration(now - session.since) })}>
               {clock(now - session.since)}
             </p>
             <p className="mt-1.5 text-xs text-muted-foreground">{t(`timer.${session.state}`)}</p>
@@ -118,7 +118,7 @@ export function AttentionCard({ session, subagents, now, history = false }: { se
 
         {session.prompt?.detail ? (
           <div className={cn("space-y-1 rounded-lg px-3.5 py-2.5", style.soft)}>
-            <p className={cn("text-[0.82rem] font-medium", style.text)}>{reason(session)}</p>
+            <p className={cn("text-sm font-medium", style.text)}>{reason(session)}</p>
             <Code>{session.prompt.detail}</Code>
           </div>
         ) : (
@@ -130,7 +130,7 @@ export function AttentionCard({ session, subagents, now, history = false }: { se
 
         {session.state !== "waiting" && session.health.lastError && (
           <div className="space-y-1 rounded-lg bg-error-soft/60 px-3.5 py-2.5">
-            <p className="text-[0.82rem] font-medium text-error">{t("health.lastError", { tool: session.health.lastError.tool })}</p>
+            <p className="text-sm font-medium text-error">{t("health.lastError", { tool: session.health.lastError.tool })}</p>
             <Code>{session.health.lastError.text}</Code>
           </div>
         )}
@@ -155,7 +155,7 @@ export function WorkingCard({ session, subagents, now, history = false }: { sess
 
   return (
     <Card className="gap-0 py-0">
-      <CardContent className="space-y-3.5 px-5 py-4">
+      <CardContent className="space-y-4 p-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StateBadge state="working" label={t("state.working")} />
           <span className="tabular-nums text-sm text-working">{duration(now - session.since)}</span>
@@ -164,7 +164,7 @@ export function WorkingCard({ session, subagents, now, history = false }: { sess
           </span>
         </div>
         <div className="space-y-0.5">
-          <h3 className="text-base leading-snug font-medium break-words">{session.title || session.id}</h3>
+          <h3 className="text-base font-medium break-words">{session.title || session.id}</h3>
           <p className="text-sm text-muted-foreground">{reason(session)}</p>
         </div>
         <Current session={session} now={now} />
@@ -189,7 +189,7 @@ export function QuietRow({ session, now, history = false }: { session: Session; 
     <li className="space-y-2 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <StateBadge state={session.state} label={t(`state.${session.state}`)} className="h-5 text-xs" />
-        <span className="min-w-0 flex-1 truncate text-[0.92rem]">{session.title || session.id}</span>
+        <span className="min-w-0 flex-1 truncate text-sm">{session.title || session.id}</span>
         <span className="text-xs text-muted-foreground">{reason(session)}</span>
         <span className="tabular-nums text-xs text-muted-foreground">{t("time.ago", { t: rough(now - session.since) })}</span>
         <Project session={session} />

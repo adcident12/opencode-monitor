@@ -67,11 +67,11 @@ export function History({ count, active, session, onSession }: { count: number |
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <StateBadge state={e.to} label={t(`state.${e.to}`)} className="h-5 text-xs" />
                       <span className="min-w-0 font-medium break-words">{e.title || e.id}</span>
-                      <span className="ml-auto font-mono text-[0.78rem] text-muted-foreground">{e.project}</span>
+                      <span className="ml-auto font-mono text-code text-muted-foreground">{e.project}</span>
                     </div>
-                    <p className="text-[0.82rem]">{why}</p>
+                    <p className="text-sm">{why}</p>
                     <p className="text-xs text-muted-foreground">{before}</p>
-                    {e.detail && e.to !== "finished" && e.to !== "idle" && <Code className="text-[0.78rem] text-muted-foreground">{e.detail}</Code>}
+                    {e.detail && e.to !== "finished" && e.to !== "idle" && <Code className="text-muted-foreground">{e.detail}</Code>}
                   </div>
                 </li>
               )

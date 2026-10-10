@@ -1,13 +1,16 @@
 import type { Metadata } from "next"
-import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Sans_Thai } from "next/font/google"
+import { IBM_Plex_Mono, Prompt } from "next/font/google"
 import { Providers } from "@/components/providers"
 import "./globals.css"
 
 // Fonts are downloaded at build time and shipped with the page: the monitor never
 // contacts a font service while it runs.
-const plexSans = IBM_Plex_Sans({ variable: "--font-plex-sans", subsets: ["latin"], weight: ["300", "400", "500", "600"] })
-const plexThai = IBM_Plex_Sans_Thai({ variable: "--font-plex-thai", subsets: ["thai"], weight: ["300", "400", "500", "600"] })
-const plexMono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500"] })
+// Prompt: one family for Thai and Latin, so mixed lines share one rhythm. Only the weights
+// the type scale uses (globals.css) are shipped.
+const prompt = Prompt({ variable: "--font-prompt", subsets: ["thai", "latin"], weight: ["300", "400", "500", "600"], display: "swap" })
+// Commands and paths keep a fixed-width face, so columns of them line up; Thai inside them
+// falls back to Prompt.
+const plexMono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500"], display: "swap" })
 
 export const metadata: Metadata = {
   title: "OpenCode Monitor",
@@ -16,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${plexSans.variable} ${plexThai.variable} ${plexMono.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${prompt.variable} ${plexMono.variable} antialiased`}>
       <body className="min-h-dvh">
         <Providers>{children}</Providers>
       </body>

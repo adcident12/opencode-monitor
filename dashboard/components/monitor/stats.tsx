@@ -18,7 +18,7 @@ const RANGES = [7, 14, 30] as const
 // A ranked row: the figure, what it was, and when and where, each in its own column so nothing wraps under another.
 // On a phone the third column has no room, so when and where go under the label instead.
 const ROW = "grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 sm:grid-cols-[3.75rem_minmax(0,1fr)_auto]"
-const H3 = "text-[0.95rem] font-semibold tracking-tight"
+const H3 = "text-base font-semibold"
 
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 
@@ -131,7 +131,7 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
         <p className="text-xs text-muted-foreground">{t("compare.note")}</p>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-[0.82rem]">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th scope="col" className="py-1.5 pr-3 font-normal" />
@@ -149,7 +149,7 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
                 <tr key={m.key}>
                   <th scope="row" className="py-2 pr-3 text-left font-normal">
                     {t(`compare.metric.${m.key}`)}
-                    {(m.key === "writeTps" || m.key === "firstTokenMs") && compare.model && <span className="block font-mono text-[0.72rem] text-muted-foreground">{compare.model}</span>}
+                    {(m.key === "writeTps" || m.key === "firstTokenMs") && compare.model && <span className="block font-mono text-xs text-muted-foreground">{compare.model}</span>}
                   </th>
                   <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{a == null ? "–" : m.show(a)}</td>
                   <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{b == null ? "–" : m.show(b)}</td>
@@ -197,7 +197,7 @@ function Group({ id, note, children }: { id: GroupId; note?: string; children: R
   return (
     <section id={`stats-${id}`} aria-labelledby={`stats-${id}-title`} className="scroll-mt-6 space-y-7 border-t pt-8">
       <div className="space-y-1">
-        <h2 id={`stats-${id}-title`} className="text-xl font-semibold tracking-tight">
+        <h2 id={`stats-${id}-title`} className="text-xl font-semibold">
           {t(`stats.group.${id}`)}
         </h2>
         {note && <p className="max-w-prose text-sm text-muted-foreground">{note}</p>}
@@ -248,7 +248,7 @@ function Figures({ stats }: { stats: StatsData }) {
       <Jump shown={shown} />
 
       <Group id="you">
-        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
           <DayChart title={t("stats.chartWait")} days={stats.daily} pick={d => d.waitMs} color="var(--color-waiting)" />
           <Ranked title={t("stats.longestWaits")} empty={t("stats.noWaits")}>
             {stats.waits.map((w, i) => (
@@ -261,7 +261,7 @@ function Figures({ stats }: { stats: StatsData }) {
                   </span>
                   <When at={w.at} project={w.project} />
                 </div>
-                {w.detail && <Code className="pl-[4.5rem] text-[0.78rem] text-muted-foreground">{w.detail}</Code>}
+                {w.detail && <Code className="pl-[4.5rem] text-muted-foreground">{w.detail}</Code>}
               </li>
             ))}
           </Ranked>
@@ -269,7 +269,7 @@ function Figures({ stats }: { stats: StatsData }) {
       </Group>
 
       <Group id="agent">
-        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
           <DayChart title={t("stats.chartActive")} days={stats.daily} pick={d => d.activeMs} color="var(--color-working)" />
           <Ranked title={t("stats.slowest")} note={t("stats.slowestNote")} empty={t("stats.noSlow")}>
             {stats.slow.map((s, i) => (
@@ -283,20 +283,20 @@ function Figures({ stats }: { stats: StatsData }) {
                   </span>
                   <When at={s.at} project={s.project} />
                 </div>
-                {s.text && <Code className="pl-[4.5rem] text-[0.78rem] text-muted-foreground">{s.text}</Code>}
+                {s.text && <Code className="pl-[4.5rem] text-muted-foreground">{s.text}</Code>}
               </li>
             ))}
           </Ranked>
         </div>
 
-        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
           <ToolUse stats={stats} />
           <div className="space-y-8">
             <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")}>
               {stats.rereads.map(r => (
                 <li key={`${r.file}-${r.project}`} className="flex items-baseline gap-3 py-2">
                   <span className="w-9 shrink-0 font-medium tabular-nums">×{r.count}</span>
-                  <Code className="min-w-0 text-[0.78rem]">{r.file}</Code>
+                  <Code className="min-w-0">{r.file}</Code>
                 </li>
               ))}
             </Ranked>
@@ -337,7 +337,7 @@ function Tile({ label, value, note, tone }: { label: string; value: string; note
   return (
     <div className="space-y-1">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={cn("text-3xl font-light tracking-tight tabular-nums", tone === "waiting" && "text-waiting", tone === "stuck" && "text-stuck")}>{value}</p>
+      <p className={cn("text-3xl font-light tabular-nums", tone === "waiting" && "text-waiting", tone === "stuck" && "text-stuck")}>{value}</p>
       <p className="text-xs text-muted-foreground">{note}</p>
     </div>
   )
@@ -384,16 +384,16 @@ function Bars({ title, summary, points, color, tick }: { title: string; summary:
 
   return (
     <section className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className={H3}>{title}</h3>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <h3 className={cn(H3, "min-w-0 [overflow-wrap:anywhere]")}>{title}</h3>
         <span className="text-sm tabular-nums text-muted-foreground">{summary}</span>
       </div>
       <div className="h-48" role="img" aria-label={title}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap={data.length > 14 ? 2 : 6}>
             <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="0" />
-            <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} />
-            <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={tick} />
+            <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
+            <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} tickFormatter={tick} />
             <Tooltip
               cursor={{ fill: "var(--color-muted)", opacity: 0.6 }}
               content={({ active, payload }) => {
@@ -453,8 +453,8 @@ function ToolUse({ stats }: { stats: StatsData }) {
       </div>
       <ul className="space-y-1.5">
         {stats.tools.map(x => (
-          <li key={x.tool} className="grid grid-cols-[minmax(6rem,11rem)_1fr_auto] items-center gap-3 text-[0.82rem]">
-            <span className="truncate font-mono text-[0.78rem]" title={x.tool}>
+          <li key={x.tool} className="grid grid-cols-[minmax(6rem,11rem)_1fr_auto] items-center gap-3 text-sm">
+            <span className="truncate font-mono text-code" title={x.tool}>
               {x.tool}
             </span>
             <span className="h-2 rounded-full bg-muted" aria-hidden>
@@ -500,7 +500,7 @@ function Context({ stats }: { stats: StatsData }) {
           <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: -8 }}>
             <CartesianGrid vertical={false} stroke="var(--color-border)" />
             <XAxis dataKey="i" type="number" domain={[0, data.length - 1]} tickLine={false} axisLine={false} tick={false} height={6} />
-            <YAxis tickLine={false} axisLine={false} width={52} domain={[0, context.limit ?? "auto"]} tick={{ fill: "var(--color-muted-foreground)", fontSize: 11 }} tickFormatter={v => compact(Number(v))} />
+            <YAxis tickLine={false} axisLine={false} width={52} domain={[0, context.limit ?? "auto"]} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} tickFormatter={v => compact(Number(v))} />
             <Tooltip
               cursor={{ stroke: "var(--color-muted-foreground)", strokeOpacity: 0.4 }}
               content={({ active, payload }) => {
@@ -520,7 +520,7 @@ function Context({ stats }: { stats: StatsData }) {
         </ResponsiveContainer>
       </div>
       {context.compactions.length > 0 ? (
-        <ol className="divide-y border-y text-[0.82rem]">
+        <ol className="divide-y border-y text-sm">
           {context.compactions.map(c => (
             <li key={c.t} className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 py-2">
               <span className="text-xs text-muted-foreground">{time.format(c.t)}</span>
@@ -554,9 +554,9 @@ function Speed({ stats }: { stats: StatsData }) {
         <h3 className={H3}>{t("stats.speed")}</h3>
         <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{t("stats.speedNote")}</p>
       </div>
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-2">
         <div className="overflow-x-auto">
-          <table className="w-full text-[0.82rem]">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th scope="col" className="py-1.5 pr-3 font-normal">{t("stats.speedModel")}</th>
@@ -569,7 +569,7 @@ function Speed({ stats }: { stats: StatsData }) {
               {models.map(m => (
                 <tr key={m.model}>
                   <th scope="row" className="py-2 pr-3 text-left font-normal">
-                    <span className="font-mono text-[0.78rem] [overflow-wrap:anywhere]">{m.model}</span>
+                    <span className="font-mono text-code [overflow-wrap:anywhere]">{m.model}</span>
                     <span className="block text-xs text-muted-foreground">{t("stats.speedRequests", { n: m.requests })}</span>
                   </th>
                   <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{tps(m.writeTps)}</td>
@@ -645,7 +645,7 @@ function McpServers({ stats }: { stats: StatsData }) {
       )}
       {off.length > 0 && (
         <p className="text-sm text-muted-foreground">
-          {t("stats.mcpOffList")} <span className="font-mono text-[0.8rem]">{off.map(m => m.name).join(", ")}</span>
+          {t("stats.mcpOffList")} <span className="font-mono text-code">{off.map(m => m.name).join(", ")}</span>
         </p>
       )}
       {unused.length > 0 && <p className="max-w-prose text-sm text-muted-foreground">{t(stats.session ? "stats.mcpUnusedSession" : "stats.mcpUnused", { names: unused.map(m => m.name).join(", ") })}</p>}
@@ -660,12 +660,12 @@ function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeForma
   const summary = (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 py-2.5 text-left sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className={cn("truncate font-mono text-[0.82rem]", !m.enabled && "text-muted-foreground")}>{m.name}</span>
+        <span className={cn("truncate font-mono text-code", !m.enabled && "text-muted-foreground")}>{m.name}</span>
         {!m.enabled && <Tag>{t("stats.mcpOff")}</Tag>}
         {m.scope === "project" && <Tag>{t("stats.mcpProject")}</Tag>}
         {m.unused && <Tag tone="warn">{t("stats.mcpNeverUsed")}</Tag>}
       </span>
-      <span className="col-span-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.82rem] tabular-nums sm:col-span-1">
+      <span className="col-span-2 flex flex-wrap gap-x-3 gap-y-0.5 text-sm tabular-nums sm:col-span-1">
         <span>{t("stats.mcpCalls", { n: m.calls })}</span>
         {m.errors > 0 && <span className="text-muted-foreground">{t("stats.mcpErrors", { n: m.errors })}</span>}
         {m.faults > 0 && <span className="font-medium text-error">{t("stats.mcpFaults", { n: m.faults })}</span>}
@@ -685,10 +685,10 @@ function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeForma
           {summary}
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ul className="space-y-1 pb-3 pl-3 text-[0.8rem]">
+          <ul className="space-y-1 pb-3 pl-3 text-code">
             {m.tools.map(x => (
               <li key={x.tool} className="flex flex-wrap items-baseline gap-x-3">
-                <span className="font-mono text-[0.78rem]">{x.tool}</span>
+                <span className="font-mono text-code">{x.tool}</span>
                 <span className="tabular-nums text-muted-foreground">
                   ×{x.count}
                   {x.errors > 0 && <> · {t("stats.mcpErrors", { n: x.errors })}</>}
@@ -705,7 +705,7 @@ function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeForma
 }
 
 function Tag({ tone, children }: { tone?: "warn"; children: React.ReactNode }) {
-  return <span className={cn("rounded-full border px-1.5 text-[0.68rem] leading-5 whitespace-nowrap text-muted-foreground", tone === "warn" && "border-waiting/50 text-waiting")}>{children}</span>
+  return <span className={cn("rounded-full border px-1.5 text-2xs leading-5 whitespace-nowrap text-muted-foreground", tone === "warn" && "border-waiting/50 text-waiting")}>{children}</span>
 }
 
 function Loading() {

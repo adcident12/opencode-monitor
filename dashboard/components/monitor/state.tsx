@@ -17,7 +17,7 @@ export const STATE_STYLE: Record<State, { icon: LucideIcon; text: string; soft: 
 export function StateBadge({ state, label, className }: { state: State; label: string; className?: string }) {
   const { icon: Icon, text, soft } = STATE_STYLE[state]
   return (
-    <Badge variant="outline" className={cn("h-6 gap-1.5 border-transparent px-2.5 text-[0.8rem] font-medium", soft, text, className)}>
+    <Badge variant="outline" className={cn("h-6 gap-1.5 border-transparent px-2.5 text-code font-medium", soft, text, className)}>
       <Icon className={cn(state === "working" && "animate-breathe")} aria-hidden />
       {label}
     </Badge>

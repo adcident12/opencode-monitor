@@ -72,7 +72,7 @@ export default function Page() {
 
           {snapshot && (
             <section aria-labelledby="attention-heading" className="space-y-4">
-              <h2 id="attention-heading" className="text-2xl font-semibold tracking-tight sm:text-[1.7rem]">
+              <h2 id="attention-heading" className="text-2xl font-semibold">
                 {attention.length ? t("summary.attention", { n: attention.length }) : t("summary.none")}
               </h2>
               {attention.map(s => (
@@ -86,7 +86,7 @@ export default function Page() {
               <h2 id="working-heading" className="text-sm font-medium text-muted-foreground">
                 {t("section.working", { n: working.length })}
               </h2>
-              <div className={cn("grid gap-4", working.length > 1 && "lg:grid-cols-2")}>
+              <div className={cn("grid grid-cols-[minmax(0,1fr)] gap-4", working.length > 1 && "lg:grid-cols-2")}>
                 {working.map(s => (
                   <WorkingCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} history={historyEnabled} />
                 ))}

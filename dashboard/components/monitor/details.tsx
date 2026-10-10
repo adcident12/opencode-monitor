@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 
 /** A command, path, or question exactly as the agent wrote it. */
 export function Code({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <code className={cn("block font-mono text-[0.8rem] leading-relaxed break-words whitespace-pre-wrap", className)}>{children}</code>
+  return <code className={cn("block font-mono text-code break-words whitespace-pre-wrap", className)}>{children}</code>
 }
 
 /** What the running command has printed, and how long ago its last line came. */
@@ -25,7 +25,7 @@ export function Output({ output, now }: { output: NonNullable<Session["current"]
       <p className="text-xs text-muted-foreground">
         {t("output.last")} · <span className={cn(quiet > 5 * 60_000 && "font-medium text-stuck")}>{t("time.ago", { t: duration(quiet) })}</span>
       </p>
-      <pre className="max-h-40 overflow-auto font-mono text-[0.78rem] leading-relaxed text-muted-foreground">{output.lines.join("\n")}</pre>
+      <pre className="max-h-40 overflow-auto font-mono text-code text-muted-foreground">{output.lines.join("\n")}</pre>
     </div>
   )
 }
@@ -37,7 +37,7 @@ export function Steps({ steps, now }: { steps: Step[]; now: number }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-muted-foreground">{t("progress.steps")}</p>
-      <ol className="space-y-0.5 text-[0.82rem]">
+      <ol className="space-y-0.5 text-sm">
         {steps.map((step, i) => {
           const live = step.status === "running" || step.status === "pending"
           return (
@@ -46,7 +46,7 @@ export function Steps({ steps, now }: { steps: Step[]; now: number }) {
                 {MARK[step.status]}
               </span>
               <span>{step.tool}</span>
-              <span className={cn("truncate font-mono text-[0.78rem]", step.status === "error" && "text-error")}>{step.text}</span>
+              <span className={cn("truncate font-mono text-code", step.status === "error" && "text-error")}>{step.text}</span>
               <span className="tabular-nums">{live ? duration(now - step.startedAt) : step.durationMs == null ? "" : duration(step.durationMs)}</span>
             </li>
           )
@@ -60,7 +60,7 @@ export function Todos({ todos }: { todos: Session["progress"]["todos"] }) {
   const { t } = useI18n()
   if (!todos) return null
   return (
-    <div className="flex items-center gap-3 text-[0.85rem]">
+    <div className="flex items-center gap-3 text-sm">
       <span className="shrink-0 tabular-nums text-muted-foreground">{t("progress.todos", { done: todos.done, total: todos.total })}</span>
       <Progress value={(todos.done / Math.max(1, todos.total)) * 100} className="w-20 shrink-0" aria-label={t("progress.todos", { done: todos.done, total: todos.total })} />
       {todos.current && <span className="min-w-0 truncate">{todos.current}</span>}
@@ -99,7 +99,7 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   if (h.toolErrors) items.push({ key: "errors", label: t("health.toolErrors"), value: `${h.toolErrors} / ${h.toolCalls}`, bad: warn("many_errors") })
 
   return (
-    <dl className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-6 gap-y-3 border-t border-border/70 pt-3 text-[0.82rem]">
+    <dl className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-6 gap-y-3 border-t border-border/70 pt-3 text-sm">
       {items.map(item => (
         <div key={item.key} className={cn("space-y-0.5", item.key === "context" && "col-span-2")}>
           <dt className="text-xs text-muted-foreground">{item.label}</dt>
@@ -122,7 +122,7 @@ export function Hints({ session, now }: { session: Session; now: number }) {
     many_errors: () => t("hint.many_errors", { n: h.toolErrors }),
   }
   return (
-    <div className="space-y-1 rounded-lg bg-stuck-soft/60 px-3 py-2 text-[0.82rem]">
+    <div className="space-y-1 rounded-lg bg-stuck-soft/60 px-3 py-2 text-sm">
       <ul className="space-y-0.5 text-stuck">
         {h.hints.map(hint => (
           <li key={hint} className="break-words">
@@ -140,12 +140,12 @@ function Section({ title, summary, children }: { title: string; summary: React.R
   const [open, setOpen] = useState(false)
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-t border-border/70 pt-2">
-      <CollapsibleTrigger className="group flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md py-1 text-left text-[0.82rem] outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <CollapsibleTrigger className="group flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-md py-1 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronRightIcon className="size-3.5 text-muted-foreground transition-transform group-data-panel-open:rotate-90" aria-hidden />
         <span className="font-medium">{title}</span>
         {summary}
       </CollapsibleTrigger>
-      <CollapsibleContent className="space-y-3 pt-2 pb-1 pl-6 text-[0.82rem]">{children}</CollapsibleContent>
+      <CollapsibleContent className="space-y-3 pt-2 pb-1 pl-6 text-sm">{children}</CollapsibleContent>
     </Collapsible>
   )
 }
@@ -186,7 +186,7 @@ export function Work({ session }: { session: Session }) {
       {files.recent.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">{t("work.recentFiles")}</p>
-          <ul className="space-y-0.5 font-mono text-[0.78rem]">
+          <ul className="space-y-0.5 font-mono text-code">
             {files.recent.map(file => (
               <li key={file} className="break-all">
                 {file}
@@ -214,7 +214,7 @@ function Running({ items }: { items: NonNullable<Session["work"]["running"]>["it
               {item.processes > 1 && <span className="text-xs text-muted-foreground">{t("work.processTree", { n: item.processes })}</span>}
               {item.ports.length > 0 && <span className="text-xs font-medium text-stuck">{t("work.listening", { ports: item.ports.join(", ") })}</span>}
             </div>
-            <Code className="text-[0.78rem] text-muted-foreground">{item.from}</Code>
+            <Code className="text-muted-foreground">{item.from}</Code>
             <p className="text-xs text-muted-foreground">
               {t("work.stopHint")} <code className="font-mono">{stopCommand(item.pid)}</code>
             </p>
@@ -269,7 +269,7 @@ export function Review({ session }: { session: Session }) {
             <ul className="space-y-1 border-l-2 border-border pl-3">
               {item.examples.map(example => (
                 <li key={example.text} className="space-y-0.5">
-                  <Code className="text-[0.78rem]">{example.text}</Code>
+                  <Code>{example.text}</Code>
                   {(item.examples.length > 1 || example.count > 1) && (
                     <p className="text-xs text-muted-foreground">
                       {example.count > 1 && `×${example.count} · `}

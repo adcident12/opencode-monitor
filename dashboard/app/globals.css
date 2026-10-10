@@ -7,9 +7,45 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-plex-sans), var(--font-plex-thai), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), var(--font-plex-thai), ui-monospace, "Cascadia Code", Menlo, monospace;
+  /* ---- Type ----------------------------------------------------------------------------
+   * One family (Prompt) for everything but code. Sizes are a fixed scale; components use
+   * these names, never arbitrary rem values. Line heights are generous on purpose: Thai
+   * stacks vowels and tone marks above and below the line, and clips at Latin defaults.
+   *
+   *   text-2xs   11px  tags and counters inside pills
+   *   text-xs    12px  captions, notes, chart axes, timestamps
+   *   text-code  13px  commands, paths, tool names (font-mono)
+   *   text-sm    14px  body text of cards, lists and tables
+   *   text-base  16px  section headings inside a chapter (h3)
+   *   text-lg    18px  the page title, card titles
+   *   text-xl    20px  chapter headings (h2)
+   *   text-2xl   26px  the one-line summary at the top of a tab
+   *   text-3xl   32px  figures in stat tiles
+   *
+   * Weights: 300 for big figures, 400 body, 500 emphasis and labels that matter, 600 headings.
+   */
+  --font-sans: var(--font-prompt), ui-sans-serif, system-ui, "Noto Sans Thai", "Leelawadee UI", sans-serif;
+  --font-mono: var(--font-plex-mono), var(--font-prompt), ui-monospace, "Cascadia Code", Menlo, monospace;
   --font-heading: var(--font-sans);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.45;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.55;
+  --text-code: 0.8125rem;
+  --text-code--line-height: 1.6;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.6;
+  --text-base: 1rem;
+  --text-base--line-height: 1.55;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 1.35;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.2;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -74,17 +110,18 @@
   --ring: oklch(0.58 0.15 258);
   --radius: 0.7rem;
 
-  --waiting: oklch(0.6 0.15 68);
+  /* Each state colour is also used for small text: all reach 4.5:1 on the page and on their own tint. */
+  --waiting: oklch(0.53 0.13 64);
   --waiting-soft: oklch(0.955 0.045 80);
-  --stuck: oklch(0.58 0.18 42);
+  --stuck: oklch(0.54 0.17 40);
   --stuck-soft: oklch(0.95 0.035 45);
   --error: oklch(0.55 0.2 20);
   --error-soft: oklch(0.95 0.03 18);
   --working: oklch(0.55 0.16 258);
   --working-soft: oklch(0.95 0.03 255);
-  --finished: oklch(0.55 0.12 160);
+  --finished: oklch(0.5 0.11 160);
   --finished-soft: oklch(0.955 0.03 160);
-  --idle: oklch(0.55 0.02 258);
+  --idle: oklch(0.52 0.02 258);
   --idle-soft: oklch(0.94 0.008 255);
 }
 
@@ -129,8 +166,16 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "ss02";
+    @apply bg-background text-base text-foreground;
+  }
+  /* Headings break evenly instead of leaving one word alone; paragraphs avoid orphans. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {

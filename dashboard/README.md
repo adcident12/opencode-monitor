@@ -44,5 +44,10 @@ lib/live.ts                  server-sent events, the ticking clock, the URL hash
 lib/i18n.tsx                 strings from ../i18n/<lang>.json (English is bundled)
 ```
 
+Type is one family, Prompt (Thai and Latin), with IBM Plex Mono for commands and paths. The
+sizes are a fixed scale defined at the top of `app/globals.css` (`text-2xs` to `text-3xl`, plus
+`text-code` for monospaced text); use those names, not arbitrary values like `text-[0.82rem]`.
+Line heights are loose on purpose, so Thai tone marks are not clipped.
+
 Colours for each agent state are tokens in `app/globals.css` (`--waiting`, `--stuck`, ...), with
 separate light and dark values.
