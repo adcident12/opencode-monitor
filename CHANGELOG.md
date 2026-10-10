@@ -3,6 +3,20 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 10.2.0 - 2026-10-10
+
+The README in Thai, and tidier code. Nothing the monitor shows or does has changed.
+
+- **README.th.md**: the whole README in Thai, section for section, using the words the Thai
+  page uses for tabs, states and buttons. Each language links to the other under its title,
+  and a test keeps the two in step: the same sections, commands, tables, links, and every
+  option, key and file named in one must be named in the other.
+- Component props are read-only and no condition is nested in another, as SonarQube asked
+  (code smells 126 to 39; what is left is mostly the long patterns of the review rules,
+  kept as one pattern per rule on purpose).
+- New tests for the header's status line, the environment strip and the list of models in
+  `--doctor`, none of which had any.
+
 ## 10.1.0 - 2026-10-10
 
 The same monitor, easier to read and to check. Nothing it shows or does has changed.
