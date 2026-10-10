@@ -55,9 +55,9 @@ Line heights are loose on purpose, so Thai tone marks are not clipped.
 
 The rhythm of the page is defined once, in `components/monitor/section.tsx`: the space between
 the blocks of a tab (`TAB`), the chapter heading and the rule above it (`Chapter`), the heading
-inside a chapter (`H3`), and table head cells (`TH`). A new tab or section uses these instead of
+inside a chapter (`H3`) and the 12px under it (`SUB`), a two-column grid of sections (`GRID`), a few labelled figures side by side (`Facts`, values aligned even when a label wraps), and table head cells (`TH`). A new tab or section uses these instead of
 its own sizes; that is what keeps the four tabs alike. Before a release, look at every tab at
-360px wide in both languages: the page must not scroll sideways.
+360px wide in both languages: the page must not scroll sideways. A new string needs a key of its own: CI fails when a key is defined twice in i18n/*.json, which would silently replace an older string.
 
 Colours for each agent state are tokens in `app/globals.css` (`--waiting`, `--stuck`, ...), with
 separate light and dark values.

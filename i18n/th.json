@@ -304,7 +304,7 @@
   "work.permissionsNote": "มีการขออนุญาต {n} ครั้งในช่วงนี้ เรียงจากบ่อยที่สุด",
   "work.permissionWait": "รอรวม {t}",
   "work.permissionsHow": "ถ้าไม่อยากให้ถามเรื่องใด ให้อนุญาตในส่วน permission ของ opencode.json เช่น \"permission\": { \"external_directory\": { \"C:\\\\temp\\\\*\": \"allow\" } } อนุญาตเฉพาะสิ่งที่คุณจะตอบตกลงเสมอ monitor ไม่แก้ค่านี้ให้",
-  "work.files": "ไฟล์ที่ถูกแก้",
+  "work.filesChanged": "ไฟล์ที่ถูกแก้",
   "work.filesNote": "แก้ {edits} ครั้ง รวม {files} ไฟล์ ไฟล์ที่ถูกแก้บ่อยที่สุดอยู่ด้านล่าง OpenCode ไม่ได้บันทึกจำนวนบรรทัดที่เพิ่มและลบ",
   "work.plans": "แผนงานของ agent",
   "work.plansNote": "รายการงานที่ agent ทำไว้ ใน {n} session",

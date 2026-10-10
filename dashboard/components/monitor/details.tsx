@@ -9,6 +9,7 @@ import { duration, kilo, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import type { FlagKind, Session, Step } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { Facts } from "./section"
 
 /** A command, path, or question exactly as the agent wrote it. */
 export function Code({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -111,14 +112,12 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   if (h.toolErrors) items.push({ key: "errors", label: t("health.toolErrors"), value: `${h.toolErrors} / ${h.toolCalls}`, bad: warn("many_errors") })
 
   return (
-    <dl className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-6 gap-y-3 border-t border-border/70 pt-3 text-sm">
-      {items.map(item => (
-        <div key={item.key} className={cn("space-y-0.5", item.key === "context" && "col-span-2")}>
-          <dt className="text-xs text-muted-foreground">{item.label}</dt>
-          <dd className={cn("tabular-nums", item.bad && "font-medium text-stuck")}>{item.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="border-t border-border/70 pt-3">
+      <Facts
+        className="grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] [&_dd]:font-normal"
+        items={items.map(item => ({ key: item.key, label: item.label, value: item.value, wide: item.key === "context", tone: item.bad ? "!font-medium text-stuck" : undefined }))}
+      />
+    </div>
   )
 }
 

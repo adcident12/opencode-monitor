@@ -109,3 +109,17 @@ test('server: clear messages for a missing database and a bad option', async () 
   assert.ok(!missing.err.includes('    at '), 'no stack trace for an expected problem');
   assert.match((await run(['--bogus'])).err, /Unknown option --bogus/);
 });
+
+test('string files: no key is defined twice, and both languages have the same keys', () => {
+  for (const name of ['en', 'th']) {
+    const text = readFileSync(join(ROOT, 'i18n', `${name}.json`), 'utf8');
+    // JSON.parse keeps the last of two equal keys without a word; count them in the text instead.
+    const keys = [...text.matchAll(/^\s*"([^"]+)":/gm)].map(m => m[1]);
+    const twice = keys.filter((k, i) => keys.indexOf(k) !== i);
+    assert.deepEqual(twice, [], `${name}.json defines these more than once`);
+  }
+  const en = Object.keys(JSON.parse(readFileSync(join(ROOT, 'i18n', 'en.json'), 'utf8')));
+  const th = Object.keys(JSON.parse(readFileSync(join(ROOT, 'i18n', 'th.json'), 'utf8')));
+  assert.deepEqual(en.filter(k => !th.includes(k)), [], 'missing from th.json');
+  assert.deepEqual(th.filter(k => !en.includes(k)), [], 'missing from en.json');
+});

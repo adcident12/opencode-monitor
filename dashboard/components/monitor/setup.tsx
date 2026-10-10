@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n"
 import { useSetup } from "@/lib/live"
 import type { SetupReport } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { Chapter, H3, TAB, TH } from "./section"
+import { Chapter, H3, SUB, TAB, TH } from "./section"
 import { Dot } from "./state"
 
 /**
@@ -115,7 +115,7 @@ function Sent({ report }: { report: SetupReport }) {
     return <span className="font-medium text-error">{text}</span>
   }
   return (
-    <div className="space-y-2">
+    <div className={SUB}>
       <div>
         <h3 className={H3}>{t("setup.recent")}</h3>
         <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{t("setup.recentNote")}</p>

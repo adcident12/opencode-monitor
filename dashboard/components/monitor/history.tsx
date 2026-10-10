@@ -12,7 +12,7 @@ import { useI18n } from "@/lib/i18n"
 import { useHistory, useHistorySessions, useStats } from "@/lib/live"
 import type { HistoryEvent, Stats } from "@/lib/types"
 import { Code } from "./details"
-import { Chapter, TAB, TH } from "./section"
+import { Chapter, SUB, TAB, TH } from "./section"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
@@ -47,7 +47,7 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
         </Button>
       }
     >
-      <div className="space-y-2">
+      <div className={SUB}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -147,7 +147,7 @@ export function History({ count, active, session, onSession }: { count: number |
       )}
 
       {days.map(group => (
-        <section key={group.label} className="space-y-2">
+        <section key={group.label} className={SUB}>
           <h3 className="text-sm font-medium text-muted-foreground">{group.label}</h3>
           <ol className="divide-y rounded-xl border bg-card">
             {group.events.map(e => {

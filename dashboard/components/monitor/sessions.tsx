@@ -189,7 +189,7 @@ export function QuietRow({ session, now, history = false }: { session: Session; 
     <li className="space-y-2 px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <StateBadge state={session.state} label={t(`state.${session.state}`)} className="h-5 text-xs" />
-        <span className="min-w-0 flex-1 truncate text-sm">{session.title || session.id}</span>
+        <span className="min-w-48 flex-1 truncate text-sm" title={session.title || session.id}>{session.title || session.id}</span>
         <span className="text-xs text-muted-foreground">{reason(session)}</span>
         <span className="tabular-nums text-xs text-muted-foreground">{t("time.ago", { t: rough(now - session.since) })}</span>
         <Project session={session} />

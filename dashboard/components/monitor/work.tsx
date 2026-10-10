@@ -4,7 +4,7 @@ import { compact, duration, money, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import type { Stats } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { H3, TD, TH } from "./section"
+import { Facts, H3, SUB, TD, TH } from "./section"
 
 type Work = Stats["work"]
 
@@ -37,26 +37,30 @@ export function TimeSplit({ work }: { work: Work }) {
   const biggest = PARTS.reduce((a, b) => (work.time[b.key] > work.time[a.key] ? b : a))
 
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <Heading title={t("work.time")} note={t("work.timeNote")} />
       <div role="img" aria-label={PARTS.map(p => `${t(`work.part.${p.key}`)} ${pct(work.time[p.key])}%`).join(", ")} className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
         {PARTS.filter(p => work.time[p.key] > 0).map(p => (
           <span key={p.key} title={`${t(`work.part.${p.key}`)}: ${rough(work.time[p.key])}`} className="h-full first:rounded-l-full last:rounded-r-full" style={{ width: `${(work.time[p.key] / total) * 100}%`, background: p.color }} />
         ))}
       </div>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
-        {PARTS.map(p => (
-          <div key={p.key} className="space-y-0.5">
-            <dt className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Facts
+        className="grid-cols-2 sm:grid-cols-4"
+        items={PARTS.map(p => ({
+          key: p.key,
+          label: (
+            <span className="flex items-center gap-2">
               <span aria-hidden className="size-2.5 shrink-0 rounded-sm" style={{ background: p.color }} />
               {t(`work.part.${p.key}`)}
-            </dt>
-            <dd className="text-sm tabular-nums">
-              <span className="font-medium">{rough(work.time[p.key])}</span> <span className="text-muted-foreground">· {pct(work.time[p.key])}%</span>
-            </dd>
-          </div>
-        ))}
-      </dl>
+            </span>
+          ),
+          value: (
+            <>
+              {rough(work.time[p.key])} <span className="font-normal text-muted-foreground">· {pct(work.time[p.key])}%</span>
+            </>
+          ),
+        }))}
+      />
       <p className="max-w-prose text-sm text-muted-foreground">{t(`work.biggest.${biggest.key}`, { pct: pct(work.time[biggest.key]) })}</p>
     </section>
   )
@@ -73,22 +77,16 @@ export function Turns({ work }: { work: Work }) {
   const tone: Partial<Record<(typeof ENDINGS)[number], string>> = { cut: "text-stuck", error: "text-error" }
 
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <Heading title={t("work.turns")} note={t("work.turnsNote", { n: turns.count })} />
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-        <div className="space-y-0.5">
-          <dt className="text-xs text-muted-foreground">{t("work.medianSteps")}</dt>
-          <dd className="text-sm font-medium tabular-nums">{turns.medianSteps ?? "–"}</dd>
-        </div>
-        <div className="space-y-0.5">
-          <dt className="text-xs text-muted-foreground">{t("work.medianTime")}</dt>
-          <dd className="text-sm font-medium tabular-nums">{turns.medianMs == null ? "–" : duration(turns.medianMs)}</dd>
-        </div>
-        <div className="space-y-0.5">
-          <dt className="text-xs text-muted-foreground">{t("work.longest")}</dt>
-          <dd className="text-sm font-medium tabular-nums">{turns.longestMs == null ? "–" : duration(turns.longestMs)}</dd>
-        </div>
-      </dl>
+      <Facts
+        className="grid-cols-3"
+        items={[
+          { key: "steps", label: t("work.medianSteps"), value: turns.medianSteps ?? "–" },
+          { key: "time", label: t("work.medianTime"), value: turns.medianMs == null ? "–" : duration(turns.medianMs) },
+          { key: "longest", label: t("work.longest"), value: turns.longestMs == null ? "–" : duration(turns.longestMs) },
+        ]}
+      />
       <ul className="divide-y border-y text-sm">
         {ENDINGS.filter(e => turns.ended[e] > 0).map(e => (
           <li key={e} className="flex items-baseline justify-between gap-4 py-2">
@@ -125,7 +123,7 @@ export function Agents({ work }: { work: Work }) {
   const max = Math.max(1, ...agents.map(a => a.activeMs))
 
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <Heading title={t("work.agents")} note={t("work.agentsNote")} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -174,7 +172,7 @@ export function Permissions({ work }: { work: Work }) {
   const { permissions } = work
   if (!permissions.asked) return null
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <Heading title={t("work.permissions")} note={t("work.permissionsNote", { n: permissions.asked })} />
       <ol className="divide-y border-y">
         {permissions.top.map(p => (
@@ -199,8 +197,8 @@ export function Files({ work }: { work: Work }) {
   const { files } = work
   if (!files.edits) return null
   return (
-    <section className="space-y-3">
-      <Heading title={t("work.files")} note={t("work.filesNote", { edits: files.edits, files: files.files })} />
+    <section className={SUB}>
+      <Heading title={t("work.filesChanged")} note={t("work.filesNote", { edits: files.edits, files: files.files })} />
       <ol className="divide-y border-y">
         {files.top.map(f => (
           <li key={`${f.project}|${f.file}`} className="grid grid-cols-[3.75rem_minmax(0,1fr)_auto] items-baseline gap-x-3 py-2">
@@ -221,7 +219,7 @@ export function Plans({ work }: { work: Work }) {
   if (!plans.total) return null
   const pct = Math.round((plans.completed / plans.total) * 100)
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <Heading title={t("work.plans")} note={t("work.plansNote", { n: plans.sessions })} />
       <div className="space-y-1.5">
         <div className="h-2 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={t("work.plansDone", { done: plans.completed, total: plans.total, pct })}>

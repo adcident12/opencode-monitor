@@ -14,7 +14,7 @@ import { useStats } from "@/lib/live"
 import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
-import { Chapter, H3, TAB, TH } from "./section"
+import { Chapter, GRID, H3, SUB, TAB, TH } from "./section"
 import { Agents, Files, Permissions, Plans, TimeSplit, Turns } from "./work"
 import { SessionFilter } from "./session-filter"
 
@@ -257,7 +257,7 @@ function Figures({ stats }: { stats: StatsData }) {
       <Jump shown={shown} />
 
       <Group id="you">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className={GRID}>
           <DayChart title={t("stats.chartWait")} days={stats.daily} pick={d => d.waitMs} color="var(--color-waiting)" />
           <Ranked title={t("stats.longestWaits")} empty={t("stats.noWaits")}>
             {stats.waits.map((w, i) => (
@@ -280,11 +280,11 @@ function Figures({ stats }: { stats: StatsData }) {
 
       <Group id="agent">
         <TimeSplit work={stats.work} />
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className={GRID}>
           <Turns work={stats.work} />
           <Agents work={stats.work} />
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className={GRID}>
           <DayChart title={t("stats.chartActive")} days={stats.daily} pick={d => d.activeMs} color="var(--color-working)" />
           <Ranked title={t("stats.slowest")} note={t("stats.slowestNote")} empty={t("stats.noSlow")}>
             {stats.slow.map((s, i) => (
@@ -304,7 +304,7 @@ function Figures({ stats }: { stats: StatsData }) {
           </Ranked>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+        <div className={GRID}>
           <ToolUse stats={stats} />
           <div className="space-y-8">
             <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")} shortBy={10}>
@@ -333,7 +333,7 @@ function Figures({ stats }: { stats: StatsData }) {
 
       {hasDone && (
         <Group id="done">
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+          <div className={GRID}>
             <Files work={stats.work} />
             <Plans work={stats.work} />
           </div>
@@ -388,7 +388,7 @@ function Ranked({ title, note, empty, shortBy, children }: { title: string; note
   const hidden = shortBy && !all ? Math.max(0, children.length - shortBy) : 0
   const shown = hidden ? children.slice(0, shortBy) : children
   return (
-    <section className="space-y-2">
+    <section className={SUB}>
       <div>
         <h3 className={H3}>{title}</h3>
         {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
@@ -418,7 +418,7 @@ function Bars({ title, summary, points, color, tick }: { title: string; summary:
   const data = points.map(p => ({ ...p, label: label.format(new Date(`${p.date}T12:00:00`)) }))
 
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h3 className={cn(H3, "min-w-0 [overflow-wrap:anywhere]")}>{title}</h3>
         <span className="text-sm tabular-nums text-muted-foreground">{summary}</span>
@@ -483,7 +483,7 @@ function ToolUse({ stats }: { stats: StatsData }) {
   // Only for people who have graft: to anyone else "graft was used for 0%" means nothing.
   const hasGraft = graft > 0 || stats.mcp.some(m => m.name === "graft" && m.enabled)
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <div>
         <h3 className={H3}>{t("stats.tools")}</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.toolsNote", { calls: stats.totals.toolCalls, errors: stats.totals.toolErrors })}</p>
@@ -522,7 +522,7 @@ function Context({ stats }: { stats: StatsData }) {
   const peakPct = context.limit ? Math.round((context.peak / context.limit) * 100) : null
 
   return (
-    <section className="space-y-3">
+    <section className={SUB}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
           <h3 className={H3}>{t("stats.context")}</h3>
@@ -590,7 +590,7 @@ function Speed({ stats }: { stats: StatsData }) {
   const points = stats.daily.map((d, i) => ({ date: d.date, value: main.daily[i] ?? 0, text: tps(main.daily[i] ?? null) }))
 
   return (
-    <section className="space-y-4">
+    <section className={SUB}>
       <div>
         <h3 className={H3}>{t("stats.speed")}</h3>
         <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{t("stats.speedNote")}</p>
@@ -634,7 +634,7 @@ function Usage({ stats }: { stats: StatsData }) {
   if (!usage.requests) return null
   const sent = usage.input + usage.cacheRead + usage.cacheWrite
   return (
-    <section className="space-y-4">
+    <section className={SUB}>
       <div>
         <h3 className={H3}>{t("stats.usage")}</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.usageNote", { n: usage.requests })}</p>
