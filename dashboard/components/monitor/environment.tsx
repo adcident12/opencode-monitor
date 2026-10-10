@@ -39,10 +39,11 @@ export function Environment({ environment }: { environment: Snapshot["environmen
   if (!groups.length) return null
 
   return (
-    <section aria-label={t("env.title")} className="flex flex-wrap gap-x-8 gap-y-3 border-y border-border/70 py-3">
+    <section aria-label={t("env.title")} className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-5 gap-y-2 border-y border-border/70 py-3 text-sm">
       {groups.map(group => (
-        <div key={group.label} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+        <div key={group.label} className="contents">
           <span className="text-muted-foreground">{group.label}</span>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
           {group.items.map(item => (
             <Tooltip key={item.key}>
               <TooltipTrigger render={<span tabIndex={0} />} className="inline-flex items-center gap-1.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -53,6 +54,7 @@ export function Environment({ environment }: { environment: Snapshot["environmen
               {item.tip && <TooltipContent className="max-w-72">{item.tip}</TooltipContent>}
             </Tooltip>
           ))}
+          </div>
         </div>
       ))}
     </section>

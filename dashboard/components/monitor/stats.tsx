@@ -14,6 +14,11 @@ import { Code } from "./details"
 import { SessionFilter } from "./session-filter"
 
 const RANGES = [7, 14, 30] as const
+// Headings of the sections inside a chapter.
+// A ranked row: the figure, what it was, and when and where, each in its own column so nothing wraps under another.
+// On a phone the third column has no room, so when and where go under the label instead.
+const ROW = "grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-0.5 sm:grid-cols-[3.75rem_minmax(0,1fr)_auto]"
+const H3 = "text-[0.95rem] font-semibold tracking-tight"
 
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 
@@ -30,7 +35,8 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
         <Select value={String(days)} onValueChange={value => setDays(Number(value))} items={RANGES.map(d => ({ value: String(d), label: t("stats.range", { n: d }) }))}>
           <SelectTrigger size="sm" aria-label={t("stats.rangeLabel")} className="min-w-36">
             <SelectValue />
@@ -44,8 +50,9 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
           </SelectContent>
         </Select>
         <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
-        <SplitPicker value={split} onChange={setSplit} days={days} />
-        <p className="text-sm text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
+          <SplitPicker value={split} onChange={setSplit} days={days} />
+        </div>
+        <p className="text-xs text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
       </div>
 
       {failed && !stats && <p className="text-sm text-error">{t("stats.failed")}</p>}
@@ -120,7 +127,7 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
   return (
     <section aria-label={t("compare.title")} className="space-y-3 rounded-xl border bg-card px-4 py-4 sm:px-5">
       <div>
-        <h3 className="font-medium">{t("compare.heading", { day })}</h3>
+        <h3 className={H3}>{t("compare.heading", { day })}</h3>
         <p className="text-xs text-muted-foreground">{t("compare.note")}</p>
       </div>
       <div className="overflow-x-auto">
@@ -177,13 +184,57 @@ function Change({ before, after, better }: { before: number | null; after: numbe
   )
 }
 
+/** The chapters of the page, in reading order. Each id is also where the jump links land. */
+const GROUPS = ["you", "agent", "model", "mcp"] as const
+type GroupId = (typeof GROUPS)[number]
+
+/**
+ * A chapter: a real heading, a rule above it, and room. Without these the page was one long
+ * run of equally weighted lists, and finding "how fast is the model" meant reading all of it.
+ */
+function Group({ id, note, children }: { id: GroupId; note?: string; children: React.ReactNode }) {
+  const { t } = useI18n()
+  return (
+    <section id={`stats-${id}`} aria-labelledby={`stats-${id}-title`} className="scroll-mt-6 space-y-7 border-t pt-8">
+      <div className="space-y-1">
+        <h2 id={`stats-${id}-title`} className="text-xl font-semibold tracking-tight">
+          {t(`stats.group.${id}`)}
+        </h2>
+        {note && <p className="max-w-prose text-sm text-muted-foreground">{note}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** Links to the chapters. Plain scrolling: the URL hash already says which tab is open. */
+function Jump({ shown }: { shown: GroupId[] }) {
+  const { t } = useI18n()
+  const go = (id: GroupId) => {
+    const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    document.getElementById(`stats-${id}`)?.scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" })
+  }
+  return (
+    <nav aria-label={t("stats.jump")} className="-mx-2 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm">
+      <span className="px-2 text-muted-foreground">{t("stats.jump")}</span>
+      {shown.map(id => (
+        <button key={id} type="button" onClick={() => go(id)} className="rounded-md px-2 py-1 text-foreground/80 outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+          {t(`stats.group.${id}`)}
+        </button>
+      ))}
+    </nav>
+  )
+}
+
 function Figures({ stats }: { stats: StatsData }) {
   const { t } = useI18n()
   const { totals } = stats
+  const hasModel = stats.usage.requests > 0 || stats.speed.models.length > 0 || stats.context != null
+  const shown = GROUPS.filter(id => (id === "model" ? hasModel : id === "mcp" ? stats.mcp.length > 0 : true))
 
   return (
     <>
-      <section aria-label={t("stats.summary")} className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+      <section aria-label={t("stats.summary")} className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
         <Tile label={t("stats.waitTotal")} value={rough(totals.waitMs)} note={t("stats.prompts", { n: totals.prompts })} tone="waiting" />
         <Tile
           label={t("stats.medianAnswer")}
@@ -194,71 +245,89 @@ function Figures({ stats }: { stats: StatsData }) {
         <Tile label={t("stats.agentTime")} value={rough(totals.activeMs)} note={t("stats.sessions", { n: totals.sessions })} />
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <DayChart title={t("stats.chartWait")} days={stats.daily} pick={d => d.waitMs} color="var(--color-waiting)" />
-        <DayChart title={t("stats.chartActive")} days={stats.daily} pick={d => d.activeMs} color="var(--color-working)" />
-      </div>
+      <Jump shown={shown} />
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <Ranked title={t("stats.longestWaits")} empty={t("stats.noWaits")}>
-          {stats.waits.map((w, i) => (
-            <li key={`${w.at}-${i}`} className="space-y-1 py-2.5">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                <span className="font-medium tabular-nums text-waiting">{duration(w.waitMs)}</span>
-                <span className="text-sm">{w.kind === "question" ? t("stats.question") : t("stats.permission", { permission: w.permission ?? "" })}</span>
-                {!w.answered && <span className="text-xs text-muted-foreground">{t(w.abandoned ? "stats.abandoned" : "stats.stillOpen")}</span>}
-                <When at={w.at} project={w.project} />
-              </div>
-              {w.detail && <Code className="text-[0.78rem] text-muted-foreground">{w.detail}</Code>}
-            </li>
-          ))}
-        </Ranked>
-
-        <Ranked title={t("stats.slowest")} note={t("stats.slowestNote")} empty={t("stats.noSlow")}>
-          {stats.slow.map((s, i) => (
-            <li key={`${s.at}-${i}`} className="space-y-1 py-2.5">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                <span className={cn("font-medium tabular-nums", s.runMs > stats.stuckMs && "text-stuck")}>{duration(s.runMs)}</span>
-                <span className="text-sm">{s.tool}</span>
-                {s.running && <span className="text-xs text-muted-foreground">{t("stats.stillRunning")}</span>}
-                {s.status === "error" && <span className="text-xs text-error">{t("stats.failedCall")}</span>}
-                <When at={s.at} project={s.project} />
-              </div>
-              {s.text && <Code className="text-[0.78rem] text-muted-foreground">{s.text}</Code>}
-            </li>
-          ))}
-        </Ranked>
-      </div>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        <ToolUse stats={stats} />
-        <div className="space-y-8">
-          <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")}>
-            {stats.rereads.map(r => (
-              <li key={`${r.file}-${r.project}`} className="flex items-baseline gap-3 py-2">
-                <span className="w-8 shrink-0 text-right font-medium tabular-nums">×{r.count}</span>
-                <Code className="min-w-0 text-[0.78rem]">{r.file}</Code>
-              </li>
-            ))}
-          </Ranked>
-          <Ranked title={t("stats.skills")} empty={t("stats.noSkills")}>
-            {stats.skills.map(s => (
-              <li key={s.name} className="flex items-baseline gap-3 py-2">
-                <span className="w-8 shrink-0 text-right font-medium tabular-nums">×{s.count}</span>
-                <span className="text-sm">{s.name}</span>
+      <Group id="you">
+        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+          <DayChart title={t("stats.chartWait")} days={stats.daily} pick={d => d.waitMs} color="var(--color-waiting)" />
+          <Ranked title={t("stats.longestWaits")} empty={t("stats.noWaits")}>
+            {stats.waits.map((w, i) => (
+              <li key={`${w.at}-${i}`} className="space-y-1 py-2.5">
+                <div className={ROW}>
+                  <span className="font-medium tabular-nums text-waiting">{duration(w.waitMs)}</span>
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm">{w.kind === "question" ? t("stats.question") : t("stats.permission", { permission: w.permission ?? "" })}</span>
+                    {!w.answered && <span className="text-xs text-muted-foreground">{t(w.abandoned ? "stats.abandoned" : "stats.stillOpen")}</span>}
+                  </span>
+                  <When at={w.at} project={w.project} />
+                </div>
+                {w.detail && <Code className="pl-[4.5rem] text-[0.78rem] text-muted-foreground">{w.detail}</Code>}
               </li>
             ))}
           </Ranked>
         </div>
-      </div>
+      </Group>
 
-      <Context stats={stats} />
-      <Speed stats={stats} />
-      <Usage stats={stats} />
-      <McpServers stats={stats} />
+      <Group id="agent">
+        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+          <DayChart title={t("stats.chartActive")} days={stats.daily} pick={d => d.activeMs} color="var(--color-working)" />
+          <Ranked title={t("stats.slowest")} note={t("stats.slowestNote")} empty={t("stats.noSlow")}>
+            {stats.slow.map((s, i) => (
+              <li key={`${s.at}-${i}`} className="space-y-1 py-2.5">
+                <div className={ROW}>
+                  <span className={cn("font-medium tabular-nums", s.runMs > stats.stuckMs && "text-stuck")}>{duration(s.runMs)}</span>
+                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm [overflow-wrap:anywhere]">{s.tool}</span>
+                    {s.running && <span className="text-xs text-muted-foreground">{t("stats.stillRunning")}</span>}
+                    {s.status === "error" && <span className="text-xs text-error">{t("stats.failedCall")}</span>}
+                  </span>
+                  <When at={s.at} project={s.project} />
+                </div>
+                {s.text && <Code className="pl-[4.5rem] text-[0.78rem] text-muted-foreground">{s.text}</Code>}
+              </li>
+            ))}
+          </Ranked>
+        </div>
 
-      {(totals.abandoned > 0 || totals.abandonedCalls > 0) && (
-        <p className="text-sm text-muted-foreground">{t("stats.abandonedNote", { prompts: totals.abandoned, calls: totals.abandonedCalls })}</p>
+        <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+          <ToolUse stats={stats} />
+          <div className="space-y-8">
+            <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")}>
+              {stats.rereads.map(r => (
+                <li key={`${r.file}-${r.project}`} className="flex items-baseline gap-3 py-2">
+                  <span className="w-9 shrink-0 font-medium tabular-nums">×{r.count}</span>
+                  <Code className="min-w-0 text-[0.78rem]">{r.file}</Code>
+                </li>
+              ))}
+            </Ranked>
+            <Ranked title={t("stats.skills")} empty={t("stats.noSkills")}>
+              {stats.skills.map(s => (
+                <li key={s.name} className="flex items-baseline gap-3 py-2">
+                  <span className="w-9 shrink-0 font-medium tabular-nums">×{s.count}</span>
+                  <span className="text-sm">{s.name}</span>
+                </li>
+              ))}
+            </Ranked>
+          </div>
+        </div>
+
+        {(totals.abandoned > 0 || totals.abandonedCalls > 0) && (
+          <p className="max-w-prose text-sm text-muted-foreground">{t("stats.abandonedNote", { prompts: totals.abandoned, calls: totals.abandonedCalls })}</p>
+        )}
+      </Group>
+
+      {hasModel && (
+        <Group id="model">
+          <Context stats={stats} />
+          <Speed stats={stats} />
+          <Usage stats={stats} />
+        </Group>
+      )}
+
+      {stats.mcp.length > 0 && (
+        <Group id="mcp" note={t("stats.mcpNote")}>
+          <McpServers stats={stats} />
+        </Group>
       )}
     </>
   )
@@ -278,8 +347,11 @@ function When({ at, project }: { at: number; project: string }) {
   const { lang } = useI18n()
   const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(at)
   return (
-    <span className="ml-auto text-xs text-muted-foreground">
-      {when} <span className="font-mono">{project}</span>
+    <span className="col-start-2 flex max-w-[16rem] min-w-0 items-baseline gap-1.5 text-xs whitespace-nowrap text-muted-foreground sm:col-start-auto">
+      {when}
+      <span className="truncate font-mono" title={project}>
+        {project}
+      </span>
     </span>
   )
 }
@@ -288,8 +360,8 @@ function Ranked({ title, note, empty, children }: { title: string; note?: string
   return (
     <section className="space-y-2">
       <div>
-        <h3 className="font-medium">{title}</h3>
-        {note && <p className="text-xs text-muted-foreground">{note}</p>}
+        <h3 className={H3}>{title}</h3>
+        {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
       </div>
       {children.length ? <ol className="divide-y border-y">{children}</ol> : <p className="text-sm text-muted-foreground">{empty}</p>}
     </section>
@@ -313,7 +385,7 @@ function Bars({ title, summary, points, color, tick }: { title: string; summary:
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="font-medium">{title}</h3>
+        <h3 className={H3}>{title}</h3>
         <span className="text-sm tabular-nums text-muted-foreground">{summary}</span>
       </div>
       <div className="h-48" role="img" aria-label={title}>
@@ -376,8 +448,8 @@ function ToolUse({ stats }: { stats: StatsData }) {
   return (
     <section className="space-y-3">
       <div>
-        <h3 className="font-medium">{t("stats.tools")}</h3>
-        <p className="text-xs text-muted-foreground">{t("stats.toolsNote", { calls: stats.totals.toolCalls, errors: stats.totals.toolErrors })}</p>
+        <h3 className={H3}>{t("stats.tools")}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.toolsNote", { calls: stats.totals.toolCalls, errors: stats.totals.toolErrors })}</p>
       </div>
       <ul className="space-y-1.5">
         {stats.tools.map(x => (
@@ -416,8 +488,8 @@ function Context({ stats }: { stats: StatsData }) {
     <section className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
-          <h3 className="font-medium">{t("stats.context")}</h3>
-          <p className="text-xs text-muted-foreground">{t("stats.contextNote", { n: context.requests })}</p>
+          <h3 className={H3}>{t("stats.context")}</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.contextNote", { n: context.requests })}</p>
         </div>
         <span className="text-sm tabular-nums text-muted-foreground">
           {peakPct == null ? t("stats.contextPeak", { n: compact(context.peak) }) : t("stats.contextPeakOf", { n: compact(context.peak), limit: compact(context.limit!), pct: peakPct })}
@@ -470,7 +542,7 @@ function Context({ stats }: { stats: StatsData }) {
  */
 function Speed({ stats }: { stats: StatsData }) {
   const { t } = useI18n()
-  const { models } = stats.speed
+  const models = stats.speed.models.filter(m => m.writeTps != null || m.readTps != null)
   if (!models.length) return null
   const main = models[0]
   const tps = (n: number | null) => (n == null ? "–" : t("stats.speedTps", { n: n < 100 ? n.toFixed(1) : Math.round(n) }))
@@ -479,8 +551,8 @@ function Speed({ stats }: { stats: StatsData }) {
   return (
     <section className="space-y-4">
       <div>
-        <h3 className="font-medium">{t("stats.speed")}</h3>
-        <p className="text-xs text-muted-foreground">{t("stats.speedNote")}</p>
+        <h3 className={H3}>{t("stats.speed")}</h3>
+        <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{t("stats.speedNote")}</p>
       </div>
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="overflow-x-auto">
@@ -497,7 +569,7 @@ function Speed({ stats }: { stats: StatsData }) {
               {models.map(m => (
                 <tr key={m.model}>
                   <th scope="row" className="py-2 pr-3 text-left font-normal">
-                    <span className="font-mono text-[0.78rem] break-all">{m.model}</span>
+                    <span className="font-mono text-[0.78rem] [overflow-wrap:anywhere]">{m.model}</span>
                     <span className="block text-xs text-muted-foreground">{t("stats.speedRequests", { n: m.requests })}</span>
                   </th>
                   <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{tps(m.writeTps)}</td>
@@ -523,8 +595,8 @@ function Usage({ stats }: { stats: StatsData }) {
   return (
     <section className="space-y-4">
       <div>
-        <h3 className="font-medium">{t("stats.usage")}</h3>
-        <p className="text-xs text-muted-foreground">{t("stats.usageNote", { n: usage.requests })}</p>
+        <h3 className={H3}>{t("stats.usage")}</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.usageNote", { n: usage.requests })}</p>
       </div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
         <Tile label={t("stats.usageSent")} value={compact(sent)} note={usage.cachedPct == null ? "" : t("stats.usageCached", { pct: usage.cachedPct })} />
@@ -537,7 +609,7 @@ function Usage({ stats }: { stats: StatsData }) {
         )}
       </div>
       {usage.start && (
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-prose text-sm text-muted-foreground">
           {usage.cost > 0 && <>{t("stats.usageStartLine", { median: compact(usage.start.median), n: usage.start.sessions })} </>}
           {t("stats.usageStartNote")}
         </p>
@@ -555,24 +627,31 @@ function McpServers({ stats }: { stats: StatsData }) {
   if (!stats.mcp.length) return null
   const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
   const unused = stats.mcp.filter(m => m.unused)
+  // A server that is off and has nothing to report does not need a row of zeros.
+  const quiet = (m: McpStat) => !m.enabled && !m.calls && !m.disconnects && !m.startFailures
+  const rows = stats.mcp.filter(m => !quiet(m))
+  const off = stats.mcp.filter(quiet)
   // Failures logged before the oldest log line we have are unknown, not zero.
   const logShort = !stats.session && stats.mcpLogFrom != null && stats.mcpLogFrom > stats.range.from
 
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="font-medium">{t("stats.mcp")}</h3>
-        <p className="text-xs text-muted-foreground">{t("stats.mcpNote")}</p>
-      </div>
-      <ul className="divide-y border-y">
-        {stats.mcp.map(m => (
-          <McpRow key={m.name} server={m} when={when} />
-        ))}
-      </ul>
-      {unused.length > 0 && <p className="text-sm text-muted-foreground">{t(stats.session ? "stats.mcpUnusedSession" : "stats.mcpUnused", { names: unused.map(m => m.name).join(", ") })}</p>}
+    <div className="space-y-3">
+      {rows.length > 0 && (
+        <ul className="divide-y border-y">
+          {rows.map(m => (
+            <McpRow key={m.name} server={m} when={when} />
+          ))}
+        </ul>
+      )}
+      {off.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t("stats.mcpOffList")} <span className="font-mono text-[0.8rem]">{off.map(m => m.name).join(", ")}</span>
+        </p>
+      )}
+      {unused.length > 0 && <p className="max-w-prose text-sm text-muted-foreground">{t(stats.session ? "stats.mcpUnusedSession" : "stats.mcpUnused", { names: unused.map(m => m.name).join(", ") })}</p>}
       {stats.session && <p className="text-xs text-muted-foreground">{t("stats.mcpNoLogForSession")}</p>}
       {logShort && <p className="text-xs text-muted-foreground">{t("stats.mcpLogFrom", { t: when.format(stats.mcpLogFrom!) })}</p>}
-    </section>
+    </div>
   )
 }
 

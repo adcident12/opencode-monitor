@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { childrenOf, groupByUrgency } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import { useHash, useNow, useSnapshot } from "@/lib/live"
 
 type Tab = "now" | "history" | "stats"
@@ -85,7 +86,7 @@ export default function Page() {
               <h2 id="working-heading" className="text-sm font-medium text-muted-foreground">
                 {t("section.working", { n: working.length })}
               </h2>
-              <div className="grid gap-3 lg:grid-cols-2">
+              <div className={cn("grid gap-4", working.length > 1 && "lg:grid-cols-2")}>
                 {working.map(s => (
                   <WorkingCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} history={historyEnabled} />
                 ))}

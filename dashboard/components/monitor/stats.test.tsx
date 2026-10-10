@@ -141,7 +141,9 @@ describe("MCP servers in Stats", () => {
     expect(within(memory).getByText("never used")).toBeInTheDocument()
     expect(screen.getByText(/Switched on but never called in this period: memory\./)).toBeInTheDocument()
     expect(within(screen.getByText("godot").closest("li")!).getByText("project")).toBeInTheDocument()
-    expect(within(screen.getByText("github").closest("li")!).getByText("off")).toBeInTheDocument()
+    // Off and idle: named in one line, not given a row of zeros.
+    expect(screen.getByText("Switched off, with nothing to report:").parentElement).toHaveTextContent("github")
+    expect(screen.queryByText("off")).not.toBeInTheDocument()
     // The log starts inside the period, so earlier failures are unknown rather than zero.
     expect(screen.getByText(/log only goes back to/)).toBeInTheDocument()
   })

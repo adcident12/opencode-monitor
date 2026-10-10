@@ -86,7 +86,7 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
       value:
         h.contextPct != null ? (
           <span className="inline-flex items-center gap-2">
-            <Progress value={Math.min(100, h.contextPct)} className={cn("w-16", warn("context_high") && "[&_[data-slot=progress-indicator]]:bg-stuck")} aria-label={t("health.context")} />
+            <Progress value={Math.min(100, h.contextPct)} className={cn("w-20", warn("context_high") && "[&_[data-slot=progress-indicator]]:bg-stuck")} aria-label={t("health.context")} />
             {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
           </span>
         ) : (
@@ -99,10 +99,10 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   if (h.toolErrors) items.push({ key: "errors", label: t("health.toolErrors"), value: `${h.toolErrors} / ${h.toolCalls}`, bad: warn("many_errors") })
 
   return (
-    <dl className="flex flex-wrap gap-x-6 gap-y-1.5 text-[0.82rem]">
+    <dl className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-6 gap-y-3 border-t border-border/70 pt-3 text-[0.82rem]">
       {items.map(item => (
-        <div key={item.key} className="flex items-center gap-2">
-          <dt className="text-muted-foreground">{item.label}</dt>
+        <div key={item.key} className={cn("space-y-0.5", item.key === "context" && "col-span-2")}>
+          <dt className="text-xs text-muted-foreground">{item.label}</dt>
           <dd className={cn("tabular-nums", item.bad && "font-medium text-stuck")}>{item.value}</dd>
         </div>
       ))}

@@ -1,5 +1,6 @@
 "use client"
 
+import { ChartColumnIcon, HistoryIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { clock, duration, rough } from "@/lib/format"
@@ -27,18 +28,20 @@ function Project({ session }: { session: Session }) {
 }
 
 /** Jumps to this session's own figures and record of state changes. */
-function SessionLinks({ session, history }: { session: Session; history: boolean }) {
+function SessionLinks({ session, history, footer = false }: { session: Session; history: boolean; footer?: boolean }) {
   const { t } = useI18n()
-  const link = "rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+  const link = "inline-flex items-center gap-1 rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
   // A subagent has no entries of its own; its parent's cover it.
   const id = session.parentId ?? session.id
   return (
-    <nav aria-label={t("links.label", { title: session.title || session.id })} className="flex gap-3 text-xs text-muted-foreground">
+    <nav aria-label={t("links.label", { title: session.title || session.id })} className={cn("flex gap-4 text-xs text-muted-foreground", footer && "justify-end border-t border-border/70 pt-3")}>
       <a href={`#stats/${id}`} className={link}>
+        <ChartColumnIcon aria-hidden className="size-3.5" />
         {t("links.stats")}
       </a>
       {history && (
         <a href={`#history/${id}`} className={link}>
+          <HistoryIcon aria-hidden className="size-3.5" />
           {t("links.history")}
         </a>
       )}
@@ -137,7 +140,7 @@ export function AttentionCard({ session, subagents, now, history = false }: { se
         <Subagents items={subagents} now={now} />
         <Work session={session} />
         <Review session={session} />
-        <SessionLinks session={session} history={history} />
+        <SessionLinks session={session} history={history} footer />
       </CardContent>
     </Card>
   )
@@ -172,7 +175,7 @@ export function WorkingCard({ session, subagents, now, history = false }: { sess
         <Subagents items={subagents} now={now} />
         <Work session={session} />
         <Review session={session} />
-        <SessionLinks session={session} history={history} />
+        <SessionLinks session={session} history={history} footer />
       </CardContent>
     </Card>
   )
