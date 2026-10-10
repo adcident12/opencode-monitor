@@ -252,6 +252,27 @@ function timingOf(m, step) {
   };
 }
 
+/** Agent time: from a request to its reply, clipped to the range, on the day it started. */
+function addActiveTime(ctx, m) {
+  const start = Math.max(m.time_created, ctx.from);
+  const end = Math.min(m.completed ?? m.time_created, ctx.now);
+  const day = end > start ? ctx.bucket(start) : null;
+  if (day) day.activeMs += end - start;
+}
+
+/** One request's tokens and cost, into the period's totals and its day. */
+function addUsage(usage, day, m, sent) {
+  usage.requests++;
+  usage.input += m.tokens_input ?? 0;
+  usage.cacheRead += m.tokens_cache_read ?? 0;
+  usage.cacheWrite += m.tokens_cache_write ?? 0;
+  usage.output += m.tokens_output ?? 0;
+  usage.reasoning += m.tokens_reasoning ?? 0;
+  usage.cost += m.cost ?? 0;
+  day.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
+  day.cost += m.cost ?? 0;
+}
+
 /**
  * Model requests. Agent time: from each request to its reply, clipped to the range.
  * Tokens: what each request sent and got back, as the model server reported it.
@@ -263,23 +284,13 @@ function tallyRequests(ctx, messages, steps) {
   const own = []; // the selected session's own requests, for its context timeline
   for (const m of messages) {
     if (m.role !== 'assistant' || !ctx.inScope(m.session_id)) continue;
-    const start = Math.max(m.time_created, ctx.from);
-    const end = Math.min(m.completed ?? m.time_created, ctx.now);
-    if (end > start && ctx.bucket(start)) ctx.bucket(start).activeMs += end - start;
+    addActiveTime(ctx, m);
 
     const sent = tokensSent(m);
     const b = ctx.bucket(m.time_created);
     if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
     if (m.session_id === ctx.sessionId && sent > 0 && !m.summary) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
-    usage.requests++;
-    usage.input += m.tokens_input ?? 0;
-    usage.cacheRead += m.tokens_cache_read ?? 0;
-    usage.cacheWrite += m.tokens_cache_write ?? 0;
-    usage.output += m.tokens_output ?? 0;
-    usage.reasoning += m.tokens_reasoning ?? 0;
-    usage.cost += m.cost ?? 0;
-    b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
-    b.cost += m.cost ?? 0;
+    addUsage(usage, b, m, sent);
     const timing = timingOf(m, steps.get(m.id));
     if (timing) timed.push(timing);
     const first = firstRequest.get(m.session_id);
@@ -332,6 +343,30 @@ function runOf(p, t, ctx, { movedOn, deadAt, waitByPart }) {
   return { unfinished, left: false, runMs: end == null ? null : Math.max(0, end - t - (waitByPart.get(p.id) ?? 0)) };
 }
 
+/** One call into its day and its tool's row: counted, failed, abandoned, or run too long. */
+function countCall(day, entry, p, { left, runMs }, stuckMs) {
+  day.toolCalls++;
+  entry.count++;
+  if (p.status === 'error') {
+    entry.errors++;
+    day.toolErrors++;
+  }
+  if (left) day.abandoned++;
+  if (runMs == null) return;
+  entry.totalMs += runMs;
+  if (runMs > stuckMs) day.stuck++;
+}
+
+const countOne = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+
+/** What the call was for: exploring (with graft or without), reading a file, loading a skill. */
+function countUse(p, { explore, reads, skills }) {
+  if (isGraft(p.tool)) explore.graft++;
+  else if (isExploreTool(p.tool)) explore.other++;
+  if (p.tool === 'read' && p.file) countOne(reads, `${p.session_id}|${p.file}`);
+  if (p.tool === 'skill' && p.skill) countOne(skills, p.skill);
+}
+
 /** Tool calls: counts, errors, and how long each ran. */
 function tallyTools(ctx, tools, timing, stuckMs) {
   const perTool = new Map();
@@ -353,26 +388,13 @@ function tallyTools(ctx, tools, timing, stuckMs) {
     perRoot.set(rootId, root);
     if (!ctx.inScope(p.session_id)) continue;
 
-    b.toolCalls++;
     const entry = perTool.get(p.tool) ?? { tool: p.tool, count: 0, errors: 0, totalMs: 0 };
-    entry.count++;
-    if (p.status === 'error') {
-      entry.errors++;
-      b.toolErrors++;
-    }
-    const { unfinished, left, runMs } = runOf(p, t, ctx, timing);
-    if (left) b.abandoned++;
-    if (runMs != null) {
-      entry.totalMs += runMs;
-      if (runMs > stuckMs) b.stuck++;
-      slow.push({ p, runMs, running: unfinished });
-    }
     perTool.set(p.tool, entry);
-    calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: unfinished ? null : runMs });
-    if (isGraft(p.tool)) explore.graft++;
-    else if (isExploreTool(p.tool)) explore.other++;
-    if (p.tool === 'read' && p.file) reads.set(`${p.session_id}|${p.file}`, (reads.get(`${p.session_id}|${p.file}`) ?? 0) + 1);
-    if (p.tool === 'skill' && p.skill) skills.set(p.skill, (skills.get(p.skill) ?? 0) + 1);
+    const run = runOf(p, t, ctx, timing);
+    countCall(b, entry, p, run, stuckMs);
+    if (run.runMs != null) slow.push({ p, runMs: run.runMs, running: run.unfinished });
+    calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: run.unfinished ? null : run.runMs });
+    countUse(p, { explore, reads, skills });
   }
   return { perTool, slow, reads, skills, explore, calls, perRoot };
 }
@@ -402,6 +424,37 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
   for (const c of compactions) if (c.time_created >= ctx.from) bump(c.session_id, 'compactions', 1);
   for (const p of prompts) if (p.part) bump(p.part.session_id, 'waitMs', p.waitMs);
   return effort;
+}
+
+const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
+
+/** The prompts that waited longest for you, with what each asked. */
+function longestWaits(prompts, { show, where }) {
+  return prompts
+    .toSorted((a, b) => b.waitMs - a.waitMs)
+    .slice(0, TOP)
+    .map(p => ({
+      at: p.t,
+      kind: p.kind,
+      permission: p.permission,
+      detail: show(p.patterns || (p.part ? describe(p.part) : ''), 200),
+      waitMs: p.waitMs,
+      answered: p.answeredAt != null,
+      abandoned: p.abandoned,
+      ...(p.part ? where(p.part.session_id) : { project: '', title: '' }),
+    }));
+}
+
+/** One session's context window over its own requests, with the limits of the model it used last. */
+function contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory }) {
+  const last = own.at(-1);
+  return contextTimeline({
+    requests: own,
+    compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
+    reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
+    limit: last ? contextLimit(last.provider, last.model) : null,
+    compactAt: last ? compactAt(last.provider, last.model, directory) : null,
+  });
 }
 
 /**
@@ -442,8 +495,12 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     return { project: show(directory.split(/[\\/]/).findLast(Boolean) ?? '', 80), title: show(s?.title ?? '', 120) };
   };
 
-  for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) bucket(s.time_created) && bucket(s.time_created).sessions++;
-  for (const c of compactions) if (inScope(c.session_id)) bucket(c.time_created) && bucket(c.time_created).compactions++;
+  const countOn = (t, key) => {
+    const day = bucket(t);
+    if (day) day[key]++;
+  };
+  for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) countOn(s.time_created, 'sessions');
+  for (const c of compactions) if (inScope(c.session_id)) countOn(c.time_created, 'compactions');
 
   const { usage, startSizes, timed, own } = tallyRequests(ctx, messages, steps);
   const movedOn = nextMessageFinder(messages);
@@ -484,7 +541,6 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     plans: plansOf(ctx, { todos, todoWrites, todoWriters, where }),
   };
 
-  const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
   return {
     range: { from, to: now, days },
     session: sessionId ? { id: sessionId, ...where(sessionId) } : null,
@@ -501,15 +557,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
     mcpLogFrom: mcp?.logFrom ?? null,
     // Only for one session: a context window belongs to a session, not to a period.
-    context: sessionId
-      ? contextTimeline({
-          requests: own,
-          compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
-          reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
-          limit: own.length ? contextLimit(own.at(-1).provider, own.at(-1).model) : null,
-          compactAt: own.length ? compactAt(own.at(-1).provider, own.at(-1).model, sessionById.get(sessionId)?.directory) : null,
-        })
-      : null,
+    context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory }) : null,
     work,
     speed: computeSpeed({ requests: timed, keys, show }),
     usage: {
@@ -521,19 +569,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     stuckMs,
     daily: [...daily.values()].map(d => ({ ...d, cost: Math.round(d.cost * 10_000) / 10_000 })),
     totals,
-    waits: [...prompts]
-      .sort((a, b) => b.waitMs - a.waitMs)
-      .slice(0, TOP)
-      .map(p => ({
-        at: p.t,
-        kind: p.kind,
-        permission: p.permission,
-        detail: show(p.patterns || (p.part ? describe(p.part) : ''), 200),
-        waitMs: p.waitMs,
-        answered: p.answeredAt != null,
-        abandoned: p.abandoned,
-        ...(p.part ? where(p.part.session_id) : { project: '', title: '' }),
-      })),
+    waits: longestWaits(prompts, { show, where }),
     slow: slow
       .toSorted((a, b) => b.runMs - a.runMs)
       .slice(0, TOP)
