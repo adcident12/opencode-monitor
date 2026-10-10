@@ -3,6 +3,18 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 10.1.0 - 2026-10-10
+
+The same monitor, easier to read and to check. Nothing it shows or does has changed.
+
+- No function is over SonarQube's complexity limit any more (18 were): the rules that decide
+  a session's state, the Stats figures, the review of risky commands and the notifications
+  are each split into named steps, in the same order as before. Every step was checked with
+  the tests and with `npm run verify`, which still agrees on 143 of 143 figures.
+- `npm run sonar` measures the test coverage of the server and of the page, then runs a
+  SonarQube scan with it (`sonar-project.properties`). The server's token is read from the
+  environment and never written to a file or a command line.
+
 ## 10.0.0 - 2026-10-10
 
 From figures to what to do about them.
