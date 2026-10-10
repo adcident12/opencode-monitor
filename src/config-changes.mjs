@@ -7,7 +7,8 @@
 // otherwise only as a hash, so "changed" can be said without saying to what.
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, resolve } from 'node:path';
 import { stripJsonc } from './opencode-config.mjs';
 
 const DAY_MS = 86_400_000;
@@ -81,10 +82,24 @@ function readConfig(path, fs) {
   }
 }
 
+/**
+ * Changes as they are shown: the file named from home, whether it is the global config, and
+ * every path and value passed through the redactor like the rest of the page.
+ */
+export function shownChanges(list, { redact, configDir, home = homedir() }) {
+  const text = v => (typeof v === 'string' ? redact(v) : v);
+  return list.map(e => ({
+    ...e,
+    file: redact((e.file.startsWith(home) ? `~${e.file.slice(home.length)}` : e.file).replaceAll('\\', '/')),
+    global: e.file.startsWith(resolve(configDir)),
+    changes: e.changes.map(c => (c.hidden ? { ...c, path: redact(c.path) } : { ...c, path: redact(c.path), from: text(c.from), to: text(c.to) })),
+  }));
+}
+
 const warn = (what, err) => console.warn(`Could not write ${what}: ${err.code ?? err.message}`);
 
 /** Changes kept on disk, past retention left out (and dropped from the file, as history does). */
-function loadEntries(file, cutoff) {
+function loadEntries(file, cutoff, readOnly) {
   if (!file || !existsSync(file)) return [];
   const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
   const entries = [];
@@ -96,7 +111,7 @@ function loadEntries(file, cutoff) {
       // a half-written line from a crash
     }
   }
-  if (entries.length !== lines.length) {
+  if (entries.length !== lines.length && !readOnly) {
     try {
       writeFileSync(file, entries.map(e => JSON.stringify(e)).join('\n') + (entries.length ? '\n' : ''));
     } catch (err) {
@@ -126,9 +141,10 @@ function loadSeen(seenFile) {
  *   while the monitor was not running; null forgets them on exit
  * @param {number} o.retentionDays
  * @param {number} [o.everyMs]
+ * @param {boolean} [o.readOnly]     only read what is kept: nothing is looked for or written
  */
-export function createConfigWatch({ files, file = null, seenFile = null, retentionDays = 30, everyMs = 60_000, now = Date.now(), fs = { statSync, readFileSync } }) {
-  let entries = loadEntries(file, now - retentionDays * DAY_MS);
+export function createConfigWatch({ files, file = null, seenFile = null, retentionDays = 30, everyMs = 60_000, now = Date.now(), readOnly = false, fs = { statSync, readFileSync } }) {
+  let entries = loadEntries(file, now - retentionDays * DAY_MS, readOnly);
   const seen = loadSeen(seenFile);
   let checkedAt = -Infinity;
 
@@ -174,7 +190,7 @@ export function createConfigWatch({ files, file = null, seenFile = null, retenti
 
   /** Looks at each file whose time or size moved. @returns {object[]} the new entries */
   function check(at = Date.now(), force = false) {
-    if (!force && at - checkedAt < everyMs) return [];
+    if (readOnly || (!force && at - checkedAt < everyMs)) return [];
     checkedAt = at;
     const added = [];
     let moved = false;
