@@ -1,5 +1,6 @@
 {
   "app.title": "OpenCode Monitor",
+  "app.version": "opencode-monitor เวอร์ชัน {v}",
   "app.language": "ภาษา",
 
   "update.title": "มีหน้านี้รุ่นใหม่กว่า",

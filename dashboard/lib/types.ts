@@ -118,6 +118,8 @@ export interface Snapshot {
   environment: { checkedAt: number | null; models: CheckedTarget[]; services: CheckedTarget[]; mcp: McpServer[] } | null
   historyCount: number | null
   build: string | null
+  /** Version of the monitor that is running, from its package.json. */
+  version: string | null
 }
 
 export interface HistoryEvent {

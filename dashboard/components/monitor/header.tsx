@@ -17,7 +17,15 @@ export function Header({ snapshot, connected }: { snapshot: Snapshot | null; con
 
   return (
     <header className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <h1 className="mr-auto text-[1.05rem] font-semibold tracking-tight">{t("app.title")}</h1>
+      <div className="mr-auto flex items-baseline gap-2">
+        <h1 className="text-[1.05rem] font-semibold tracking-tight">{t("app.title")}</h1>
+        {/* Which version is running, so "is this the new one?" needs no terminal. */}
+        {snapshot?.version && (
+          <span className="text-xs tabular-nums text-muted-foreground" title={t("app.version", { v: snapshot.version })}>
+            v{snapshot.version}
+          </span>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground" role="status">
         <span className="inline-flex items-center gap-2">

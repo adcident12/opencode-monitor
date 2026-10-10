@@ -48,11 +48,16 @@ test('server: sample mode serves the page, the state, and the history; refuses f
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.match(output, /SAMPLE DATA/);
+    // One version, from package.json: in the startup line and in what the page is sent.
+    const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    assert.match(version, /^\d+\.\d+\.\d+$/);
+    assert.ok(output.includes(`opencode-monitor ${version}: http://127.0.0.1:${PORT}`), output);
     assert.match(output, /history: in memory only/);
 
     const state = JSON.parse((await get('/api/state')).body);
     assert.equal(state.sessions.length, 10);
     assert.equal(state.stale, false);
+    assert.equal(state.version, version);
     assert.equal(state.historyCount, 9, 'one entry per top-level session');
     assert.equal(state.environment.mcp.length, 4);
     // The build the server is serving, so an open page can tell when it is out of date.

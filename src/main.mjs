@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { createStatic } from './static.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
-import { ROOT, HELP, UserError, parseArgs, loadConfig } from './config.mjs';
+import { ROOT, HELP, VERSION, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
 import { createRedactor } from './redact.mjs';
@@ -24,6 +24,10 @@ export async function main(argv) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(HELP);
+    return;
+  }
+  if (args.version) {
+    console.log(VERSION ?? 'unknown');
     return;
   }
   if (args.autostart) {
@@ -87,7 +91,7 @@ export async function main(argv) {
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
       history.record(snap.sessions, snap.now);
     }
-    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId() });
+    latest = JSON.stringify({ ...snap, historyCount: cfg.history.enabled ? history.count : null, build: lookup.buildId(), version: VERSION });
     for (const res of clients) res.write(`data: ${latest}\n\n`);
   };
   tick();
@@ -147,7 +151,7 @@ export async function main(argv) {
     server.listen(cfg.port, HOST, resolve);
   });
 
-  console.log(`opencode-monitor: http://${HOST}:${cfg.port}`);
+  console.log(`opencode-monitor${VERSION ? ` ${VERSION}` : ''}: http://${HOST}:${cfg.port}`);
   console.log(`  reading ${db.path} (read-only)${args.sample ? ' — SAMPLE DATA' : ''}`);
   const channels = [cfg.notify.desktop && 'desktop', cfg.notify.discord.webhookUrl && 'Discord'].filter(Boolean);
   console.log(`  history: ${!cfg.history.enabled ? 'off' : args.sample ? 'in memory only' : `${resolve(ROOT, cfg.history.file)} (kept ${cfg.history.retentionDays} days)`}`);

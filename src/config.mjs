@@ -6,6 +6,17 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+// The one place the version is written is package.json; CHANGELOG.md says what each one added.
+function readVersion() {
+  try {
+    const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+    return typeof version === 'string' && /^\d+\.\d+\.\d+/.test(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+export const VERSION = readVersion();
+
 export class UserError extends Error {
   userFacing = true;
 }
@@ -74,6 +85,7 @@ export function parseArgs(argv) {
     else if (arg === '--assume-running') args.assumeRunning = true;
     else if (arg === '--test-notify') args.testNotify = true;
     else if (arg === '--autostart') args.autostart = value();
+    else if (arg === '--version' || arg === '-v') args.version = true;
     else if (arg === '--help' || arg === '-h') args.help = true;
     else throw new UserError(`Unknown option ${arg}. Try --help.`);
   }
@@ -90,6 +102,7 @@ export const HELP = `Usage: node server.mjs [options]
   --no-notify        Do not send desktop or Discord notifications.
   --assume-running   Skip the "is OpenCode running" process check.
   --test-notify      Send one test notification on each configured channel, then exit.
+  --version          Print the version, then exit.
   --autostart on|off Start the monitor each time you log in, with the options given here
                      (Windows: a scheduled task for your user). Then exit.
 `;

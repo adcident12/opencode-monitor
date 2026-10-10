@@ -36,6 +36,7 @@ node server.mjs --sample
 | `--sample` | Use generated fake data |
 | `--no-notify` | No desktop or Discord notifications |
 | `--assume-running` | Skip the check for a live OpenCode process |
+| `--version` | Print the version, then exit |
 | `--test-notify` | Send one test notification on each configured channel, then exit |
 | `--autostart on` / `off` | Start the monitor each time you log in, or stop doing so, then exit |
 
@@ -235,6 +236,12 @@ To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the valu
 ```sh
 npm test
 ```
+
+## Versions
+
+The version is the one in `package.json`. It is printed when the monitor starts, shown next to the title on the page, and `node server.mjs --version` prints it alone. [CHANGELOG.md](CHANGELOG.md) says what each version added.
+
+Work on a version happens on a branch named after it (`v6`), and `main` is moved to it when it is done. The released commit is tagged `v6.0.0`.
 
 ## License
 
