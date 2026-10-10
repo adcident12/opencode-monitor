@@ -3,6 +3,26 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 8.0.0 - 2026-10-10
+
+Made to work well on a machine that is not the author's.
+
+- **This machine**, a new tab, and `--doctor` in the terminal: what the monitor read from
+  where it runs (OpenCode's database, log and config; the models in use with their limits and
+  the size at which each is compacted; notification channels) and, first, what is missing and
+  what to change. A model with no limit set anywhere is named instead of silently showing no
+  context bar.
+- The monitor has **its own mark**: an open ring and a dot, as favicon, touch icon and logo.
+  The dot takes the colour of the most urgent session, in the header and in the browser tab.
+  The project is independent of OpenCode and does not use its logo.
+- **`--autostart` on macOS** (launchd) **and Linux** (systemd user unit), beside Windows. CI
+  turns it on and off for real on all three systems.
+- **Cost**, for paid models: per day, per session, and in the before-and-after comparison,
+  shown only when something was spent.
+- A warning when OpenCode is a later minor or major release than the one the monitor was
+  checked against.
+- The line about graft is shown only to people who have graft.
+
 ## 7.0.0 - 2026-10-10
 
 Compaction, seen before it happens, and history you can page through.
