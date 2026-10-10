@@ -191,6 +191,9 @@
   "setup.discord": "Discord",
   "setup.discordSet": "ตั้ง webhook ไว้แล้ว",
   "setup.notifyOn": "ส่งเมื่อ session",
+  "setup.weekly": "สรุปรายสัปดาห์",
+  "setup.weeklyAt": "{day} เวลา {hour}:00 ส่งไป Discord",
+  "setup.weeklyNoHook": "เปิดไว้ แต่ยังไม่ได้ตั้ง Discord webhook จึงไม่มีการส่ง",
   "setup.recent": "ที่ส่งไปตั้งแต่ monitor เริ่มทำงาน",
   "setup.recentNote": "การแจ้งเตือนแต่ละครั้ง และแต่ละช่องทางรับไปหรือไม่ session ที่ต้องการคุณอยู่แล้วตอน monitor เริ่มทำงานจะยังไม่ถูกแจ้งจนกว่าจะถึงรอบเตือนซ้ำ ถ้าต้องการทดสอบช่องทาง ให้รัน node server.mjs --test-notify",
   "setup.recentNone": "ยังไม่มีอะไรที่ต้องแจ้งเตือน",
@@ -478,6 +481,10 @@
   "notify.env.model": "Model server {name} ไม่ตอบ",
   "notify.env.service": "Service {name} ล่ม",
   "notify.env.body": "Agent อาจทำงานต่อโดยไม่มีมัน ลองเปิด monitor ดู",
+  "notify.weekly": "สัปดาห์ของคุณกับ OpenCode",
+  "digest.summary": "{sessions} session ใน 7 วันล่าสุด · agent ทำงาน {active} · รอคุณ {wait}",
+  "digest.none": "สัปดาห์นี้ไม่มีอะไรที่ควรบอกเป็นพิเศษ",
+  "digest.permission_repeat": "ถูกถามขออนุญาต {permission} เดิมซ้ำ {n} ครั้ง เขียน permission rule ใน opencode.json จะไม่ต้องถามอีก",
   "notify.test.title": "ทดสอบ opencode-monitor",
   "notify.test.body": "ถ้าเห็นข้อความนี้ แปลว่าการแจ้งเตือนมาถึงคุณแล้ว"
 }

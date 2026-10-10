@@ -117,17 +117,19 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
    * @param {string} kind    'waiting', 'stuck', 'compact_soon', 'environment', ...
    * @param {string[]} lines first line says which session or thing it is about
    * @param {string} [extra] appended to the Discord message only
+   * @param {{desktop?: boolean}} [channels] desktop: false for what a pop-up cannot hold
    */
-  function deliver(kind, title, lines, now, extra = '') {
+  function deliver(kind, title, lines, now, extra = '', channels = {}) {
     const hook = cfg.discord.webhookUrl;
-    const entry = { t: now, kind, title, subject: lines[0] ?? '', desktop: cfg.desktop ? 'sending' : 'off', discord: hook ? 'sending' : 'off' };
+    const desktop = cfg.desktop && channels.desktop !== false;
+    const entry = { t: now, kind, title, subject: lines[0] ?? '', desktop: desktop ? 'sending' : 'off', discord: hook ? 'sending' : 'off' };
     recent.push(entry);
     if (recent.length > RECENT_MAX) recent.shift();
     const settle = (channel, problem) => {
       entry[channel] = problem ? `failed (${problem})` : 'sent';
       if (problem) console.warn(`Notification "${kind}" was not delivered to ${channel}: ${problem}`);
     };
-    if (cfg.desktop) send.desktop(title, lines.join(' · '), err => settle('desktop', err ? (err.code ?? err.message) : null));
+    if (desktop) send.desktop(title, lines.join(' · '), err => settle('desktop', err ? (err.code ?? err.message) : null));
     if (hook) {
       const text = [cfg.discord.mention, `**${title}**`, ...lines, extra].filter(Boolean).join('\n');
       // discordNotify answers with null, or with what went wrong as text.
@@ -171,6 +173,8 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   }
 
   onSnapshot.environment = onEnvironment;
+  /** For what is not about one session, such as the weekly summary. */
+  onSnapshot.send = deliver;
   /** What was sent since the monitor started, newest first, with each channel's outcome. */
   onSnapshot.recent = () => recent.map(entry => ({ ...entry })).reverse();
   return onSnapshot;

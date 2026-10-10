@@ -61,3 +61,13 @@ test('a machine with nothing on it: every missing piece is named, and no secret 
   assert.match(text, /setup\.problem\.no_database /);
   assert.ok(!text.includes('secret-token'));
 });
+
+test('the weekly summary: when it goes out, or why it does not', async () => {
+  const { weeklyText } = await import('../src/setup.mjs');
+  const { loadTranslator } = await import('../src/format.mjs');
+  const t = loadTranslator('en');
+  assert.equal(weeklyText({ discord: true, weekly: { enabled: false, weekday: 1, hour: 9 } }, t), 'off');
+  assert.equal(weeklyText({ discord: false, weekly: { enabled: true, weekday: 1, hour: 9 } }, t), 'On, but no Discord webhook is set, so nothing is sent');
+  assert.equal(weeklyText({ discord: true, weekly: { enabled: true, weekday: 1, hour: 9 } }, t), 'Monday at 09:00, to Discord');
+  assert.equal(weeklyText({ discord: true, weekly: { enabled: true, weekday: 0, hour: 20 } }, t), 'Sunday at 20:00, to Discord');
+});

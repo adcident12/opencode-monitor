@@ -13,8 +13,17 @@ import { Dot } from "./state"
  * What the monitor found on this machine. Every other tab is built from these: when one of
  * them shows less than expected, the reason is here, next to what to do about it.
  */
+/** When the weekly summary goes out, or why it does not. */
+function weeklyText(notify: SetupReport["notify"], t: (key: string, vars?: Record<string, string | number>) => string, lang: string) {
+  if (!notify.weekly.enabled) return t("setup.no")
+  if (!notify.discord) return t("setup.weeklyNoHook")
+  // 4 January 1970 was a Sunday, so day 4 + n is weekday n.
+  const day = new Intl.DateTimeFormat(lang, { weekday: "long", timeZone: "UTC" }).format(new Date(Date.UTC(1970, 0, 4 + notify.weekly.weekday)))
+  return t("setup.weeklyAt", { day, hour: String(notify.weekly.hour).padStart(2, "0") })
+}
+
 export function Setup({ active }: { active: boolean }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { report, failed } = useSetup(active)
 
   if (failed && !report) return <p className="text-sm text-error">{t("setup.failed")}</p>
@@ -84,6 +93,7 @@ export function Setup({ active }: { active: boolean }) {
         <Row label={t("setup.desktop")} ok={report.notify.desktop} value={t(report.notify.desktop ? "setup.yes" : "setup.no")} />
         <Row label={t("setup.discord")} ok={report.notify.discord} value={t(report.notify.discord ? "setup.discordSet" : "setup.no")} />
         <Row label={t("setup.notifyOn")} value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")} />
+        <Row label={t("setup.weekly")} value={weeklyText(report.notify, t, lang)} />
       </Section>
       <Sent report={report} />
 

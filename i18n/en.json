@@ -191,6 +191,9 @@
   "setup.discord": "Discord",
   "setup.discordSet": "a webhook is set",
   "setup.notifyOn": "Sent when a session is",
+  "setup.weekly": "Weekly summary",
+  "setup.weeklyAt": "{day} at {hour}:00, to Discord",
+  "setup.weeklyNoHook": "On, but no Discord webhook is set, so nothing is sent",
   "setup.recent": "Sent since the monitor started",
   "setup.recentNote": "Each notification, and whether the channel took it. Sessions that already needed you when the monitor started are not announced until their reminder is due. To check the channels themselves, run node server.mjs --test-notify.",
   "setup.recentNone": "Nothing has needed a notification yet.",
@@ -478,6 +481,10 @@
   "notify.env.model": "Model server {name} is not answering",
   "notify.env.service": "Service {name} is down",
   "notify.env.body": "The agent may keep going without it. Check the monitor.",
+  "notify.weekly": "Your week with OpenCode",
+  "digest.summary": "{sessions} sessions in the last 7 days · the agent worked {active} · waited {wait} for you",
+  "digest.none": "Nothing stood out this week.",
+  "digest.permission_repeat": "You were asked {n} times to allow the same {permission}. A permission rule in opencode.json would stop asking.",
   "notify.test.title": "opencode-monitor test",
   "notify.test.body": "If you can read this, notifications reach you."
 }

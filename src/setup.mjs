@@ -94,6 +94,8 @@ export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, ru
       discord: Boolean(cfg.notify.discord.webhookUrl),
       on: [...cfg.notify.on],
       repeatMinutes: cfg.notify.repeatMinutes,
+      // The week's takeaways, to Discord only: nothing is sent without a webhook.
+      weekly: { enabled: Boolean(cfg.notify.weekly?.enabled), weekday: cfg.notify.weekly?.weekday ?? 1, hour: cfg.notify.weekly?.hour ?? 9 },
       // What was sent since this monitor started, newest first, and how each channel answered.
       recent: notifications.slice(0, 20),
     },
@@ -102,11 +104,21 @@ export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, ru
   };
 }
 
+// 4 January 1970 was a Sunday, so day 4 + n is weekday n.
+const weekdayName = (weekday, lang) => new Intl.DateTimeFormat(lang, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(1970, 0, 4 + weekday)));
+
+/** When the weekly summary goes out, or why it does not. */
+export function weeklyText(notify, t, lang = 'en') {
+  if (!notify.weekly?.enabled) return t('setup.no');
+  if (!notify.discord) return t('setup.weeklyNoHook');
+  return t('setup.weeklyAt', { day: weekdayName(notify.weekly.weekday, lang), hour: String(notify.weekly.hour).padStart(2, '0') });
+}
+
 const yes = (t, value) => t(value ? 'setup.yes' : 'setup.no');
 const kilo = n => (n == null ? '?' : n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n));
 
 /** The same report as plain text, for `node server.mjs --doctor`. */
-export function formatSetupReport(report, t) {
+export function formatSetupReport(report, t, lang = 'en') {
   const { monitor, opencode, compaction, models, mcp, notify, history, problems } = report;
   const lines = [];
   const head = key => lines.push('', t(key));
@@ -142,6 +154,7 @@ export function formatSetupReport(report, t) {
   row('setup.desktop', yes(t, notify.desktop));
   row('setup.discord', yes(t, notify.discord));
   row('setup.notifyOn', notify.on.join(', ') || t('setup.none'));
+  row('setup.weekly', weeklyText(notify, t, lang));
 
   head('setup.history');
   row('setup.historyFile', history.enabled ? `${history.file} (${t('setup.keptDays', { n: history.retentionDays })})` : t('setup.no'));

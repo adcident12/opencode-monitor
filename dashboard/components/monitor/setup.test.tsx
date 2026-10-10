@@ -21,7 +21,7 @@ const report = (extra: Partial<SetupReport> = {}): SetupReport => ({
   ],
   mcp: [{ name: "context7", type: "remote", enabled: true }],
   notify: {
-    desktop: true, discord: true, on: ["waiting", "compact_soon"], repeatMinutes: 30,
+    desktop: true, discord: true, on: ["waiting", "compact_soon"], repeatMinutes: 30, weekly: { enabled: true, weekday: 1, hour: 9 },
     recent: [
       { t: 1_800_000_000_000, kind: "stuck", title: "Probably stuck", subject: "shop — Checkout", desktop: "sent", discord: "failed (HTTP 404)" },
     ],

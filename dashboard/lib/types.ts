@@ -215,6 +215,8 @@ export interface SetupReport {
   models: { id: string; requests: number; lastAt: number; context: number | null; output: number | null; input: number | null; source: "opencode" | "monitor" | null; compactAt: number | null }[]
   mcp: { name: string; type: "local" | "remote"; enabled: boolean }[]
   notify: {
+    /** The week's takeaways, to Discord only. weekday: 0 Sunday .. 6 Saturday. */
+    weekly: { enabled: boolean; weekday: number; hour: number }
     desktop: boolean
     discord: boolean
     on: string[]

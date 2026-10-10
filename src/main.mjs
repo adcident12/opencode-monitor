@@ -1,8 +1,8 @@
 // Wires everything together and serves the page on 127.0.0.1.
 import { createServer } from 'node:http';
-import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { createConfigWatch } from './config-changes.mjs';
+import { createConfigWatch, shownChanges } from './config-changes.mjs';
+import { createDigest } from './digest.mjs';
 import { createStatic } from './static.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
@@ -23,6 +23,26 @@ import { buildSetupReport, formatSetupReport } from './setup.mjs';
 
 const HOST = '127.0.0.1'; // Not configurable on purpose: the page shows what your agent is doing.
 
+
+/** Sends this week's summary now, from the real figures, and says how Discord answered. */
+async function testDigest(cfg) {
+  if (!cfg.notify.discord.webhookUrl) return 'no webhookUrl in config';
+  if (!existsSync(join(cfg.dataDir, 'opencode.db'))) return 'no OpenCode database to summarise';
+  const db = openDb(cfg.dataDir);
+  try {
+    const opencode = loadOpencodeConfig(cfg.opencodeConfigDir);
+    const stats = createStatsSource({ db, log: createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp: createProjectMcp(), modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+    const t = loadTranslator(cfg.lang);
+    const notifier = createNotifier(cfg.notify, t, undefined, { quiet: true });
+    createDigest({ cfg: cfg.notify, stats, send: notifier.send, t }).sendNow();
+    const deadline = Date.now() + 15_000;
+    while (notifier.recent()[0].discord === 'sending' && Date.now() < deadline) await new Promise(done => setTimeout(done, 200));
+    const outcome = notifier.recent()[0].discord;
+    return outcome === 'sending' ? 'no answer' : outcome;
+  } finally {
+    db.close();
+  }
+}
 
 export async function main(argv) {
   const args = parseArgs(argv);
@@ -52,6 +72,7 @@ export async function main(argv) {
     if (process.platform === 'win32' && cfg.notify.desktop) {
       console.log('No pop-up on Windows? Check Do not disturb / Focus, and look in the notification centre (Win+N).');
     }
+    if (cfg.notify.weekly.enabled) console.log(`weekly summary / Discord: ${await testDigest(cfg)}`);
     return;
   }
   if (args.sample) {
@@ -65,7 +86,7 @@ export async function main(argv) {
     const doctorDb = found ? openDb(cfg.dataDir) : null;
     const oc = loadOpencodeConfig(cfg.opencodeConfigDir);
     const opencodeVersion = doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
-    console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang)));
+    console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang), cfg.lang));
     doctorDb?.close();
     return;
   }
@@ -101,6 +122,10 @@ export async function main(argv) {
     retentionDays: cfg.history.retentionDays,
   });
 
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+  // Not for --sample: a summary of fake sessions has no business in a real channel.
+  const digest = args.sample ? null : createDigest({ cfg: cfg.notify, stats, send: notify.send, t: loadTranslator(cfg.lang), stateFile: kept('weekly.json') });
+
   let latest = '{}';
   const clients = new Set();
   await probe.refresh();
@@ -113,6 +138,7 @@ export async function main(argv) {
     leftovers.refresh(monitor.backgroundCalls());
     const snap = monitor();
     configWatch.check(snap.now);
+    digest?.check(snap.now);
     if (!snap.stale) {
       notify(snap.sessions, snap.now);
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
@@ -124,16 +150,7 @@ export async function main(argv) {
   tick();
   setInterval(tick, cfg.pollMs);
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
-  // The file named from home, and everything passed through the redactor like the rest of the page.
-  const redact = createRedactor(cfg.redact);
-  const home = homedir();
-  const shownChanges = list => list.map(e => ({
-    ...e,
-    file: redact(e.file.startsWith(home) ? `~${e.file.slice(home.length)}`.replaceAll('\\', '/') : e.file.replaceAll('\\', '/')),
-    global: e.file.startsWith(resolve(cfg.opencodeConfigDir)),
-    changes: e.changes.map(c => ({ ...c, path: redact(c.path), ...(typeof c.from === 'string' ? { from: redact(c.from) } : {}), ...(typeof c.to === 'string' ? { to: redact(c.to) } : {}) })),
-  }));
+  const shown = { redact: createRedactor(cfg.redact), configDir: cfg.opencodeConfigDir };
   const allowedHosts =new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
@@ -176,7 +193,7 @@ export async function main(argv) {
       })));
     } else if (path === '/api/config-changes') {
       const days = Math.min(30, Math.max(1, Number(query.get('days')) || 30));
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(shownChanges(configWatch.list(Date.now() - days * 86_400_000))));
+      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(shownChanges(configWatch.list(Date.now() - days * 86_400_000), shown)));
     } else if (path === '/api/history/sessions') {
       res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.sessions()));
     } else {

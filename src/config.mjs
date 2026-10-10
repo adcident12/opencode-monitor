@@ -75,6 +75,8 @@ export const DEFAULTS = {
     repeatMinutes: 30,
     desktop: true,
     discord: { webhookUrl: '', mention: '', includeDetail: false },
+    // The week's takeaways, to Discord. weekday: 0 Sunday .. 6 Saturday; hour: local time.
+    weekly: { enabled: false, weekday: 1, hour: 9 },
   },
 };
 
@@ -166,6 +168,10 @@ export function loadConfig(args = {}, env = process.env) {
   if (hook && !/^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(hook)) {
     throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
   }
+
+  const { weekday, hour } = cfg.notify.weekly;
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new UserError('notify.weekly.hour must be 0 to 23.');
 
   // Where the settings came from, for --doctor and the setup page.
   cfg.configFile = { path, found: existsSync(path) };
