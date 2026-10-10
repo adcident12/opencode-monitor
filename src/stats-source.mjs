@@ -12,6 +12,8 @@ const MAX_CACHED = 24;
 // Session ids are used as cache keys and compared with database rows, nothing else.
 const SESSION_ID = /^[A-Za-z0-9_-]{1,80}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** The value when it is text of the expected shape, otherwise null. */
+const matching = (value, shape) => (typeof value === 'string' && shape.test(value) ? value : null);
 
 /**
  * The same rows counted twice: up to the end of the day before `split`, and from `split` on.
@@ -27,25 +29,33 @@ function compareAround(split, whole, input) {
   return { split, model, before: summarize(before, model), after: summarize(after, model) };
 }
 
+/** The value kept under `key` while it is fresh; otherwise computed, kept, and the oldest dropped. */
+function remembered(cache, key, now, compute) {
+  const hit = cache.get(key);
+  if (hit && now - hit.at < CACHE_MS) return hit.value;
+  const value = compute();
+  if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
+  cache.set(key, { at: now, value });
+  return value;
+}
+
 /**
  * When each tool call was updated, oldest first: how a permission's answer is told. Only
  * calls that had a prompt need it, so only their sessions are read.
  * @returns {Map<string, number[]>} part id -> times
  */
 function updateTimes(db, tools, asks) {
-  const sessionsWithPrompts = new Set();
-  for (const ask of asks) {
-    for (const p of tools) if (Math.abs((p.started ?? p.time_created) - ask.t) <= 2000) sessionsWithPrompts.add(p.session_id);
-  }
+  // A prompt is logged within two seconds of the call it is for.
+  const prompted = p => asks.some(ask => Math.abs((p.started ?? p.time_created) - ask.t) <= 2000);
+  const sessionsWithPrompts = new Set(tools.filter(prompted).map(p => p.session_id));
   const eventTimes = new Map();
-  for (const sessionId of sessionsWithPrompts) {
-    for (const { part_id: id, t } of db.stats.toolEvents(sessionId)) {
-      if (!id || t == null) continue;
-      if (!eventTimes.has(id)) eventTimes.set(id, []);
-      eventTimes.get(id).push(t);
-    }
-  }
-  for (const times of eventTimes.values()) times.sort((a, b) => a - b);
+  const note = ({ part_id: id, t }) => {
+    if (!id || t == null) return;
+    if (!eventTimes.has(id)) eventTimes.set(id, []);
+    eventTimes.get(id).push(t);
+  };
+  for (const sessionId of sessionsWithPrompts) db.stats.toolEvents(sessionId).forEach(note);
+  for (const times of eventTimes.values()) times.sort((x, y) => x - y);
   return eventTimes;
 }
 
@@ -75,14 +85,16 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
    * @param {string|null} [split] a day (YYYY-MM-DD) inside the range: also summarise the days
    *   before it and the days from it on, to see what a change made on that day did
    */
-  return function stats(days, sessionId = null, split = null, now = Date.now()) {
-    if (!STATS_DAYS.includes(days)) days = 14;
-    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) sessionId = null;
-    if (typeof split !== 'string' || !DAY.test(split)) split = null;
+  return function stats(askedDays, askedSession = null, askedSplit = null, now = Date.now()) {
+    // What was asked comes from a URL or an assistant: anything unexpected becomes the default.
+    const days = STATS_DAYS.includes(askedDays) ? askedDays : 14;
+    const sessionId = matching(askedSession, SESSION_ID);
+    const split = matching(askedSplit, DAY);
     const key = `${days}|${sessionId ?? ''}|${split ?? ''}`;
-    const hit = cache.get(key);
-    if (hit && now - hit.at < CACHE_MS) return hit.value;
+    return remembered(cache, key, now, () => compute(days, sessionId, split, now));
+  };
 
+  function compute(days, sessionId, split, now) {
     const since = now - (days + 1) * 86_400_000;
     log.poll();
     const tools = db.stats.tools(since);
@@ -121,8 +133,6 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const value = computeStats(input);
     value.compare = compareAround(split, value, input);
     value.takeaways = takeawaysOf(value);
-    if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
-    cache.set(key, { at: now, value });
     return value;
-  };
+  }
 }

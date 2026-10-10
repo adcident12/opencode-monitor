@@ -70,7 +70,7 @@ export function Todos({ todos }: { todos: Session["progress"]["todos"] }) {
 }
 
 /** How full the context is, and how much room is left before OpenCode compacts it. */
-function ContextValue({ session, high }: { session: Session; high: boolean }) {
+function ContextValue({ session, high }: Readonly<{ session: Session; high: boolean }>) {
   const { t } = useI18n()
   const h = session.health
   if (h.contextTokens == null) return null

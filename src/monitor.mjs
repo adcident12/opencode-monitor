@@ -32,6 +32,16 @@ function touch(files, path, at) {
  * @param {object} [deps.environment]  from createEnvironment
  * @param {object} [deps.git]          from createGitProbe
  */
+/** A review group's entry for one exact command text. */
+function exampleOf(group, text, p) {
+  let example = group.distinct.get(text);
+  if (!example) {
+    example = { tool: p.tool, at: p.started ?? p.time_created, count: 0, approvals: { asked: 0, rule: 0, refused: 0 } };
+    group.distinct.set(text, example);
+  }
+  return example;
+}
+
 export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
@@ -222,16 +232,6 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
       groups.set(key, group);
     }
     return group;
-  }
-
-  /** The group's entry for this exact command text. */
-  function exampleOf(group, text, p) {
-    let example = group.distinct.get(text);
-    if (!example) {
-      example = { tool: p.tool, at: p.started ?? p.time_created, count: 0, approvals: { asked: 0, rule: 0, refused: 0 } };
-      group.distinct.set(text, example);
-    }
-    return example;
   }
 
   // Tool calls worth a second look, newest first, with who let each one run.

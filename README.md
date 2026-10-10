@@ -317,6 +317,9 @@ i18n/                   UI and notification strings (en, th)
 scripts/make-sample.mjs fake data for --sample and the tests
 scripts/ci-autostart.mjs turns autostart on and off for real; run by CI on each system
 scripts/verify.mjs      npm run verify: the page's figures against an independent count of your data
+scripts/sonar.mjs       npm run sonar: test coverage, then a SonarQube scan (sonar-project.properties)
+src/text.mjs            small text helpers that read a line once
+src/programs.mjs        full paths of the system programs the monitor runs
 ```
 
 To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the values, add the code to `LANGUAGES` in `dashboard/lib/i18n.tsx`, and rebuild the page (`npm run build` in `dashboard/`).
@@ -324,6 +327,10 @@ To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the valu
 ```sh
 npm test
 ```
+
+## Code quality
+
+For anyone working on the code, not needed to use the monitor: `npm run sonar` measures the test coverage of the server and of the page and then runs a [SonarQube](https://www.sonarsource.com/products/sonarqube/) scan with it, as set out in `sonar-project.properties`. It needs a SonarQube server (`SONAR_HOST_URL`, default `http://localhost:9000`), a token in `SONAR_TOKEN` or `SONARQUBE_TOKEN`, and `sonar-scanner` on `PATH` or under `SONAR_SCANNER_HOME`. The token is passed on in the environment and is never written to a file or a command line. Coverage reports go to `coverage/`, which git ignores.
 
 ## Versions
 
