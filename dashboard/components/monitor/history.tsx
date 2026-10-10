@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { compact, duration, rough } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { DownloadIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { download, sessionsCsv } from "@/lib/csv"
 import { useI18n } from "@/lib/i18n"
 import { useHistory, useHistorySessions, useStats } from "@/lib/live"
 import type { HistoryEvent, Stats } from "@/lib/types"
@@ -31,11 +33,17 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
 
   return (
     <section aria-labelledby="effort-title" className="space-y-2">
-      <div>
-        <h3 id="effort-title" className="text-base font-semibold">
-          {t("effort.title")}
-        </h3>
-        <p className="text-xs text-muted-foreground">{t("effort.note", { n: EFFORT_DAYS })}</p>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div>
+          <h3 id="effort-title" className="text-base font-semibold">
+            {t("effort.title")}
+          </h3>
+          <p className="text-xs text-muted-foreground">{t("effort.note", { n: EFFORT_DAYS })}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => download(`opencode-sessions-last-${EFFORT_DAYS}-days.csv`, sessionsCsv(sorted))}>
+          <DownloadIcon aria-hidden />
+          {t("csv.sessions")}
+        </Button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

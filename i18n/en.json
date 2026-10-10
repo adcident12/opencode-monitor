@@ -187,6 +187,8 @@
   "stats.failed": "The figures could not be read from OpenCode's database. They are retried every minute.",
   "stats.summary": "Summary",
   "stats.jump": "Go to",
+  "csv.days": "Download days as CSV",
+  "csv.sessions": "Download as CSV",
   "stats.group.you": "Waiting for you",
   "stats.group.agent": "The agent's work",
   "stats.group.model": "The model",

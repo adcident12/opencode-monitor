@@ -187,6 +187,8 @@
   "stats.failed": "อ่านตัวเลขจากฐานข้อมูลของ OpenCode ไม่ได้ จะลองใหม่ทุกนาที",
   "stats.summary": "สรุป",
   "stats.jump": "ไปที่",
+  "csv.days": "ดาวน์โหลดรายวันเป็น CSV",
+  "csv.sessions": "ดาวน์โหลดเป็น CSV",
   "stats.group.you": "การรอคุณ",
   "stats.group.agent": "งานของ agent",
   "stats.group.model": "โมเดล",

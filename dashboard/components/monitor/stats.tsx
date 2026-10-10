@@ -2,7 +2,10 @@
 
 import { useState } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { DownloadIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { dailyCsv, download } from "@/lib/csv"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { compact, duration, quick, rough } from "@/lib/format"
@@ -51,6 +54,16 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
         </Select>
         <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
           <SplitPicker value={split} onChange={setSplit} days={days} />
+          <Button
+            variant="outline"
+            size="sm"
+            className="sm:ml-auto"
+            disabled={!stats}
+            onClick={() => stats && download(`opencode-days-${stats.daily[0]?.date ?? ""}-${stats.daily.at(-1)?.date ?? ""}${stats.session ? `-${stats.session.id}` : ""}.csv`, dailyCsv(stats.daily))}
+          >
+            <DownloadIcon aria-hidden />
+            {t("csv.days")}
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
       </div>
