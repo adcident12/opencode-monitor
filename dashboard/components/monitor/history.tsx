@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { duration, NEEDS_YOU, rough } from "@/lib/format"
+import { duration, rough } from "@/lib/format"
+import { Button } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import { useHistory, useHistorySessions } from "@/lib/live"
 import type { HistoryEvent } from "@/lib/types"
@@ -15,20 +16,19 @@ import { StateBadge } from "./state"
 export function History({ count, active, session, onSession }: { count: number | null; active: boolean; session: string | null; onSession: (id: string | null) => void }) {
   const { t, lang } = useI18n()
   const [onlyAttention, setOnlyAttention] = useState(false)
-  const events = useHistory(count, active, session)
+  const { events, more, truncated, loading, loadOlder } = useHistory(count, active, session, onlyAttention)
   const sessions = useHistorySessions(count, active)
 
   const days = useMemo(() => {
     const day = new Intl.DateTimeFormat(lang, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     const groups: { label: string; events: HistoryEvent[] }[] = []
     for (const e of events) {
-      if (onlyAttention && !NEEDS_YOU.has(e.to) && !(e.from && NEEDS_YOU.has(e.from))) continue
       const label = day.format(e.t)
       if (groups.at(-1)?.label !== label) groups.push({ label, events: [] })
       groups.at(-1)!.events.push(e)
     }
     return groups
-  }, [events, onlyAttention, lang])
+  }, [events, lang])
 
   const time = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
 
@@ -44,7 +44,7 @@ export function History({ count, active, session, onSession }: { count: number |
         </div>
       </div>
 
-      {!days.length && (
+      {!days.length && !loading && (
         <div className="rounded-xl border border-dashed px-6 py-14 text-center">
           <p className="font-medium">{t(session || onlyAttention ? "history.emptyFiltered" : "history.empty")}</p>
           {!session && !onlyAttention && <p className="mt-1 text-sm text-muted-foreground">{t("history.emptyBody")}</p>}
@@ -79,6 +79,16 @@ export function History({ count, active, session, onSession }: { count: number |
           </ol>
         </section>
       ))}
+      {(more > 0 || truncated) && days.length > 0 && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          {more > 0 && (
+            <Button variant="outline" onClick={loadOlder} disabled={loading}>
+              {loading ? t("history.loading") : t("history.older", { n: more })}
+            </Button>
+          )}
+          {more === 0 && truncated && <p className="text-xs text-muted-foreground">{t("history.truncated")}</p>}
+        </div>
+      )}
     </div>
   )
 }

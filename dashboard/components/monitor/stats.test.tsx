@@ -33,7 +33,8 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   stuckMs: 600_000,
   daily: [],
   totals: { sessions: 1, activeMs: 0, waitMs: 0, prompts: 0, open: 0, abandoned: 0, medianAnswerMs: null, stuck: 0, abandonedCalls: 0, toolCalls: 43, toolErrors: 8, compactions: 0 },
-  waits: [], slow: [], tools: [], explore: { graft: 0, other: 0 }, rereads: [], skills: [],
+  waits: [], slow: [], tools: [], explore: { graft: 0, other: 0 }, skills: [],
+  rereads: Array.from({ length: 12 }, (_, i) => ({ file: `/src/file${i}.ts`, count: 20 - i, project: "shop", title: "Checkout flow" })),
   ...extra,
 })
 
@@ -86,6 +87,16 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("Re-read files in Stats", () => {
+  it("shows the first ten, and the rest when asked", async () => {
+    renderStats()
+    expect(await screen.findByText("/src/file9.ts")).toBeInTheDocument()
+    expect(screen.queryByText("/src/file10.ts")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Show all (2 more)" }))
+    expect(screen.getByText("/src/file11.ts")).toBeInTheDocument()
   })
 })
 

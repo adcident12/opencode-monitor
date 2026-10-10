@@ -133,7 +133,7 @@ A question's answer time comes from OpenCode's log. A permission's does not exis
 
 ## History
 
-The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Tick "Only what needed you" to see just the waits, hangs, and errors, or pick one session to follow it from start to finish.
+The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Tick "Only what needed you" to see just the waits, hangs, and errors, or pick one session to follow it from start to finish. The newest 100 entries are shown; "Load older entries" brings the next 100, and new entries keep appearing at the top without moving what is already loaded. Both filters are applied to the whole record, not only to what is on screen.
 
 History is recorded only while the monitor is running, into `data/history.jsonl` (git-ignored, one JSON object per line, already redacted). Entries older than `history.retentionDays` are removed at startup. Set `history.enabled` to `false` to turn it off. Delete the file to clear it.
 

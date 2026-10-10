@@ -292,7 +292,7 @@ function Figures({ stats }: { stats: StatsData }) {
         <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
           <ToolUse stats={stats} />
           <div className="space-y-8">
-            <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")}>
+            <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")} shortBy={10}>
               {stats.rereads.map(r => (
                 <li key={`${r.file}-${r.project}`} className="flex items-baseline gap-3 py-2">
                   <span className="w-9 shrink-0 font-medium tabular-nums">×{r.count}</span>
@@ -356,14 +356,24 @@ function When({ at, project }: { at: number; project: string }) {
   )
 }
 
-function Ranked({ title, note, empty, children }: { title: string; note?: string; empty: string; children: React.ReactNode[] }) {
+/** @param shortBy  show only this many until asked for the rest */
+function Ranked({ title, note, empty, shortBy, children }: { title: string; note?: string; empty: string; shortBy?: number; children: React.ReactNode[] }) {
+  const { t } = useI18n()
+  const [all, setAll] = useState(false)
+  const hidden = shortBy && !all ? Math.max(0, children.length - shortBy) : 0
+  const shown = hidden ? children.slice(0, shortBy) : children
   return (
     <section className="space-y-2">
       <div>
         <h3 className={H3}>{title}</h3>
         {note && <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>}
       </div>
-      {children.length ? <ol className="divide-y border-y">{children}</ol> : <p className="text-sm text-muted-foreground">{empty}</p>}
+      {children.length ? <ol className="divide-y border-y">{shown}</ol> : <p className="text-sm text-muted-foreground">{empty}</p>}
+      {hidden > 0 && (
+        <button type="button" onClick={() => setAll(true)} className="rounded-sm text-sm text-muted-foreground underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+          {t("stats.showAll", { n: hidden })}
+        </button>
+      )}
     </section>
   )
 }

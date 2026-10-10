@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import type { HistoryEvent, SessionChoice, Snapshot, Stats } from "./types"
+import type { HistoryEvent, HistoryPage, SessionChoice, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -37,22 +37,74 @@ export function useNow(skew: number): number {
 
 const sessionQuery = (session: string | null) => (session ? `session=${encodeURIComponent(session)}` : "")
 
-/** History list, re-fetched only when the server says its count changed, or the filter did. */
-export function useHistory(count: number | null, enabled: boolean, session: string | null = null) {
-  const [state, setState] = useState<{ session: string | null; events: HistoryEvent[] }>({ session, events: [] })
+export const HISTORY_PAGE = 100
+const cursorOf = (e: HistoryEvent) => `${e.t}:${e.id}`
+
+type HistoryState = { key: string; events: HistoryEvent[]; more: number; truncated: boolean; loading: boolean }
+
+/**
+ * History, a page at a time. The first page loads when the view opens or a filter changes;
+ * after that, a change in the live count fetches only what arrived since the newest entry
+ * shown, and "load older" fetches the page below the oldest. Nothing already on screen moves.
+ */
+export function useHistory(count: number | null, enabled: boolean, session: string | null = null, attention = false) {
+  const key = `${session ?? ""}|${attention ? 1 : 0}`
+  const filter = `${sessionQuery(session)}${attention ? "&attention=1" : ""}`
+  const [state, setState] = useState<HistoryState>({ key, events: [], more: 0, truncated: false, loading: true })
+  const current = state.key === key ? state : null
+  const newest = current?.events[0]
+  const newestCursor = newest ? cursorOf(newest) : null
+
+  // First page, for this filter.
   useEffect(() => {
     if (!enabled || count == null) return
     let live = true
-    fetch(`/api/history?${sessionQuery(session)}`)
-      .then(res => res.json())
-      .then(events => live && setState({ session, events }))
+    fetch(`/api/history?limit=${HISTORY_PAGE}&${filter}`)
+      .then(res => res.json() as Promise<HistoryPage>)
+      .then(page => live && setState({ key, events: page.events, more: page.more, truncated: page.truncated, loading: false }))
+      .catch(() => live && setState(s => ({ ...s, loading: false })))
+    return () => {
+      live = false
+    }
+    // count is left out on purpose: a new entry is fetched below, not by starting over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, enabled, count == null])
+
+  // New entries at the top, when the live count says there are some.
+  useEffect(() => {
+    if (!enabled || count == null || !newestCursor) return
+    let live = true
+    fetch(`/api/history?limit=500&after=${newestCursor}&${filter}`)
+      .then(res => res.json() as Promise<HistoryPage>)
+      .then(page => {
+        if (!live || !page.events.length) return
+        setState(s => (s.key === key && s.events[0] && cursorOf(s.events[0]) === newestCursor ? { ...s, events: [...page.events, ...s.events] } : s))
+      })
       .catch(() => {})
     return () => {
       live = false
     }
-  }, [count, enabled, session])
-  // Entries of another session are not shown as if they were this one's.
-  return state.session === session ? state.events : []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count])
+
+  const loadOlder = () => {
+    const oldest = current?.events.at(-1)
+    if (!oldest || !current || current.loading) return
+    setState(s => ({ ...s, loading: true }))
+    fetch(`/api/history?limit=${HISTORY_PAGE}&before=${cursorOf(oldest)}&${filter}`)
+      .then(res => res.json() as Promise<HistoryPage>)
+      .then(page => setState(s => (s.key === key ? { ...s, events: [...s.events, ...page.events], more: page.more, truncated: page.truncated, loading: false } : s)))
+      .catch(() => setState(s => ({ ...s, loading: false })))
+  }
+
+  // Entries of another filter are not shown as if they were this one's.
+  return {
+    events: current?.events ?? [],
+    more: current?.more ?? 0,
+    truncated: current?.truncated ?? false,
+    loading: current?.loading ?? true,
+    loadOlder,
+  }
 }
 
 /** Every session the history has an entry for, most recently changed first. */

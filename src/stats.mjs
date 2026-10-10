@@ -8,6 +8,8 @@ const ASK_MATCH_MS = 2000;
 const ANSWER_MIN_MS = 500;
 const TOP = 10;
 const MAX_SESSIONS_LISTED = 100;
+// Re-read files are the one ranking where the long tail is still worth reading.
+const MAX_REREADS = 50;
 // Below these a request says nothing about speed: a handful of tokens, or a clock too coarse.
 const MIN_OUTPUT_TOKENS = 20;
 const MIN_PROMPT_TOKENS = 500;
@@ -491,7 +493,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     rereads: [...reads]
       .filter(([, n]) => n >= 3)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, TOP)
+      .slice(0, MAX_REREADS)
       .map(([key, count]) => {
         const [sessionId, file] = key.split('|');
         return { file: show(file, 200), count, ...where(sessionId) };

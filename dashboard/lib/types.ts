@@ -183,6 +183,14 @@ export interface McpStat {
   moreTools: number
 }
 
+/** A page of history, newest first; more: matching entries older than it. */
+export interface HistoryPage {
+  events: HistoryEvent[]
+  more: number
+  /** The record outgrew what the monitor keeps in memory; older entries are only in the file. */
+  truncated: boolean
+}
+
 export interface DayStats {
   date: string
   activeMs: number

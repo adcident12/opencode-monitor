@@ -62,3 +62,36 @@ test('one session can be picked out, from the whole record and not only the newe
   assert.equal(history.list().length, 300);
   assert.deepEqual(history.sessions().map(x => [x.id, x.title, x.count]), [['a', 'T-a', 2], ['b', 'T-b', 401]]);
 });
+
+test('pages: cut at a position, so entries arriving at the top never shift or repeat a page', async () => {
+  const { cursorOf } = await import('../src/history.mjs');
+  const history = createHistory({ file: null, retentionDays: 30, now: T });
+  // Two sessions change in every tick: equal times, told apart by id.
+  for (let i = 0; i < 25; i++) history.record([s('a', i % 2 ? 'waiting' : 'working'), s('b', i % 2 ? 'working' : 'stuck')], T + i * 1000);
+  const seen = [];
+  let page = history.page({ limit: 10 });
+  assert.deepEqual([page.events.length, page.more, page.truncated], [10, 40, false]);
+  seen.push(...page.events);
+  // New entries arrive while reading the second page.
+  history.record([s('a', 'finished'), s('b', 'finished')], T + 99_000);
+  while (page.more) {
+    page = history.page({ limit: 10, before: cursorOf(seen.at(-1)) });
+    seen.push(...page.events);
+  }
+  assert.equal(seen.length, 50, 'every older entry exactly once');
+  assert.equal(new Set(seen.map(cursorOf)).size, 50);
+  // What arrived since the first entry seen, for the top of the list.
+  assert.deepEqual(history.page({ after: cursorOf(seen[0]) }).events.map(e => e.to), ['finished', 'finished']);
+  // Filters apply to the whole record, not to one page of it.
+  assert.ok(history.page({ attention: true, limit: 500 }).events.every(e => ['waiting', 'stuck', 'error'].includes(e.to) || ['waiting', 'stuck', 'error'].includes(e.from)));
+  assert.equal(history.page({ session: 'a', limit: 500 }).events.length, 26);
+  // Bad cursors and sizes are ignored rather than trusted.
+  assert.equal(history.page({ before: '../x', limit: 'lots' }).events.length, 52);
+});
+
+test('a monitor left running drops what passes retention, as a restart would', () => {
+  const history = createHistory({ file: null, retentionDays: 1, now: T });
+  history.record([s('a', 'working')], T);
+  history.record([s('a', 'waiting')], T + 2 * DAY);
+  assert.deepEqual(history.page().events.map(e => e.to), ['waiting']);
+});

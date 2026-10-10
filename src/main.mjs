@@ -123,7 +123,13 @@ export async function main(argv) {
         res.writeHead(503, headers).end('Stats are not available right now.');
       }
     } else if (path === '/api/history') {
-      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.list({ session: query.get('session') })));
+      res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.page({
+        before: query.get('before'),
+        after: query.get('after'),
+        limit: query.get('limit') ?? 100,
+        session: query.get('session'),
+        attention: query.get('attention') === '1',
+      })));
     } else if (path === '/api/history/sessions') {
       res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.sessions()));
     } else {

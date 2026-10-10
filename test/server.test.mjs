@@ -64,7 +64,11 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     assert.equal(state.build, JSON.parse(readFileSync(join(ROOT, 'public', 'build.json'), 'utf8')).id);
     assert.ok(!/squ_[0-9a-f]{8}/.test(JSON.stringify(state)));
 
-    assert.equal(JSON.parse((await get('/api/history')).body).length, 9);
+    const history = JSON.parse((await get('/api/history')).body);
+    assert.deepEqual([history.events.length, history.more, history.truncated], [9, 0, false]);
+    const firstFour = JSON.parse((await get('/api/history?limit=4')).body);
+    const rest = JSON.parse((await get(`/api/history?limit=100&before=${firstFour.events.at(-1).t}:${firstFour.events.at(-1).id}`)).body);
+    assert.deepEqual([firstFour.more, rest.events.length], [5, 5]);
     const stats = JSON.parse((await get('/api/stats?days=7')).body);
     assert.equal(stats.daily.length, 7);
     assert.ok(stats.totals.prompts >= 2, 'the sample prompts are counted');
