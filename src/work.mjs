@@ -59,6 +59,31 @@ function endingOf(last, now, followed) {
   return now - (last.completed ?? last.time_created) < OPEN_MS ? 'open' : 'unanswered';
 }
 
+const pushTo = (map, key, value) => {
+  if (!map.has(key)) map.set(key, []);
+  map.get(key).push(value);
+};
+
+const isCompaction = m => m?.role === 'assistant' && m.agent === 'compaction';
+
+/** One session's messages cut into turns: a prompt of yours and the replies up to the next. */
+function turnsOfSession(list) {
+  list.sort((a, b) => a.time_created - b.time_created || (a.role === 'user' ? -1 : 1));
+  const turns = [];
+  let turn = null;
+  list.forEach((m, i) => {
+    // The user message a compaction writes belongs to the turn it interrupts.
+    if (m.role === 'user' && !isCompaction(list[i + 1])) {
+      if (turn) turn.followed = true;
+      turn = { session: m.session_id, at: m.time_created, replies: [], followed: false };
+      turns.push(turn);
+    } else if (m.role !== 'user' && turn && m.agent !== 'compaction' && !m.summary) {
+      turn.replies.push(m);
+    }
+  });
+  return turns;
+}
+
 /**
  * Each prompt you wrote and what came of it: replies until your next prompt. A compaction
  * writes a user message of its own; that is part of the turn, not a new one.
@@ -67,28 +92,9 @@ export function turnsOf(ctx, { messages, where, show }) {
   const bySession = new Map();
   for (const m of messages) {
     const s = ctx.sessionById.get(m.session_id);
-    if (!s || s.parent_id || !ctx.inScope(m.session_id)) continue;
-    if (!bySession.has(m.session_id)) bySession.set(m.session_id, []);
-    bySession.get(m.session_id).push(m);
+    if (s && !s.parent_id && ctx.inScope(m.session_id)) pushTo(bySession, m.session_id, m);
   }
-  const turns = [];
-  for (const list of bySession.values()) {
-    list.sort((a, b) => a.time_created - b.time_created || (a.role === 'user' ? -1 : 1));
-    let turn = null;
-    for (let i = 0; i < list.length; i++) {
-      const m = list[i];
-      if (m.role === 'user') {
-        const byCompaction = list[i + 1]?.role === 'assistant' && list[i + 1].agent === 'compaction';
-        if (!byCompaction) {
-          if (turn) turn.followed = true;
-          turn = { session: m.session_id, at: m.time_created, replies: [], followed: false };
-          turns.push(turn);
-        }
-      } else if (turn && m.agent !== 'compaction' && !m.summary) {
-        turn.replies.push(m);
-      }
-    }
-  }
+  const turns = [...bySession.values()].flatMap(turnsOfSession);
   const inRange = turns.filter(t => t.at >= ctx.from && t.at <= ctx.now);
   const ended = { done: 0, cut: 0, aborted: 0, error: 0, continued: 0, unanswered: 0, open: 0 };
   const cut = [];
@@ -249,6 +255,18 @@ export function followPlan(lists) {
   };
 }
 
+/** The list one todowrite call wrote, as [text, status] pairs; null when it cannot be read. */
+function planOf(call) {
+  let list;
+  try {
+    list = JSON.parse(call.todos ?? '[]');
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(list)) return null;
+  return list.filter(i => i && typeof i.content === 'string').map(i => [i.content, String(i.status ?? 'pending')]);
+}
+
 /**
  * The agent's own task lists, per session in the period, rebuilt from every list it wrote.
  * The todo table is only a fallback, for sessions with no todowrite call at all (an OpenCode
@@ -261,18 +279,9 @@ export function followPlan(lists) {
  */
 export function plansOf(ctx, { todos, todoWrites = [], todoWriters = new Set(), where }) {
   const listsBySession = new Map();
-  for (const call of [...todoWrites].sort((x, y) => x.time_created - y.time_created)) {
-    if (!ctx.inScope(call.session_id) || call.time_created < ctx.from) continue;
-    let list;
-    try {
-      list = JSON.parse(call.todos ?? '[]');
-    } catch {
-      continue;
-    }
-    if (!Array.isArray(list)) continue;
-    const pairs = list.filter(i => i && typeof i.content === 'string').map(i => [i.content, String(i.status ?? 'pending')]);
-    if (!listsBySession.has(call.session_id)) listsBySession.set(call.session_id, []);
-    listsBySession.get(call.session_id).push(pairs);
+  for (const call of todoWrites.toSorted((x, y) => x.time_created - y.time_created)) {
+    const pairs = ctx.inScope(call.session_id) && call.time_created >= ctx.from ? planOf(call) : null;
+    if (pairs) pushTo(listsBySession, call.session_id, pairs);
   }
 
   const per = new Map(); // top-level session -> totals
@@ -286,11 +295,12 @@ export function plansOf(ctx, { todos, todoWrites = [], todoWriters = new Set(), 
 
   // Sessions that never wrote a list through todowrite: what the todo table holds.
   const fromTable = new Map();
+  const onlyInTable = id => {
+    const s = ctx.sessionById.get(id);
+    return Boolean(s) && !todoWriters.has(id) && !listsBySession.has(id) && ctx.inScope(id) && (s.time_updated ?? s.time_created) >= ctx.from;
+  };
   for (const item of todos) {
-    const s = ctx.sessionById.get(item.session_id);
-    if (!s || todoWriters.has(item.session_id) || listsBySession.has(item.session_id) || !ctx.inScope(item.session_id) || (s.time_updated ?? s.time_created) < ctx.from) continue;
-    if (!fromTable.has(item.session_id)) fromTable.set(item.session_id, []);
-    fromTable.get(item.session_id).push([String(fromTable.get(item.session_id).length), item.status]);
+    if (onlyInTable(item.session_id)) pushTo(fromTable, item.session_id, [String(fromTable.get(item.session_id)?.length ?? 0), item.status]);
   }
   for (const [session, pairs] of fromTable) merge(session, followPlan([pairs]));
 
