@@ -3,6 +3,33 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 10.0.0 - 2026-10-10
+
+From figures to what to do about them.
+
+- **Worth knowing**: above the figures in Stats, up to five sentences say what they add up to:
+  replies cut off at the output limit, MCP servers switched on and never called, a permission
+  asked again and again, where most of the agent's time goes, and more. Each is a fixed rule
+  over figures the page already shows, with a minimum of evidence; nothing is guessed, and
+  when no rule holds the box is not there.
+- **When OpenCode's settings changed**: the monitor notices a save of `opencode.json` that
+  changed a setting, global or a project's, lists it in Stats with what changed, and compares
+  the days before with the days from it on at a click. A change made while the monitor was
+  off is found at the next start. Secrets are never read; addresses and commands are kept
+  only as "changed".
+- **Ask Claude about it**: `mcp.mjs` gives the same figures to Claude Code or any MCP client
+  (`claude mcp add opencode-monitor -- node /path/to/mcp.mjs`). Five tools, all read-only; it
+  reads OpenCode's data itself, so the monitor does not have to be running, and it writes
+  nothing. The README says what reaches the assistant once you connect it.
+- **Weekly summary**: with `notify.weekly.enabled`, the week in a line and its takeaways go
+  to your Discord webhook once a week. Off by default; never sent late or twice.
+  `--test-notify` sends it too, and This machine and `--doctor` say when it goes out.
+- Fixed: a config with a comment after a trailing comma could not be read, so its limits and
+  MCP servers were ignored.
+- After a SonarQube scan: system programs are run by their full path on Windows and macOS,
+  six regular expressions that could be slow on long input now read it once, and the monitor
+  can be stopped cleanly from code. Tests cover 87% of the lines.
+
 ## 9.0.0 - 2026-10-10
 
 The whole of the agent's work, not only its tool calls, and figures you can check.
