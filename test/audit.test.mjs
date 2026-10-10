@@ -153,3 +153,30 @@ test('environment notifications fire once when something goes down', () => {
   notify.environment(env('failed', false));
   assert.deepEqual(sent, ['notify.env.mcp graft', 'notify.env.model llama'], 'what was already down at startup is not announced');
 });
+
+test('a session about to be compacted is announced once per compaction, only when asked for', () => {
+  const sent = [];
+  const make = on => createNotifier(
+    { on, repeatMinutes: 30, desktop: true, discord: { webhookUrl: '', mention: '', includeDetail: false } },
+    (key, vars = {}) => `${key}${vars.n != null ? ` ${vars.n}` : ''}`,
+    { desktop: (title, body) => sent.push(`${title} | ${body}`), discord: () => {} },
+  );
+  const session = (hints, compacting = false) => ({
+    id: 's1', parentId: null, state: 'working', since: 0, project: 'shop', title: 'Checkout',
+    health: { hints, compacting, compaction: compacting ? null : { at: 99_072, room: 9000, growth: 4000, requestsLeft: 2 } },
+  });
+  const notify = make(['waiting', 'compact_soon']);
+  notify([session([])], 0); // startup
+  notify([session(['context_high'])], 1000);
+  notify([session(['context_high'])], 2000);
+  notify([session([], true)], 3000); // compacting: the next approach is news again
+  notify([session([])], 4000);
+  notify([session(['context_high'])], 5000);
+  assert.deepEqual(sent, ['notify.compact_soon | shop — Checkout · notify.compact_room_requests 2', 'notify.compact_soon | shop — Checkout · notify.compact_room_requests 2']);
+
+  sent.length = 0;
+  const off = make(['waiting']);
+  off([session([])], 0);
+  off([session(['context_high'])], 1000);
+  assert.deepEqual(sent, [], 'off unless "compact_soon" is in notify.on');
+});

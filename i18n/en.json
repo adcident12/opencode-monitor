@@ -54,6 +54,7 @@
   "progress.lastActivity": "Last activity",
 
   "health.context": "Context",
+  "health.compacting": "being compacted; the new size shows after the next request",
   "health.compactRoom": "{room} left before it is compacted",
   "health.compactRoomRequests": "{room} left before it is compacted · about {n} requests at this pace",
   "health.compactNow": "at the point where OpenCode compacts",
@@ -308,6 +309,9 @@
   "notify.working": "OpenCode is working",
   "notify.idle": "OpenCode is idle",
   "notify.for": "for {t}",
+  "notify.compact_soon": "About to be compacted",
+  "notify.compact_room": "{room} tokens left before OpenCode compacts it",
+  "notify.compact_room_requests": "{room} tokens left before OpenCode compacts it, about {n} requests",
   "notify.env.mcp": "MCP server {name} is down",
   "notify.env.model": "Model server {name} is not answering",
   "notify.env.service": "Service {name} is down",

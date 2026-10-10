@@ -54,6 +54,7 @@
   "progress.lastActivity": "ความเคลื่อนไหวล่าสุด",
 
   "health.context": "Context",
+  "health.compacting": "กำลัง compact ขนาดใหม่จะแสดงหลัง request ถัดไป",
   "health.compactRoom": "เหลือ {room} ก่อนถูก compact",
   "health.compactRoomRequests": "เหลือ {room} ก่อนถูก compact ประมาณ {n} request",
   "health.compactNow": "ถึงจุดที่ OpenCode จะ compact แล้ว",
@@ -308,6 +309,9 @@
   "notify.working": "OpenCode กำลังทำงาน",
   "notify.idle": "OpenCode ไม่ได้ทำงาน",
   "notify.for": "มาแล้ว {t}",
+  "notify.compact_soon": "ใกล้จะถูก compact",
+  "notify.compact_room": "เหลือ {room} token ก่อน OpenCode จะ compact",
+  "notify.compact_room_requests": "เหลือ {room} token ก่อน OpenCode จะ compact ประมาณ {n} request",
   "notify.env.mcp": "MCP server {name} ล่ม",
   "notify.env.model": "Model server {name} ไม่ตอบ",
   "notify.env.service": "Service {name} ล่ม",

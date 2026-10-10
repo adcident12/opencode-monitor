@@ -160,7 +160,7 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `work.protectedBranches` | `["main","master"]` | Warn when the agent changes files on these |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
 | `history.retentionDays` | 30 | How long state changes are kept in `data/history.jsonl` |
-| `notify.on` | `["waiting","stuck"]` | States that trigger a notification |
+| `notify.on` | `["waiting","stuck"]` | States that trigger a notification. Add `"compact_soon"` to be told once when a session is about to be compacted |
 | `notify.repeatMinutes` | 30 | Remind again while the state lasts; 0 turns reminders off |
 | `notify.desktop` | `true` | Desktop notification |
 | `notify.discord.webhookUrl` | `""` | Discord webhook; also settable as `OPENCODE_MONITOR_DISCORD_WEBHOOK` |

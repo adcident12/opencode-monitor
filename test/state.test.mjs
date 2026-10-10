@@ -101,6 +101,7 @@ test('health: context, compactions, errors, repeats, hints', () => {
     ...Array.from({ length: 4 }, (_, i) => ({ type: 'compaction', time_updated: i })),
     ...Array.from({ length: 3 }, (_, i) => tool(m, 'bash', i ? 'error' : 'completed', i + 1, { input: '{"command":"npm test"}', input_len: 22, cmd: 'npm test', error: 'boom' })),
     tool(m, 'read', 'completed', 9, { input: '{"filePath":"a"}', input_len: 16, file: 'a' }),
+    { type: 'step-finish', tokens_input: 500, tokens_cache_read: 90_000, tokens_cache_write: 0 }, // the summary
     { type: 'step-finish', tokens_input: 2000, tokens_cache_read: 118_000, tokens_cache_write: 0 },
   ];
   const h = deriveHealth({ session: { time_created: NOW - 7 * 60 * MIN }, parts, now: NOW, thresholds, contextLimit: 131_072 });
@@ -162,4 +163,20 @@ test('health: room before OpenCode compacts, and roughly how many requests that 
   assert.deepEqual([fresh.compaction.room, fresh.compaction.growth, fresh.compaction.requestsLeft], [at - 30_500, null, null]);
   // Without a compaction point the old rule applies, against the window.
   assert.equal(deriveHealth({ session: { time_created: NOW }, parts: [step(120_000)], now: NOW, thresholds, contextLimit: 131_072 }).compaction, null);
+});
+
+test('health: right after a compaction the old size is not shown, and the summary request is skipped', () => {
+  const step = sent => ({ type: 'step-finish', tokens_input: 1000, tokens_cache_read: sent - 1000, tokens_cache_write: 0, tokens_output: 500 });
+  const health = parts => deriveHealth({ session: { time_created: NOW - MIN }, parts, now: NOW, thresholds, contextLimit: 131_072, compactAt: 99_072 });
+  const before = [step(90_000), step(97_000)];
+  // Marked, summary still being written.
+  const marked = health([...before, { type: 'compaction' }]);
+  assert.deepEqual([marked.compacting, marked.contextTokens, marked.compaction], [true, null, null]);
+  assert.ok(!marked.hints.includes('context_high'));
+  // The summary sent the whole old context (97k): still compacting, not "at the limit".
+  const summarised = health([...before, { type: 'compaction' }, step(97_500)]);
+  assert.deepEqual([summarised.compacting, summarised.contextTokens], [true, null]);
+  // The first ordinary request shows the new, smaller context.
+  const after = health([...before, { type: 'compaction' }, step(97_500), step(41_000)]);
+  assert.deepEqual([after.compacting, after.contextTokens, after.compaction.room], [false, 41_000, 99_072 - 41_500]);
 });

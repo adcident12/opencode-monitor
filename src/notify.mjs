@@ -82,6 +82,7 @@ export async function testNotify(cfg, t) {
  */
 export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }) {
   const seen = new Map(); // session id -> { state, notifiedAt }
+  const closeToCompaction = new Set(); // session ids already told about, until they compact
   let baseline = true;
 
   function compose(session, now) {
@@ -99,6 +100,18 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
       if (cfg.discord.includeDetail && detail) parts.push('`' + detail.replaceAll('`', "'") + '`');
       send.discord(cfg.discord.webhookUrl, parts.join('\n'), cfg.discord.mention);
     }
+  }
+
+  // Once per compaction: the session is close to the point where OpenCode compacts it.
+  function compactSoon(session) {
+    const c = session.health?.compaction;
+    const title = t('notify.compact_soon');
+    const lines = [
+      `${session.project} — ${session.title}`,
+      c ? t(c.requestsLeft == null ? 'notify.compact_room' : 'notify.compact_room_requests', { room: `${Math.round(c.room / 1000)}k`, n: c.requestsLeft ?? 0 }) : '',
+    ].filter(Boolean);
+    if (cfg.desktop) send.desktop(title, lines.join(' · '));
+    if (cfg.discord.webhookUrl) send.discord(cfg.discord.webhookUrl, [cfg.discord.mention, `**${title}**`, ...lines].filter(Boolean).join('\n'), cfg.discord.mention);
   }
 
   // Environment: tell once when something that was fine (or not yet seen) goes down.
@@ -143,7 +156,17 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
         entry.notifiedAt = now;
       }
       seen.set(session.id, entry);
+
+      // Not a state of its own: a warning that can come while the session works.
+      const close = Boolean(session.health?.compaction) && session.health.hints?.includes('context_high');
+      if (close && !closeToCompaction.has(session.id)) {
+        if (cfg.on.includes('compact_soon') && !baseline) compactSoon(session);
+        closeToCompaction.add(session.id);
+      } else if (!close && !session.health?.compacting) {
+        closeToCompaction.delete(session.id);
+      }
     }
+    for (const id of closeToCompaction) if (!ids.has(id)) closeToCompaction.delete(id);
     for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
     baseline = false;
   }

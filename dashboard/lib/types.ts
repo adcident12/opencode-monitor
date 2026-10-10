@@ -64,6 +64,8 @@ export interface Session {
     contextPct: number | null
     /** Where OpenCode will compact, and how far off that is. null when the model's limits are unknown. */
     compaction: { at: number; room: number; growth: number | null; requestsLeft: number | null } | null
+    /** Compacted, and no ordinary request since: the size of the new context is not known yet. */
+    compacting: boolean
     compactions: number
     toolCalls: number
     toolErrors: number

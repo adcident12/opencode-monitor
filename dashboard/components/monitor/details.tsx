@@ -78,7 +78,9 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   if (showActivity && session.progress.lastActivityAt) {
     items.push({ key: "activity", label: t("progress.lastActivity"), value: t("time.ago", { t: duration(now - session.progress.lastActivityAt) }) })
   }
-  if (h.contextTokens != null) {
+  if (h.compacting) {
+    items.push({ key: "context", label: t("health.context"), value: <span className="text-muted-foreground">{t("health.compacting")}</span> })
+  } else if (h.contextTokens != null) {
     items.push({
       key: "context",
       label: t("health.context"),

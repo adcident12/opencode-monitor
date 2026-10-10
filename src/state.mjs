@@ -162,6 +162,8 @@ function growthOf(sizes) {
 export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null }) {
   let contextTokens = null;
   let sizes = []; // what each request counted against compaction, since the last compaction
+  let summaryPending = false; // a compaction was marked and its summarising request is not done
+  let compacting = false; // compacted, and no ordinary request has run since
   let compactions = 0;
   let toolCalls = 0;
   let toolErrors = 0;
@@ -171,12 +173,21 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   for (const p of parts) {
     if (p.type === 'step-finish') {
       const sent = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
+      // The first request after a compaction is the summary itself: it still sends the whole
+      // old context, so it says nothing about the new one.
+      if (summaryPending) {
+        summaryPending = false;
+        continue;
+      }
+      compacting = false;
       contextTokens = sent;
       // OpenCode counts the reply too when it decides to compact.
       if (sent > 0) sizes.push(sent + (p.tokens_output ?? 0));
     } else if (p.type === 'compaction') {
       compactions++;
       sizes = [];
+      summaryPending = true;
+      compacting = true;
     } else if (p.type === 'tool') {
       toolCalls++;
       if (p.status === 'error') {
@@ -199,6 +210,8 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
     if (entry.count >= thresholds.repeatWarn && (!repeat || entry.count > repeat.count)) repeat = entry;
   }
 
+  // While compacting, the last known size is the old context: not shown as if it were current.
+  if (compacting) contextTokens = null;
   const contextPct = contextTokens != null && contextLimit ? Math.round((contextTokens / contextLimit) * 100) : null;
   const ageMs = now - session.time_created;
 
@@ -218,7 +231,7 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   if (toolErrors >= thresholds.toolErrorWarn) hints.push('many_errors');
 
   return {
-    contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction,
+    contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction, compacting,
     compactions, toolCalls, toolErrors, lastError,
     repeat: repeat ? { count: repeat.count, tool: repeat.part.tool, text: describePart(repeat.part) } : null,
     hints,
