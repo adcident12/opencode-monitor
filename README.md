@@ -107,6 +107,16 @@ Each session also shows its health: context used against the model's limit, numb
 
 So a 32,768 window with 4,096 output compacts at 28,672, and a 131,072 window with 32,768 output at 99,072. Under the bar the page says how many tokens are left before that and, from how much the last few requests grew, roughly how many requests. It warns once the session is 85% of the way there or 3 requests away (`thresholds.compactWarnPct`, `thresholds.compactWarnRequests`). When these look bad the page suggests starting a new session.
 
+### The ship
+
+The same sessions can be seen as the bridge of a spaceship: switch between **Cards** and **Ship** next to the heading of the Now tab, and the choice is remembered in that browser. Each session is a crew member at a console, the ones that need you in the front row; it moves as the cards would change, every two seconds.
+
+- A raised hand and an amber bubble: waiting for you. Sweating, with an hourglass on the screen: probably stuck. A red cross: an error. Arms up: finished. Asleep on the console: idle.
+- While it works, the screen shows the tool: green text for a shell, coloured lines for an edit, a page for a read, a globe for the web or an MCP server.
+- The gauge beside each console is the context, with a white tick where OpenCode compacts; it turns amber when that is close, and puffs when it has just compacted. Drones beside a station are its subagents at work, and the lights on the wall are the MCP servers.
+
+Pick a station to see that session's card under the picture. Only the project's folder name is written on the bridge, cut short when it does not fit; the full name and everything else are on the card, so a long name never runs into the next station. The bubbles say the state in a word or two and never quote the session. Twelve stations at most: past that, the page says how many are left off and Cards shows them all. On a phone the bridge has two columns. The picture holds still for anyone who has asked their system for less motion. The crew and the ship are drawn in code for this project; no artwork from anyone else is used.
+
 ## Environment
 
 A strip at the top shows the things the agent depends on:
@@ -315,6 +325,7 @@ src/opencode-config.mjs model limits, MCP names, model server addresses
 public/                 the page, built from dashboard/ (do not edit by hand)
 dashboard/              source of the page: Next.js, Tailwind CSS, shadcn/ui
 src/static.mjs          serves public/ with a strict Content-Security-Policy
+dashboard/lib/ship.ts   the ship view: who sits where and what each station shows (pure); ship-draw.ts draws it
 i18n/                   UI and notification strings (en, th)
 scripts/make-sample.mjs fake data for --sample and the tests
 scripts/ci-autostart.mjs turns autostart on and off for real; run by CI on each system

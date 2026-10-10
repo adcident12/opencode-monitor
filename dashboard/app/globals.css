@@ -217,3 +217,11 @@
     animation: none;
   }
 }
+
+/* The bridge view: a bubble that needs you hops, in two steps, like the pixels under it.
+   It moves the margin, since translate already centres the bubble. */
+@keyframes ship-hop {
+  50% {
+    margin-top: -3px;
+  }
+}

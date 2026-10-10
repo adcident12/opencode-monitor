@@ -1,7 +1,7 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, RadioIcon, SettingsIcon } from "lucide-react"
-import { useEffect } from "react"
+import { ChartColumnIcon, HistoryIcon, LayoutListIcon, RadioIcon, RocketIcon, SettingsIcon } from "lucide-react"
+import { useEffect, useState } from "react"
 import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
 import { Header } from "@/components/monitor/header"
@@ -11,6 +11,7 @@ import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
 import { TAB as TAB_SPACE } from "@/components/monitor/section"
 import { Setup } from "@/components/monitor/setup"
+import { Ship } from "@/components/monitor/ship"
 import { Stats } from "@/components/monitor/stats"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -20,6 +21,30 @@ import { cn } from "@/lib/utils"
 import { useHash, useNow, useSnapshot } from "@/lib/live"
 
 type Tab = "now" | "history" | "stats" | "setup"
+type View = "cards" | "ship"
+
+/** Cards or the bridge, remembered in this browser only. Cards until you choose otherwise. */
+function useView() {
+  const [view, setView] = useState<View>("cards")
+  useEffect(() => {
+    try {
+      // Read once after the first paint: the page is built ahead of time and has no storage.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem("nowView") === "ship") setView("ship")
+    } catch {
+      // Storage can be unavailable; cards it is.
+    }
+  }, [])
+  const choose = (next: View) => {
+    setView(next)
+    try {
+      localStorage.setItem("nowView", next)
+    } catch {
+      // The choice just will not be remembered.
+    }
+  }
+  return [view, choose] as const
+}
 
 // On a phone four labels with icons do not fit: the icons go first, the labels stay.
 const TAB = "flex-none gap-2 px-2.5 text-sm text-foreground/75 data-active:text-foreground sm:px-3.5 [&_svg]:hidden sm:[&_svg]:block"
@@ -27,6 +52,7 @@ const TAB = "flex-none gap-2 px-2.5 text-sm text-foreground/75 data-active:text-
 export default function Page() {
   const { t } = useI18n()
   const { snapshot, connected, skew } = useSnapshot()
+  const [view, setView] = useView()
   const now = useNow(skew)
   const [hash, setHash] = useHash()
   // #stats or #history, optionally narrowed to one session: #stats/<session id>.
@@ -92,17 +118,25 @@ export default function Page() {
           {!snapshot && <Loading />}
 
           {snapshot && (
-            <section aria-labelledby="attention-heading" className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
               <h2 id="attention-heading" className="text-2xl font-semibold">
                 {attention.length ? t("summary.attention", { n: attention.length }) : t("summary.none")}
               </h2>
+              {sessions.length > 0 && <ViewSwitch view={view} onChange={setView} />}
+            </div>
+          )}
+
+          {snapshot && view === "ship" && sessions.length > 0 && <Ship snapshot={snapshot} now={now} history={historyEnabled} />}
+
+          {snapshot && view === "cards" && attention.length > 0 && (
+            <section aria-labelledby="attention-heading" className="space-y-4">
               {attention.map(s => (
                 <AttentionCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} history={historyEnabled} />
               ))}
             </section>
           )}
 
-          {working.length > 0 && (
+          {view === "cards" && working.length > 0 && (
             <section aria-labelledby="working-heading" className="space-y-3">
               <h2 id="working-heading" className="text-sm font-medium text-muted-foreground">
                 {t("section.working", { n: working.length })}
@@ -115,7 +149,7 @@ export default function Page() {
             </section>
           )}
 
-          {rest.length > 0 && (
+          {view === "cards" && rest.length > 0 && (
             <section aria-labelledby="rest-heading" className="space-y-3">
               <h2 id="rest-heading" className="text-sm font-medium text-muted-foreground">
                 {t("section.rest", { n: rest.length })}
@@ -147,6 +181,35 @@ export default function Page() {
         <TabsContent value="stats">{tab === "stats" && <Stats session={session} onSession={changeSession} />}</TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+/** Two buttons, one pressed: a choice of how to see the same sessions. */
+function ViewSwitch({ view, onChange }: Readonly<{ view: View; onChange: (view: View) => void }>) {
+  const { t } = useI18n()
+  const options = [
+    { value: "cards" as const, label: t("now.view.cards"), Icon: LayoutListIcon },
+    { value: "ship" as const, label: t("now.view.ship"), Icon: RocketIcon },
+  ]
+  return (
+    <fieldset className="inline-flex rounded-lg border bg-card p-0.5">
+      <legend className="sr-only">{t("now.view.label")}</legend>
+      {options.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={view === value}
+          onClick={() => onChange(value)}
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            view === value ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon aria-hidden className="size-4" />
+          {label}
+        </button>
+      ))}
+    </fieldset>
   )
 }
 

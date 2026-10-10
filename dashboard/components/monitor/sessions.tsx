@@ -19,7 +19,7 @@ function useReason() {
 function Project({ session }: Readonly<{ session: Session }>) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<span tabIndex={0} />} className="rounded-sm font-mono text-code text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <TooltipTrigger render={<span tabIndex={0} />} className="min-w-0 rounded-sm font-mono text-code text-muted-foreground outline-none [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-ring">
         {session.project}
       </TooltipTrigger>
       <TooltipContent>{session.directory}</TooltipContent>
@@ -108,7 +108,8 @@ export function AttentionCard({ session, subagents, now, history = false }: Read
             </div>
             <h3 className="text-lg font-medium break-words">{session.title || session.id}</h3>
           </div>
-          <div className="text-right">
+          {/* Beside the title on a wide card; under it, lined up on the left, when the title wraps. */}
+          <div className="sm:text-right">
             <p className={cn("font-light tabular-nums leading-none text-[clamp(2.25rem,6vw,3.25rem)]", style.text)} aria-label={t("time.for", { t: duration(now - session.since) })}>
               {clock(now - session.since)}
             </p>
