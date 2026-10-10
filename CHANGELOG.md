@@ -3,6 +3,29 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 7.0.0 - 2026-10-10
+
+Compaction, seen before it happens, and history you can page through.
+
+- **Before a session is compacted**: the session card marks on the context bar where OpenCode
+  will compact, and says how many tokens and roughly how many requests are left. The point is
+  worked out with OpenCode's own rule from the limits in each user's `opencode.json` (the
+  project's file over the global one), including `limit.input`, `compaction.reserved`,
+  `compaction.auto` and `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`. Checked against 237 real
+  compactions: all 237 happened on the first request at or over the predicted point.
+- While a session is being compacted the card says so instead of showing the old size, and a
+  compaction forced by the model server refusing a request is named as a mismatch between the
+  server's context size and `limit.context`.
+- `notify.on` can include `"compact_soon"` for one desktop or Discord message per compaction.
+- **History is paged**: the newest 100 entries, then "Load older entries". It used to show only
+  the newest 300 without saying so. Both filters now cover the whole record.
+- **What each session took**, above the history: agent time, time waiting for you, compactions
+  and tokens per session over 30 days; click one to follow it.
+- **CSV**: the figures per day and the per-session table can be downloaded.
+- Stats lists up to 50 re-read files, ten until asked for the rest; the context chart of a
+  session draws its compaction point.
+- CI fails on a known vulnerability in what the page ships.
+
 ## 6.1.0 - 2026-10-10
 
 The page, tidied. Nothing it shows or does has changed.
