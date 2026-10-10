@@ -27,6 +27,17 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
   compare: null,
+  work: {
+    time: { readingMs: 600_000, thinkingMs: 6_000_000, writingMs: 1_200_000, toolMs: 300_000 },
+    turns: {
+      count: 20, ended: { done: 12, continued: 4, cut: 2, aborted: 1, error: 0, unanswered: 1, open: 0 }, medianSteps: 8, medianMs: 1_020_000, longestMs: 7_200_000,
+      cut: [{ at: NOW, model: "local/qwen", project: "shop", title: "Checkout flow" }],
+    },
+    permissions: { asked: 9, top: [{ permission: "external_directory", pattern: "C:\\temp\\*", count: 7, waitMs: 60_000, lastAt: NOW }] },
+    files: { edits: 0, files: 0, top: [] },
+    agents: [{ agent: "build", requests: 100, activeMs: 3_600_000, tokens: 1_000_000, cost: 0, subagent: false }],
+    plans: { sessions: 0, total: 0, completed: 0, inProgress: 0, pending: 0, cancelled: 0, unfinished: [] },
+  },
   context: null,
   speed: { models: [{ model: "local-llama/qwen3.8-27b-v3", requests: 118, writeTps: 31.6, readTps: 540, firstTokenMs: 1200, daily: [] }] },
   usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
@@ -87,6 +98,35 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("Beyond tool calls in Stats", () => {
+  it("splits the agent's time four ways, each part written out, and names the biggest", async () => {
+    renderStats()
+    const split = (await screen.findByRole("heading", { name: "Where the time went" })).closest("section")!
+    expect(within(split).getByText("Thinking")).toBeInTheDocument()
+    expect(within(split).getByText("1h 40m")).toBeInTheDocument()
+    expect(within(split).getByText("· 74%")).toBeInTheDocument()
+    expect(within(split).getByText(/Most of the time \(74%\) is the model thinking/)).toBeInTheDocument()
+  })
+
+  it("says how prompts ended, and what to do about replies cut off at the output limit", async () => {
+    renderStats()
+    const turns = (await screen.findByRole("heading", { name: "Your prompts" })).closest("section")!
+    expect(within(turns).getByText("Continued by your next prompt")).toBeInTheDocument()
+    expect(within(turns).getByText(/2 replies were cut off/)).toBeInTheDocument()
+    // Endings that did not happen are not listed.
+    expect(within(turns).queryByText("Failed with an error")).not.toBeInTheDocument()
+  })
+
+  it("lists what interrupted you, and shows nothing for parts with no data", async () => {
+    renderStats()
+    expect(await screen.findByText("external_directory")).toBeInTheDocument()
+    expect(screen.getByText("C:\\temp\\*")).toBeInTheDocument()
+    // One agent, no edits and no plans: those sections, and the "What got done" chapter, are left out.
+    expect(screen.queryByRole("heading", { name: "Agents" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "What got done" })).not.toBeInTheDocument()
   })
 })
 

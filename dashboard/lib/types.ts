@@ -248,6 +248,11 @@ export interface DayStats {
   tokens: number
   /** As OpenCode recorded it; 0 for a model that costs nothing. */
   cost: number
+  readingMs: number
+  thinkingMs: number
+  writingMs: number
+  toolMs: number
+  files: number
 }
 
 export interface Stats {
@@ -272,6 +277,30 @@ export interface Stats {
     compactions: { t: number; at: number | null; before: number | null; after: number | null; reread: number }[]
     rereadAfterCompaction: number
   } | null
+  /** Everything about the period that is not one tool call (src/work.mjs). */
+  work: {
+    time: { readingMs: number; thinkingMs: number; writingMs: number; toolMs: number }
+    turns: {
+      count: number
+      ended: { done: number; continued: number; cut: number; aborted: number; error: number; unanswered: number; open: number }
+      medianSteps: number | null
+      medianMs: number | null
+      longestMs: number | null
+      cut: { at: number; model: string | null; project: string; title: string }[]
+    }
+    permissions: { asked: number; top: { permission: string; pattern: string; count: number; waitMs: number; lastAt: number }[] }
+    files: { edits: number; files: number; top: { file: string; count: number; project: string; title: string }[] }
+    agents: { agent: string; requests: number; activeMs: number; tokens: number; cost: number; subagent: boolean }[]
+    plans: {
+      sessions: number
+      total: number
+      completed: number
+      inProgress: number
+      pending: number
+      cancelled: number
+      unfinished: { id: string; total: number; completed: number; inProgress: number; pending: number; cancelled: number; project: string; title: string }[]
+    }
+  }
   /** How fast each model answered, most used first. Rates are tokens per second. */
   speed: {
     models: { model: string; requests: number; writeTps: number | null; readTps: number | null; firstTokenMs: number | null; daily: (number | null)[] }[]

@@ -15,6 +15,7 @@ import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
 import { Chapter, H3, TAB, TH } from "./section"
+import { Agents, Files, Permissions, Plans, TimeSplit, Turns } from "./work"
 import { SessionFilter } from "./session-filter"
 
 const RANGES = [7, 14, 30] as const
@@ -198,7 +199,7 @@ function Change({ before, after, better }: { before: number | null; after: numbe
 }
 
 /** The chapters of the page, in reading order. Each id is also where the jump links land. */
-const GROUPS = ["you", "agent", "model", "mcp"] as const
+const GROUPS = ["you", "agent", "done", "model", "mcp"] as const
 type GroupId = (typeof GROUPS)[number]
 
 /**
@@ -237,7 +238,8 @@ function Figures({ stats }: { stats: StatsData }) {
   const { t } = useI18n()
   const { totals } = stats
   const hasModel = stats.usage.requests > 0 || stats.speed.models.length > 0 || stats.context != null
-  const shown = GROUPS.filter(id => (id === "model" ? hasModel : id === "mcp" ? stats.mcp.length > 0 : true))
+  const hasDone = stats.work.files.edits > 0 || stats.work.plans.total > 0
+  const shown = GROUPS.filter(id => (id === "model" ? hasModel : id === "mcp" ? stats.mcp.length > 0 : id === "done" ? hasDone : true))
 
   return (
     <>
@@ -273,9 +275,15 @@ function Figures({ stats }: { stats: StatsData }) {
             ))}
           </Ranked>
         </div>
+        <Permissions work={stats.work} />
       </Group>
 
       <Group id="agent">
+        <TimeSplit work={stats.work} />
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+          <Turns work={stats.work} />
+          <Agents work={stats.work} />
+        </div>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
           <DayChart title={t("stats.chartActive")} days={stats.daily} pick={d => d.activeMs} color="var(--color-working)" />
           <Ranked title={t("stats.slowest")} note={t("stats.slowestNote")} empty={t("stats.noSlow")}>
@@ -322,6 +330,15 @@ function Figures({ stats }: { stats: StatsData }) {
           <p className="max-w-prose text-sm text-muted-foreground">{t("stats.abandonedNote", { prompts: totals.abandoned, calls: totals.abandonedCalls })}</p>
         )}
       </Group>
+
+      {hasDone && (
+        <Group id="done">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-cols-2">
+            <Files work={stats.work} />
+            <Plans work={stats.work} />
+          </div>
+        </Group>
+      )}
 
       {hasModel && (
         <Group id="model">

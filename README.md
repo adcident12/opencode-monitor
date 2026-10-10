@@ -139,6 +139,11 @@ The **Stats** tab looks back over the last 7, 14, or 30 days, from OpenCode's ow
 - calls per tool and how many failed, how often graft was used instead of read/grep/glob, files read again and again in one session, and skills loaded;
 - one row per **MCP server**: calls, time per call, when it was last used, how often its connection dropped or it failed to start, and its most used tools. Failures are split in two: *failed* is a tool reporting an error (a script with a typo), *no answer* is the server itself not responding (connection closed, request timed out). Servers that are switched on but were never called are named, because each one still adds its tool list to every prompt.
 
+- **where the agent's time went**: reading the prompt before the first token, thinking, writing, and tools running, with a line on which of them takes most and what would shorten it;
+- **your prompts**: how many steps and how long each took, and how it ended: answered, continued by your next prompt, cut off at the output limit, stopped by you, failed, or left without a final answer. Replies cut off at the output limit come with what to change;
+- **agents**: time, replies, tokens and cost per agent, and which ran only as subagents;
+- **what interrupted you**: the permission prompts asked most often, with an example of the rule that would stop one (the monitor never changes OpenCode's config);
+- **what got done**: the files changed most often, and the agent's own task lists, with the sessions that left items undone (only the status of an item is read, never its text);
 - **model speed**, per model: tokens per second while writing, tokens per second while reading the new part of a prompt, and the typical wait for the first token, with writing speed per day for the model used most. Writing is timed from the first token to the last thing the model wrote, so a tool running or a prompt waiting for you does not make the model look slow.
 - **tokens**: how much was sent to the model, how much of that the model server could reuse from its cache, how much the model wrote, and the cost when OpenCode recorded one. Also how big a session is at its first request, before any work: instructions, skills, and the tool list of every MCP server that is switched on. That is the number to watch when deciding which MCP servers to leave on.
 
@@ -220,6 +225,7 @@ By default a Discord message carries only the state, the project folder name, th
 - Before and after is a split by calendar day, nothing more. It does not know what you changed or whether anything else changed with it (a different project, a different kind of task), and a session that runs across the chosen midnight has its calls counted on both sides by the day they happened.
 - The compaction point follows OpenCode's settings, not the model server's. If the server's real context is smaller than `limit.context` (for llama.cpp, `--ctx-size`), the server refuses a request before OpenCode would have compacted; OpenCode records that compaction as forced, and the monitor then says the two do not match. It cannot see the server's own setting. A model that is not in `opencode.json` or OpenCode's model catalogue has no known point, and none is guessed.
 - The rule was read from OpenCode 1.18.35 and checked against every automatic compaction in a real database (237 of 237). A later OpenCode may change it.
+- Lines added and removed are not recorded by OpenCode, so "files changed" counts files, not lines. A permission prompt's answer is not recorded either, so "what interrupted you" counts prompts, not refusals. Time is split by the timestamps OpenCode writes on each part; a reply still being written is not timed yet.
 - Token counts are the model server's own, per request. A server that reports none (some local servers do not report cached tokens) shows zeros, and "how big a session starts" needs the session's first request to fall inside the period.
 - A closed MCP connection is taken as OpenCode shutting down when it is the last thing a finished run logged, or when two or more servers close within two seconds. Several servers really dying in the same moment would be missed, and with a single server configured a shutdown of the running OpenCode looks like a failure.
 - MCP tool calls are attributed by name (`<server>_<tool>`). A server whose project config has since been deleted or renamed is not recognised, and its calls stay in the plain tool list.
@@ -245,6 +251,7 @@ src/environment.mjs     MCP, model server, and service checks
 src/mcp.mjs             MCP figures: which server a tool belongs to, real failures vs shutdowns (pure)
 src/git.mjs             branch name per project (reads .git/HEAD only)
 src/stats.mjs           figures for the Stats tab (pure); stats-source.mjs reads and caches them
+src/work.mjs            time split, prompts, permissions, files, agents and plans for the Stats tab (pure)
 src/leftovers.mjs       background processes still running, matched to the command that started them
 src/history.mjs         record of state changes (data/history.jsonl)
 src/redact.mjs          secret patterns

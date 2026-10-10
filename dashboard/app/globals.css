@@ -77,6 +77,10 @@
   --color-idle: var(--idle);
   --color-idle-soft: var(--idle-soft);
   --color-canvas: var(--canvas);
+  --color-part-1: var(--part-1);
+  --color-part-2: var(--part-2);
+  --color-part-3: var(--part-3);
+  --color-part-4: var(--part-4);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -123,6 +127,14 @@
   --finished-soft: oklch(0.955 0.03 160);
   --idle: oklch(0.52 0.02 258);
   --idle-soft: oklch(0.94 0.008 255);
+
+  /* Parts of a whole (where the agent's time went), in this order. Not state colours: amber and
+     orange stay reserved for waiting and stuck. Two are under 3:1 on this surface, so every part
+     is also written out with its value. */
+  --part-1: #2a78d6;
+  --part-2: #1baf7a;
+  --part-3: #6250d6;
+  --part-4: #e87ba4;
 }
 
 /* Dark: deep blue-slate, not black, so the state colours keep their warmth. */
@@ -159,6 +171,11 @@
   --finished-soft: oklch(0.3 0.04 160);
   --idle: oklch(0.7 0.02 258);
   --idle-soft: oklch(0.29 0.015 262);
+
+  --part-1: #3987e5;
+  --part-2: #199e70;
+  --part-3: #9085e9;
+  --part-4: #d55181;
 }
 
 @layer base {
