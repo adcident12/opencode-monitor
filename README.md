@@ -62,7 +62,7 @@ node server.mjs --autostart on
 
 registers a scheduled task named `opencode-monitor` for your user (no administrator rights needed) that starts the monitor at each login, without a console window. Options given with it (`--port`, `--data-dir`, `--config`, `--lang`, `--no-notify`) are kept. `schtasks /Run /TN opencode-monitor` starts it right away, and `node server.mjs --autostart off` removes the task. The task points at this folder and at the Node you ran it with, so run it again after moving either.
 
-On macOS and Linux this is not implemented; add `node server.mjs` to launchd or a systemd user unit.
+On macOS the same command writes a launchd agent to `~/Library/LaunchAgents/com.opencode-monitor.plist` (output goes to `~/Library/Logs/opencode-monitor.log`), and on Linux a systemd user unit to `~/.config/systemd/user/opencode-monitor.service`; both start the monitor at once and at every login, and `--autostart off` removes them. **These two have not been tried on a real machine yet**, only through the tests: read the file it writes before relying on it, and please report what you find.
 
 ## What the states mean
 
@@ -207,6 +207,7 @@ By default a Discord message carries only the state, the project folder name, th
 
 ## Limits
 
+- `--autostart` on macOS and Linux is untested on real machines (see "Keep it running").
 - **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Reports welcome.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.

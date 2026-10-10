@@ -1,8 +1,13 @@
 // Starts the monitor when you log in, so it is already watching when a prompt is left
-// unanswered overnight. Windows only for now: a scheduled task for the current user, which
-// needs no administrator rights and is removed again with --autostart off.
+// unanswered overnight. Each system's own mechanism, for the current user only, with no
+// administrator rights, and removed again with --autostart off:
+//   Windows  a scheduled task
+//   macOS    a launchd agent in ~/Library/LaunchAgents
+//   Linux    a systemd user unit in ~/.config/systemd/user
 import { execFile } from 'node:child_process';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { UserError } from './config.mjs';
 
 export const TASK_NAME = 'opencode-monitor';
@@ -52,15 +57,126 @@ function powershell(script, env) {
   });
 }
 
+/** The options to start the server with, as separate arguments. */
+export function serverArgs(args = {}) {
+  const out = [];
+  for (const key of KEPT) if (args[key] != null) out.push(FLAG[key], String(args[key]));
+  if (args.noNotify) out.push('--no-notify');
+  return out;
+}
+
+const LABEL = 'com.opencode-monitor';
+const UNIT = 'opencode-monitor.service';
+const xml = text => String(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+// A line break in a path would start a new line of the file it is written into.
+const plain = value => {
+  const text = String(value);
+  if (/[\r\n\0]/.test(text)) throw new UserError(`Cannot start automatically with this in a path or option: ${text}`);
+  return text;
+};
+
+/** macOS: a launchd agent that runs the server at login. */
+export function launchdPlist({ node = process.execPath, root, args = {}, home = homedir() }) {
+  const program = [node, join(root, 'server.mjs'), ...serverArgs(args)].map(plain);
+  const log = join(home, 'Library', 'Logs', 'opencode-monitor.log');
+  return {
+    path: join(home, 'Library', 'LaunchAgents', `${LABEL}.plist`),
+    text: [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+      '<plist version="1.0">',
+      '<dict>',
+      `  <key>Label</key><string>${LABEL}</string>`,
+      '  <key>ProgramArguments</key>',
+      '  <array>',
+      ...program.map(arg => `    <string>${xml(arg)}</string>`),
+      '  </array>',
+      `  <key>WorkingDirectory</key><string>${xml(plain(root))}</string>`,
+      '  <key>RunAtLoad</key><true/>',
+      `  <key>StandardOutPath</key><string>${xml(log)}</string>`,
+      `  <key>StandardErrorPath</key><string>${xml(log)}</string>`,
+      '</dict>',
+      '</plist>',
+      '',
+    ].join('\n'),
+  };
+}
+
+// One argument of a systemd command line: quoted, with what systemd would expand made literal.
+const unitArg = value => `"${plain(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%').replaceAll('$', '$$$$')}"`;
+
+/** Linux: a systemd user unit that runs the server at login. */
+export function systemdUnit({ node = process.execPath, root, args = {}, home = homedir() }) {
+  return {
+    path: join(home, '.config', 'systemd', 'user', UNIT),
+    text: [
+      '[Unit]',
+      'Description=Local status page for OpenCode (opencode-monitor)',
+      '',
+      '[Service]',
+      `ExecStart=${[node, join(root, 'server.mjs'), ...serverArgs(args)].map(unitArg).join(' ')}`,
+      `WorkingDirectory=${plain(root)}`,
+      'Restart=on-failure',
+      'RestartSec=60',
+      '',
+      '[Install]',
+      'WantedBy=default.target',
+      '',
+    ].join('\n'),
+  };
+}
+
+function command(file, argv) {
+  return new Promise((resolve, reject) => {
+    execFile(file, argv, { timeout: 30_000 }, (err, stdout, stderr) => {
+      if (err) reject(new UserError(`${file} ${argv.join(' ')}: ${(stderr || err.message).trim().split('\n')[0]}`));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+// What the two file-based systems need: write a file, remove it, see whether it is there.
+const FILES = {
+  write: (path, text) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  },
+  remove: path => rmSync(path, { force: true }),
+  exists: existsSync,
+};
+
+async function autostartUnix(mode, { platform, root, args, home, exec, files }) {
+  const mac = platform === 'darwin';
+  const unit = (mac ? launchdPlist : systemdUnit)({ root, args, home });
+  const domain = `gui/${process.getuid?.() ?? 0}`;
+  if (mode === 'off') {
+    const was = files.exists(unit.path);
+    // Stopping fails when it was never loaded; removing the file is what matters.
+    if (mac) await exec('launchctl', ['bootout', `${domain}/${LABEL}`]).catch(() => {});
+    else await exec('systemctl', ['--user', 'disable', '--now', UNIT]).catch(() => {});
+    files.remove(unit.path);
+    if (!mac) await exec('systemctl', ['--user', 'daemon-reload']).catch(() => {});
+    return was ? `Removed ${unit.path}. The monitor will no longer start at login.` : `There was nothing to remove at ${unit.path}.`;
+  }
+  files.write(unit.path, unit.text);
+  if (mac) {
+    await exec('launchctl', ['bootout', `${domain}/${LABEL}`]).catch(() => {}); // replace one already loaded
+    await exec('launchctl', ['bootstrap', domain, unit.path]);
+  } else {
+    await exec('systemctl', ['--user', 'daemon-reload']);
+    await exec('systemctl', ['--user', 'enable', '--now', UNIT]);
+  }
+  return `The monitor will start each time you log in, and has been started now.\n  written: ${unit.path}\n  undo: node server.mjs --autostart off`;
+}
+
 /**
  * @param {'on'|'off'} mode
  * @returns {Promise<string>} a line to print
  */
-export async function autostart(mode, { root, args = {}, platform = process.platform, run = powershell } = {}) {
+export async function autostart(mode, { root, args = {}, platform = process.platform, run = powershell, home = homedir(), exec = command, files = FILES } = {}) {
   if (mode !== 'on' && mode !== 'off') throw new UserError('--autostart needs "on" or "off".');
-  if (platform !== 'win32') {
-    throw new UserError('--autostart is only implemented for Windows. On macOS or Linux, add "node server.mjs" to launchd or a systemd user unit.');
-  }
+  if (platform === 'darwin' || platform === 'linux') return autostartUnix(mode, { platform, root, args, home, exec, files });
+  if (platform !== 'win32') throw new UserError(`--autostart does not know how to start a program at login on ${platform}.`);
   if (mode === 'off') {
     const outcome = await run(REMOVE, { OCM_TASK: TASK_NAME });
     return outcome === 'removed' ? `Removed the "${TASK_NAME}" task. A monitor that is running now keeps running until you stop it.` : `There was no "${TASK_NAME}" task to remove.`;

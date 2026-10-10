@@ -126,7 +126,7 @@ export const HELP = `Usage: node server.mjs [options]
   --version          Print the version, then exit.
   --doctor           Print what the monitor finds on this machine, and what is missing, then exit.
   --autostart on|off Start the monitor each time you log in, with the options given here
-                     (Windows: a scheduled task for your user). Then exit.
+                     (a scheduled task, a launchd agent, or a systemd user unit). Then exit.
 `;
 
 export function defaultDataDir(env = process.env) {
