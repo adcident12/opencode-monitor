@@ -20,29 +20,34 @@ const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
  * tool, compact, waiting (for you). Segments may overlap: a tool waits while a prompt is open.
  */
 function segmentsOf({ messages, tools, spans, steps, prompts, now, show }) {
-  const segs = [];
-  for (const m of messages) {
-    if (m.role !== 'assistant') continue;
-    const isCompaction = m.agent === 'compaction' || m.summary;
-    if (isCompaction) {
-      segs.push([m.time_created, m.completed ?? now, 'compact', '']);
-      continue;
-    }
-    const first = steps.get(m.id)?.first_token;
-    if (first != null && first > m.time_created) segs.push([m.time_created, first, 'reading', '']);
-  }
-  for (const s of spans) if (s.s != null && s.e != null && s.e > s.s) segs.push([s.s, s.e, s.type === 'reasoning' ? 'thinking' : 'writing', '']);
-  for (const p of tools) {
-    const running = p.status === 'running' || p.status === 'pending';
-    const end = p.ended ?? (running ? now : p.time_updated);
-    segs.push([startOf(p), Math.max(startOf(p), end), 'tool', show(`${p.tool} ${describe(p)}`.trim(), 160)]);
-  }
-  for (const w of prompts) {
-    const end = w.answeredAt ?? w.abandonedAt ?? now;
-    const what = w.kind === 'question' ? (w.part?.question ?? '') : `${w.permission ?? ''} ${w.patterns ?? ''}`.trim();
-    segs.push([w.t, Math.max(w.t, end), 'waiting', show(what, 160)]);
-  }
+  const segs = [
+    ...messages.filter(m => m.role === 'assistant').map(m => replySegment(m, steps, now)).filter(Boolean),
+    ...spans.filter(s => s.s != null && s.e != null && s.e > s.s).map(s => [s.s, s.e, s.type === 'reasoning' ? 'thinking' : 'writing', '']),
+    ...tools.map(p => toolSegment(p, now, show)),
+    ...prompts.map(w => waitSegment(w, now, show)),
+  ];
   return segs.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+}
+
+/** A reply: compacting when it is OpenCode's summary, else the model reading before its first token. */
+function replySegment(m, steps, now) {
+  if (m.agent === 'compaction' || m.summary) return [m.time_created, m.completed ?? now, 'compact', ''];
+  const first = steps.get(m.id)?.first_token;
+  return first != null && first > m.time_created ? [m.time_created, first, 'reading', ''] : null;
+}
+
+/** A tool call, until it ended; one still running lasts until now. */
+function toolSegment(p, now, show) {
+  const running = p.status === 'running' || p.status === 'pending';
+  const end = p.ended ?? (running ? now : p.time_updated);
+  return [startOf(p), Math.max(startOf(p), end), 'tool', show(`${p.tool} ${describe(p)}`.trim(), 160)];
+}
+
+/** A prompt waiting for you, until it was answered, or left. */
+function waitSegment(w, now, show) {
+  const end = w.answeredAt ?? w.abandonedAt ?? now;
+  const what = w.kind === 'question' ? (w.part?.question ?? '') : `${w.permission ?? ''} ${w.patterns ?? ''}`.trim();
+  return [w.t, Math.max(w.t, end), 'waiting', show(what, 160)];
 }
 
 /** Each prompt you wrote in the session, when its last reply ended, and how. */

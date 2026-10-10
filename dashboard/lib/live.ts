@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
+import type { Replay } from "./replay"
 import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
@@ -122,6 +123,47 @@ export function useHistorySessions(count: number | null, enabled: boolean) {
     }
   }, [count, enabled])
   return sessions
+}
+
+/** The sessions there is something to play back, most recent first; null until they arrive. */
+export function useReplaySessions(enabled: boolean) {
+  const [sessions, setSessions] = useState<SessionChoice[] | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    fetch("/api/replay/sessions")
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then(list => live && Array.isArray(list) && setSessions(list))
+      .catch(() => live && setSessions([]))
+    return () => {
+      live = false
+    }
+  }, [enabled])
+  return sessions
+}
+
+/**
+ * One session to play back. Fetched again every 15 seconds, so a session still going grows
+ * at the end; the playhead is the page's own and does not move.
+ */
+export function useReplay(id: string | null) {
+  const [state, setState] = useState<{ id: string | null; replay: Replay | null; failed: boolean }>({ id, replay: null, failed: false })
+  useEffect(() => {
+    if (!id) return
+    let live = true
+    const load = () =>
+      fetch(`/api/replay?session=${encodeURIComponent(id)}`)
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(replay => live && setState({ id, replay, failed: !replay }))
+        .catch(() => live && setState(s => ({ ...s, id, failed: true })))
+    load()
+    const timer = setInterval(load, 15_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [id])
+  return { replay: state.id === id ? state.replay : null, failed: state.id === id && state.failed }
 }
 
 /** What the monitor found on this machine; fetched when the tab opens. */

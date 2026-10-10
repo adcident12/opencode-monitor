@@ -3,6 +3,26 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.1.0 - 2026-10-10
+
+Play a session back, and see the monitor before installing it.
+
+- **Replay**, a new tab: one session played back from OpenCode's own records, with the rules
+  of the Now tab, so it works for sessions the monitor never saw. A player with three speeds
+  and the real time of each moment; the session's station on the bridge; the panel the Now
+  tab would have shown then (state, what it was doing and for how long, calls so far, time
+  waited for you, the context against the compaction point); the agent drawn with the tools
+  it reaches for and its subagents at work; the plan as it stood; what had happened; and a
+  timeline of every row. Labelled as a replay throughout, never taken for now.
+- **Skip silences**, on by default: a stretch over two minutes where nothing happened takes
+  twenty seconds of playback, and is marked on the timeline.
+- **Replay links** at the foot of every card, and **Replay this session** in Stats and History
+  when a session is chosen.
+- **Screenshots in the README**, in English and in Thai, of `--sample` data; the sample now
+  has a full session to play back, older than the Now tab looks, so nothing there changes.
+- Fixed wording: "1 MCP servers were switched on" no longer counts, and the compactions
+  sentence names files read again only when there were some.
+
 ## 11.0.0 - 2026-10-10
 
 The Now tab as the bridge of a spaceship, live.

@@ -65,6 +65,13 @@ test('time: only when one part is at least half and there is an hour of it', () 
   assert.deepEqual(ids(s), []);
 });
 
+test('compactions: files read again are named only when there were some', () => {
+  const s = quiet();
+  s.totals.compactions = 20;
+  s.totals.rereads = 0;
+  assert.equal(takeawaysOf(s)[0].id, 'compactions');
+});
+
 test('compactions: two or more per session', () => {
   const s = quiet();
   s.totals.compactions = 20;
@@ -109,7 +116,7 @@ test('at most five, most useful first', () => {
   s.totals.compactions = 30;
   s.usage.cachedPct = 10;
   s.totals.waitMs = 2 * HOUR;
-  assert.deepEqual(ids(s), ['cut_off', 'mcp_unused', 'permission_repeat', 'mcp_no_answer', 'compactions']);
+  assert.deepEqual(ids(s), ['cut_off', 'mcp_unused', 'permission_repeat', 'mcp_no_answer', 'compactions_rereads']);
 });
 
 test('every takeaway has its sentence in every language, quoting only its own figures', async () => {
@@ -140,6 +147,7 @@ test('every takeaway has its sentence in every language, quoting only its own fi
     if (off === 'permission_repeat') s.work.permissions.top = [];
     if (off === 'mcp_no_answer') s.mcp.at(-1).faults = 0;
     if (off.startsWith('time_')) s.work.time = { readingMs: 0, thinkingMs: 0, writingMs: 0, toolMs: 0 };
+    if (off === 'compactions_rereads') s.totals.rereads = 0;
     if (off === 'compactions') s.totals.compactions = 0;
     if (off === 'cache_low') s.usage.cachedPct = 90;
     if (off === 'tool_failures') s.tools.pop();
@@ -147,7 +155,7 @@ test('every takeaway has its sentence in every language, quoting only its own fi
     if (off === 'plans_left') s.work.plans = { total: 10, dropped: 0 };
   }
   const ids = new Set(found.map(t => t.id));
-  assert.equal(ids.size, 13);
+  assert.equal(ids.size, 14);
   for (const lang of ['en', 'th']) {
     const strings = JSON.parse(await readFile(new URL(`../i18n/${lang}.json`, import.meta.url), 'utf8'));
     for (const t of found) {

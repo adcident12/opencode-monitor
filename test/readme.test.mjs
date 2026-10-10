@@ -58,7 +58,16 @@ test('every option, key, file and command named in one is named in the other', (
   assert.deepEqual([...b].filter(x => !a.has(x)), [], 'only in README.th.md');
 });
 
+test('every picture is there, in both languages', async () => {
+  const { existsSync } = await import('node:fs');
+  for (const text of [en, th]) {
+    const pictures = [...text.matchAll(/src="([^"]+)"/g)].map(m => m[1]);
+    assert.ok(pictures.length >= 6);
+    for (const p of pictures) assert.ok(existsSync(join(ROOT, p)), p);
+  }
+});
+
 test('the same links', () => {
-  const links = text => [...text.matchAll(/\]\(([^)]+)\)|<(https?:[^>]+)>/g)].map(m => m[1] ?? m[2]).filter(l => !/^README(\.th)?\.md$/.test(l)).sort();
+  const links = text => [...text.matchAll(/\]\(([^)]+)\)|<(https?:[^>]+)>|src="([^"]+)"/g)].map(m => m[1] ?? m[2] ?? m[3]).filter(l => !/^README(\.th)?\.md$/.test(l)).map(l => l.replace('/screenshots/th/', '/screenshots/en/')).sort();
   assert.deepEqual(links(th), links(en));
 });

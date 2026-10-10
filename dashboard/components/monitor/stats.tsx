@@ -17,6 +17,7 @@ import { Code } from "./details"
 import { Hint, TIP } from "./hint"
 import { Chapter, GRID, H3, SUB, TAB, TH } from "./section"
 import { Agents, Files, Permissions, Plans, TimeSplit, Turns } from "./work"
+import { ReplayLink } from "./replay-link"
 import { SessionFilter } from "./session-filter"
 
 const RANGES = [7, 14, 30] as const
@@ -55,6 +56,7 @@ export function Stats({ session, onSession }: Readonly<{ session: string | null;
           </SelectContent>
         </Select>
         <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
+          {session && <ReplayLink id={session} />}
           <SplitPicker value={split} onChange={setSplit} days={days} changed={changes.map(c => dayOf(c.t))} />
           <Button
             variant="outline"

@@ -13,6 +13,7 @@ import { useHistory, useHistorySessions, useStats } from "@/lib/live"
 import type { HistoryEvent, Stats } from "@/lib/types"
 import { Code } from "./details"
 import { Chapter, SUB, TAB, TH } from "./section"
+import { ReplayLink } from "./replay-link"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 import { Hint } from "./hint"
@@ -132,7 +133,10 @@ export function History({ count, active, session, onSession }: Readonly<{ count:
 
       <Chapter id="history-changes" first={!stats} title={t("history.changes")} note={t("history.changesNote")}>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <SessionFilter value={session} onChange={onSession} sessions={sessions} current={session && !sessions.some(s => s.id === session) ? { id: session, title: "", project: "" } : null} />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <SessionFilter value={session} onChange={onSession} sessions={sessions} current={session && !sessions.some(s => s.id === session) ? { id: session, title: "", project: "" } : null} />
+          {session && <ReplayLink id={session} />}
+        </div>
         <div className="flex items-center gap-2.5">
           <Switch id="only-attention" checked={onlyAttention} onCheckedChange={setOnlyAttention} />
           <Label htmlFor="only-attention" className="font-normal text-muted-foreground">

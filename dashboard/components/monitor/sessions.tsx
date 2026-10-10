@@ -1,6 +1,6 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, RotateCcwIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { clock, duration, rough } from "@/lib/format"
@@ -46,6 +46,10 @@ function SessionLinks({ session, history, footer = false }: Readonly<{ session: 
           {t("links.history")}
         </a>
       )}
+      <a href={`#replay/${id}`} className={link}>
+        <RotateCcwIcon aria-hidden className="size-3.5" />
+        {t("links.replay")}
+      </a>
     </nav>
   )
 }

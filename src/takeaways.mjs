@@ -58,7 +58,9 @@ const RULES = [
     if (sessions < 3) return null;
     const per = compactions / sessions;
     if (per < 2) return null;
-    return { id: 'compactions', tone: 'act', vars: { per: Math.round(per * 10) / 10, sessions, rereads }, anchor: 'stats-model' };
+    // Files read again are named only when there were some: "0 files were read" says nothing.
+    const id = rereads > 0 ? 'compactions_rereads' : 'compactions';
+    return { id, tone: 'act', vars: { per: Math.round(per * 10) / 10, sessions, rereads }, anchor: 'stats-model' };
   },
   // A prompt cache that is barely reused makes every request read everything again.
   s => {

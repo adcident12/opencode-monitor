@@ -194,6 +194,70 @@ export function buildSample(dir, now = Date.now()) {
     part(sid, mid, 51 * MIN, stepFinish('stop', 26_000));
   }
 
+  // 10. Yesterday's session, in full, for the Replay tab: reading, thinking and writing, tools,
+  //     a subagent, a permission prompt, a compaction, the plan as it was rewritten, and an hour
+  //     away in the middle. Older than the Now tab looks back, so it changes nothing there.
+  {
+    const base = 26 * HOUR;
+    const ago = sec => base - sec * 1000;
+    const sid = session('Apply discount codes at checkout', 'shop-web', { ageMs: base, updatedAgoMs: ago(4470) });
+    // A reply: when it was asked, when its first token came, its spans, and what it sent.
+    const reply = (from, to, context, finish, spans = []) => {
+      const mid = message(sid, 'assistant', ago(from), assistant({ finish, agent: 'build', time: { created: now - ago(from), completed: now - ago(to) }, tokens: { input: 1500, output: 400, reasoning: 120, cache: { read: context - 1500, write: 0 } } }));
+      part(sid, mid, ago(from + 4), { type: 'step-start' });
+      for (const [type, a, b] of spans) part(sid, mid, ago(a), { type, text: '', time: { start: now - ago(a), end: now - ago(b) } }, ago(b));
+      return mid;
+    };
+    const call = (mid, name, input, a, b, extra = {}) =>
+      part(sid, mid, ago(a), { type: 'tool', tool: name, callID: id('call'), state: { status: 'completed', input, time: { start: now - ago(a), end: now - ago(b) }, ...extra } }, ago(b));
+    const plan = (mid, at, items) => call(mid, 'todowrite', { todos: items.map(([status, content]) => ({ content, status, priority: 'medium' })) }, at, at + 1);
+    const steps = ['Find where the total is computed', 'Add a discount code field', 'Apply the code to the total', 'Run the checkout tests', 'Update the README'];
+    const statusAt = (i, done) => {
+      if (i < done) return 'completed';
+      return i === done ? 'in_progress' : 'pending';
+    };
+    const listAt = done => steps.map((s, i) => [statusAt(i, done), s]);
+
+    message(sid, 'user', ago(0));
+    let mid = reply(2, 34, 31_000, 'tool-calls', [['reasoning', 6, 24]]);
+    call(mid, 'read', { filePath: '/work/shop-web/src/cart/total.ts' }, 25, 27);
+    call(mid, 'grep', { pattern: 'discount' }, 28, 30);
+    plan(mid, 32, listAt(0));
+
+    mid = reply(40, 262, 44_000, 'tool-calls', [['reasoning', 45, 70]]);
+    call(mid, 'task', { description: 'Find every place prices are rounded', subagent_type: 'explore' }, 72, 258);
+    const child = session('Find every place prices are rounded (@explore subagent)', 'shop-web', { ageMs: ago(74), parent: sid, updatedAgoMs: ago(256) });
+    message(child, 'user', ago(74));
+    const cmid = message(child, 'assistant', ago(75), assistant({ finish: 'stop', agent: 'explore', time: { created: now - ago(75), completed: now - ago(256) } }));
+    part(child, cmid, ago(78), { type: 'reasoning', text: '', time: { start: now - ago(78), end: now - ago(110) } }, ago(110));
+    part(child, cmid, ago(112), tool('grep', 'completed', { pattern: 'Math.round' }, ago(112)), ago(114));
+    part(child, cmid, ago(118), tool('read', 'completed', { filePath: '/work/shop-web/src/money.ts' }, ago(118)), ago(121));
+    part(child, cmid, ago(125), { type: 'reasoning', text: '', time: { start: now - ago(125), end: now - ago(190) } }, ago(190));
+    part(child, cmid, ago(192), { type: 'text', text: '', time: { start: now - ago(192), end: now - ago(255) } }, ago(255));
+
+    mid = reply(262, 488, 63_000, 'tool-calls', [['reasoning', 267, 300]]);
+    call(mid, 'edit', { filePath: '/work/shop-web/src/cart/total.ts' }, 302, 306);
+    plan(mid, 307, listAt(2));
+    // The tests need your permission: asked at 310, allowed about a minute and a half later.
+    call(mid, 'bash', { command: 'npm test -- checkout' }, 310, 480);
+    ask(ago(310), 'bash', ['npm test -- checkout']);
+    plan(mid, 486, listAt(4));
+
+    mid = reply(490, 598, 97_500, 'tool-calls', [['reasoning', 495, 560], ['text', 562, 596]]);
+    // OpenCode compacts: its own message, and the summary it writes.
+    part(sid, mid, ago(600), { type: 'compaction', auto: true });
+    message(sid, 'assistant', ago(600), assistant({ agent: 'compaction', summary: true, finish: 'stop', time: { created: now - ago(600), completed: now - ago(640) } }));
+
+    mid = reply(650, 760, 41_000, 'stop', [['reasoning', 656, 690], ['text', 706, 758]]);
+    call(mid, 'edit', { filePath: '/work/shop-web/README.md' }, 700, 704);
+    plan(mid, 759, listAt(5));
+
+    // An hour later you come back with one more thing.
+    message(sid, 'user', ago(4360));
+    mid = reply(4362, 4470, 46_000, 'stop', [['reasoning', 4368, 4398], ['text', 4432, 4468]]);
+    call(mid, 'bash', { command: 'npm run lint' }, 4402, 4430);
+  }
+
   // MCP servers: one that never started in this run and one that died after the kill above.
   const mcpLine = (agoMs, text) => logLines.push(`timestamp=${new Date(now - agoMs).toISOString()} level=WARN run=sample00 message=${text}`);
   mcpLine(4 * HOUR, '"server unavailable" key=sonarqube type=local status=failed');

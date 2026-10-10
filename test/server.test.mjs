@@ -132,6 +132,14 @@ test('server: started and stopped in this process; every address answers', async
       JSON.parse(res.body);
     }
     assert.equal(JSON.parse((await here('/api/history?limit=2')).body).events.length, 2);
+    // Replay: the sessions to choose from, then one of them, and nothing for an id that is not one.
+    const choices = JSON.parse((await here('/api/replay/sessions')).body);
+    assert.ok(choices.length > 0);
+    const played = JSON.parse((await here('/api/replay?session=' + choices[0].id)).body);
+    assert.equal(played.session.id, choices[0].id);
+    assert.ok(played.rows[0].segs.length > 0);
+    assert.equal((await here('/api/replay?session=no-such')).body, 'null');
+    assert.equal((await here('/api/replay?session=' + encodeURIComponent('../x'))).body, 'null');
     const page = await here('/');
     assert.equal(page.status, 200);
     assert.match(page.csp, /default-src/);

@@ -24,9 +24,9 @@ export function createReplaySource({ db, log, cfg, redact, projectMcp = null, mo
   };
 
   function compute(sessionId, now) {
-    const tree = db.replay.tree(sessionId);
     // The session itself first: the query does not promise an order.
-    tree.sort((a, b) => (a.id === sessionId ? -1 : b.id === sessionId ? 1 : 0));
+    const all = db.replay.tree(sessionId);
+    const tree = [...all.filter(s => s.id === sessionId), ...all.filter(s => s.id !== sessionId)];
     if (tree[0]?.id !== sessionId) return null;
     const ids = tree.map(s => s.id);
     const from = Math.min(...tree.map(s => s.time_created));

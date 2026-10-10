@@ -1,6 +1,6 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, LayoutListIcon, RadioIcon, RocketIcon, SettingsIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, LayoutListIcon, RadioIcon, RocketIcon, RotateCcwIcon, SettingsIcon } from "lucide-react"
 import { useEffect, useState } from "react"
 import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
@@ -10,6 +10,7 @@ import type { MarkTone } from "@/lib/logo"
 import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
 import { TAB as TAB_SPACE } from "@/components/monitor/section"
+import { Replay } from "@/components/monitor/replay"
 import { Setup } from "@/components/monitor/setup"
 import { Ship } from "@/components/monitor/ship"
 import { Stats } from "@/components/monitor/stats"
@@ -20,7 +21,7 @@ import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useHash, useNow, useSnapshot } from "@/lib/live"
 
-type Tab = "now" | "history" | "stats" | "setup"
+type Tab = "now" | "history" | "replay" | "stats" | "setup"
 type View = "cards" | "ship"
 
 /** Cards or the bridge, remembered in this browser only. Cards until you choose otherwise. */
@@ -56,7 +57,7 @@ export default function Page() {
   const now = useNow(skew)
   const [hash, setHash] = useHash()
   // #stats or #history, optionally narrowed to one session: #stats/<session id>.
-  const [, hashTab, hashSession] = /^#(history|stats|setup)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
+  const [, hashTab, hashSession] = /^#(history|replay|stats|setup)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
   const tab: Tab = (hashTab as Tab | undefined) ?? "now"
   const session = hashSession ?? null
   const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
@@ -102,6 +103,10 @@ export default function Page() {
               {t("tab.history")}
             </TabsTrigger>
           )}
+          <TabsTrigger value="replay" className={TAB}>
+            <RotateCcwIcon aria-hidden />
+            {t("tab.replay")}
+          </TabsTrigger>
           <TabsTrigger value="stats" className={TAB}>
             <ChartColumnIcon aria-hidden />
             {t("tab.stats")}
@@ -175,6 +180,8 @@ export default function Page() {
             <History count={snapshot?.historyCount ?? null} active={tab === "history"} session={session} onSession={changeSession} />
           </TabsContent>
         )}
+
+        <TabsContent value="replay">{tab === "replay" && <Replay session={session} onSession={changeSession} />}</TabsContent>
 
         <TabsContent value="setup">{tab === "setup" && <Setup active />}</TabsContent>
 

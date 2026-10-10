@@ -7,11 +7,11 @@ import type { SessionChoice } from "@/lib/types"
 const ALL = "all"
 
 /** Narrows a view to one session. The current choice stays listed even if the list no longer has it. */
-export function SessionFilter({ value, onChange, sessions, current }: Readonly<{ value: string | null; onChange: (id: string | null) => void; sessions: SessionChoice[]; current?: SessionChoice | null }>) {
+export function SessionFilter({ value, onChange, sessions, current, allowAll = true }: Readonly<{ value: string | null; onChange: (id: string | null) => void; sessions: SessionChoice[]; current?: SessionChoice | null; allowAll?: boolean }>) {
   const { t } = useI18n()
   const listed = current && !sessions.some(s => s.id === current.id) ? [current, ...sessions] : sessions
   const label = (s: SessionChoice) => `${s.project ? `${s.project} · ` : ""}${s.title || s.id}`
-  const items = [{ value: ALL, label: t("filter.allSessions") }, ...listed.map(s => ({ value: s.id, label: label(s) }))]
+  const items = [...(allowAll ? [{ value: ALL, label: t("filter.allSessions") }] : []), ...listed.map(s => ({ value: s.id, label: label(s) }))]
 
   return (
     <Select value={value ?? ALL} onValueChange={next => onChange(!next || next === ALL ? null : String(next))} items={items}>

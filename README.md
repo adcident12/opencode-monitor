@@ -13,6 +13,16 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 
 > **Contributions are not accepted.** Pull requests are closed without review and feature requests are not taken. Bug reports are welcome as issues. You are free to fork and change your own copy (MIT). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## What it looks like
+
+| | |
+| --- | --- |
+| <img src="docs/screenshots/en/now.png" alt="Now" width="420"><br>**Now** · what needs you first, with how long it has waited | <img src="docs/screenshots/en/ship.png" alt="Ship" width="420"><br>**Ship** · the same sessions as a live pixel-art bridge |
+| <img src="docs/screenshots/en/replay.png" alt="Replay" width="420"><br>**Replay** · one session played back, moment by moment | <img src="docs/screenshots/en/stats.png" alt="Stats" width="420"><br>**Stats** · what the figures add up to, then the figures |
+| <img src="docs/screenshots/en/history.png" alt="History" width="420"><br>**History** · what each session took, and every change of state | <img src="docs/screenshots/en/setup.png" alt="This machine" width="420"><br>**This machine** · what was found here, and what is missing |
+
+The pictures are of `node server.mjs --sample`, made-up data: run that to try every tab without OpenCode. If the monitor is useful to you, a star on GitHub helps others find it.
+
 ## Run it
 
 Needs Node.js 22.13 or newer.
@@ -189,6 +199,17 @@ Tick "Only what needed you" to see just the waits, hangs, and errors, or pick on
 
 History is recorded only while the monitor is running, into `data/history.jsonl` (git-ignored, one JSON object per line, already redacted). Entries older than `history.retentionDays` are removed at startup. Set `history.enabled` to `false` to turn it off. Delete the file to clear it.
 
+## Replay
+
+The **Replay** tab plays one session back: pick it from the list, or follow **Replay** at the foot of any card, or **Replay this session** in Stats and History when a session is chosen there (`#replay/<session id>`, so it can be bookmarked). It is labelled as a replay throughout, so a raised hand there is never taken for someone waiting now.
+
+- The player has play and pause, a slider, three speeds, and the real time of the moment it is at.
+- **Skip silences** is on by default: a stretch longer than two minutes where nothing at all happened (you went home, the agent finished and waited) takes 20 seconds of playback, and is marked on the timeline. Turn it off to play real time.
+- At each moment: the session's station on the bridge, the panel the Now tab would have shown (its state, what it was doing and for how long, calls so far, time waited for you, and the context against the point where OpenCode compacts), the agent drawn with the tools it reaches for and its subagents as they work, the plan as it stood, and what had happened up to then.
+- Under it, a timeline of the session and each subagent: reading the prompt, thinking, writing, tools, compacting, and waiting for you, with every compaction marked. Point at it to see what was happening; click to go there.
+
+It is read from OpenCode's own records with the rules of the Now tab, so it works for a session the monitor never saw, and a session still going grows at the end. What the model wrote is not played back: OpenCode records only when a reply starts and ends, and nothing is made up to fill it. A permission's answer time is inferred, as in Stats, and the plan items, commands and paths shown pass through the same redaction as the rest of the page.
+
 ## Ask Claude about it
 
 The page shows figures; deciding what to do about them is a conversation. `mcp.mjs` gives the same figures to [Claude Code](https://claude.com/claude-code), or any other MCP client, so you can ask "why did last week take so long" or "what should I change in my OpenCode setup" and get an answer from your own numbers:
@@ -316,6 +337,9 @@ src/takeaways.mjs       the rules behind "Worth knowing" (pure)
 src/config-changes.mjs  notices a changed OpenCode setting (data/config-changes.jsonl)
 src/digest.mjs          the weekly summary to Discord
 src/mcp-server.mjs      the MCP protocol and its five tools (pure); mcp-main.mjs wires them to the data
+src/replay.mjs          one session, as what each agent was doing from moment to moment (pure); replay-source.mjs reads it
+dashboard/lib/replay.ts playing it back: skipped silences, the state at a moment (pure)
+docs/screenshots/       the pictures in this README, of --sample data
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications
 src/process.mjs         is OpenCode running
