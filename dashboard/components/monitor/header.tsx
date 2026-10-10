@@ -10,10 +10,17 @@ import { LANGUAGES, useI18n, type Lang } from "@/lib/i18n"
 import type { Snapshot } from "@/lib/types"
 import type { MarkTone } from "@/lib/logo"
 import { Logo } from "./logo"
-import { Dot } from "./state"
+import { Dot, toneOf } from "./state"
+
+const RUNNING_KEY = { ok: "oc.running", bad: "oc.stopped", unknown: "oc.unknown" } as const
+
+function connectionKey(connected: boolean, stale: boolean | undefined) {
+  if (!connected) return "conn.lost"
+  return stale ? "conn.stale" : "conn.live"
+}
 
 /** @param tone  what the sessions are doing, shown as the dot of the mark */
-export function Header({ snapshot, connected, tone }: { snapshot: Snapshot | null; connected: boolean; tone: MarkTone }) {
+export function Header({ snapshot, connected, tone }: Readonly<{ snapshot: Snapshot | null; connected: boolean; tone: MarkTone }>) {
   const { t, lang, setLang } = useI18n()
   const live = connected && !snapshot?.stale
   const running = snapshot?.opencodeRunning
@@ -34,11 +41,11 @@ export function Header({ snapshot, connected, tone }: { snapshot: Snapshot | nul
       <output className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-2">
           <Dot tone={live ? "ok" : "bad"} />
-          {t(!connected ? "conn.lost" : snapshot?.stale ? "conn.stale" : "conn.live")}
+          {t(connectionKey(connected, snapshot?.stale))}
         </span>
         <span className="inline-flex items-center gap-2">
-          <Dot tone={running === true ? "ok" : running === false ? "bad" : "unknown"} />
-          {t(running === true ? "oc.running" : running === false ? "oc.stopped" : "oc.unknown")}
+          <Dot tone={toneOf(running)} />
+          {t(RUNNING_KEY[toneOf(running)])}
         </span>
       </output>
 
@@ -68,7 +75,8 @@ function ThemeMenu() {
   const { theme, setTheme, resolvedTheme } = useTheme()
   // The theme is only known in the browser; render a neutral icon until then.
   const mounted = useSyncExternalStore(noSubscribe, () => true, () => false)
-  const Icon = !mounted ? MonitorIcon : resolvedTheme === "dark" ? MoonIcon : SunIcon
+  const themed = resolvedTheme === "dark" ? MoonIcon : SunIcon
+  const Icon = mounted ? themed : MonitorIcon
 
   return (
     <DropdownMenu>

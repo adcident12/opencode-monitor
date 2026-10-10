@@ -23,7 +23,7 @@ const EFFORT_ROWS = 8
  * Which sessions took the most: agent time, time waiting for you, compactions, tokens. A
  * row picks that session for the list below; with one picked, only its row is shown.
  */
-function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selected: string | null; onSelect: (id: string | null) => void }) {
+function Effort({ rows, selected, onSelect }: Readonly<{ rows: Stats["sessions"]; selected: string | null; onSelect: (id: string | null) => void }>) {
   const { t } = useI18n()
   const [all, setAll] = useState(false)
   const sorted = [...rows].sort((a, b) => b.activeMs - a.activeMs)
@@ -103,7 +103,7 @@ function Effort({ rows, selected, onSelect }: { rows: Stats["sessions"]; selecte
 }
 
 /** @param count  number of recorded entries, from the live snapshot: a change means "fetch again" */
-export function History({ count, active, session, onSession }: { count: number | null; active: boolean; session: string | null; onSession: (id: string | null) => void }) {
+export function History({ count, active, session, onSession }: Readonly<{ count: number | null; active: boolean; session: string | null; onSession: (id: string | null) => void }>) {
   const { t, lang } = useI18n()
   const [onlyAttention, setOnlyAttention] = useState(false)
   const { events, more, truncated, loading, loadOlder } = useHistory(count, active, session, onlyAttention)

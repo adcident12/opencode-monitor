@@ -7,7 +7,7 @@ import type { SessionChoice } from "@/lib/types"
 const ALL = "all"
 
 /** Narrows a view to one session. The current choice stays listed even if the list no longer has it. */
-export function SessionFilter({ value, onChange, sessions, current }: { value: string | null; onChange: (id: string | null) => void; sessions: SessionChoice[]; current?: SessionChoice | null }) {
+export function SessionFilter({ value, onChange, sessions, current }: Readonly<{ value: string | null; onChange: (id: string | null) => void; sessions: SessionChoice[]; current?: SessionChoice | null }>) {
   const { t } = useI18n()
   const listed = current && !sessions.some(s => s.id === current.id) ? [current, ...sessions] : sessions
   const label = (s: SessionChoice) => `${s.project ? `${s.project} · ` : ""}${s.title || s.id}`

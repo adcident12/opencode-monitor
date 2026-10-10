@@ -22,7 +22,7 @@ function weeklyText(notify: SetupReport["notify"], t: (key: string, vars?: Recor
   return t("setup.weeklyAt", { day, hour: String(notify.weekly.hour).padStart(2, "0") })
 }
 
-export function Setup({ active }: { active: boolean }) {
+export function Setup({ active }: Readonly<{ active: boolean }>) {
   const { t, lang } = useI18n()
   const { report, failed } = useSetup(active)
 
@@ -115,7 +115,7 @@ export function Setup({ active }: { active: boolean }) {
  * What was actually sent, and whether each channel took it. Without this there is no way to
  * tell "nothing happened that needed a notification" from "it was sent and got lost".
  */
-function Sent({ report }: { report: SetupReport }) {
+function Sent({ report }: Readonly<{ report: SetupReport }>) {
   const { t, lang } = useI18n()
   const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
   const outcome = (text: string) => {
@@ -164,7 +164,7 @@ function Sent({ report }: { report: SetupReport }) {
 }
 
 /** What is missing, first: each with what it costs you and what to do. */
-function Problems({ report }: { report: SetupReport }) {
+function Problems({ report }: Readonly<{ report: SetupReport }>) {
   const { t } = useI18n()
   if (!report.problems.length) {
     return (
@@ -189,7 +189,7 @@ function Problems({ report }: { report: SetupReport }) {
 }
 
 /** A chapter whose content is a list of label and value rows, plus whatever follows them. */
-function Section({ id, title, note, children }: { id: string; title: string; note?: string; children: React.ReactNode }) {
+function Section({ id, title, note, children }: Readonly<{ id: string; title: string; note?: string; children: React.ReactNode }>) {
   return (
     <Chapter id={id} title={title} note={note}>
       <div className="divide-y">{children}</div>
@@ -198,7 +198,7 @@ function Section({ id, title, note, children }: { id: string; title: string; not
 }
 
 /** @param file  the row is about a file: say "not found" when it is missing, not just "off" */
-function Row({ label, value, ok, note, file = false }: { label: string; value: React.ReactNode; ok?: boolean; note?: string; file?: boolean }) {
+function Row({ label, value, ok, note, file = false }: Readonly<{ label: string; value: React.ReactNode; ok?: boolean; note?: string; file?: boolean }>) {
   const { t } = useI18n()
   return (
     <dl className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-0.5 py-2.5 text-sm sm:grid-cols-[14rem_minmax(0,1fr)]">
@@ -215,6 +215,6 @@ function Row({ label, value, ok, note, file = false }: { label: string; value: R
   )
 }
 
-function Path({ children }: { children: string }) {
+function Path({ children }: Readonly<{ children: string }>) {
   return <span className="font-mono text-code [overflow-wrap:anywhere]">{children}</span>
 }

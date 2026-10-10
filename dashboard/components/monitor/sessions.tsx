@@ -16,7 +16,7 @@ function useReason() {
     t(`reason.${s.reason}`, { permission: s.prompt?.permission ?? "", limit: s.limitMs ? rough(s.limitMs) : "", detail: s.detail ?? "" })
 }
 
-function Project({ session }: { session: Session }) {
+function Project({ session }: Readonly<{ session: Session }>) {
   return (
     <Tooltip>
       <TooltipTrigger render={<span tabIndex={0} />} className="rounded-sm font-mono text-code text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -28,7 +28,7 @@ function Project({ session }: { session: Session }) {
 }
 
 /** Jumps to this session's own figures and record of state changes. */
-function SessionLinks({ session, history, footer = false }: { session: Session; history: boolean; footer?: boolean }) {
+function SessionLinks({ session, history, footer = false }: Readonly<{ session: Session; history: boolean; footer?: boolean }>) {
   const { t } = useI18n()
   const link = "inline-flex items-center gap-1 rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
   // A subagent has no entries of its own; its parent's cover it.
@@ -50,7 +50,7 @@ function SessionLinks({ session, history, footer = false }: { session: Session; 
 }
 
 /** The command or tool call in progress, with its output when it is a shell command. */
-function Current({ session, now }: { session: Session; now: number }) {
+function Current({ session, now }: Readonly<{ session: Session; now: number }>) {
   const { t } = useI18n()
   const current = session.current
   if (!current?.summary) return null
@@ -70,7 +70,7 @@ function Current({ session, now }: { session: Session; now: number }) {
   )
 }
 
-function Subagents({ items, now }: { items: Session[]; now: number }) {
+function Subagents({ items, now }: Readonly<{ items: Session[]; now: number }>) {
   const { t } = useI18n()
   if (!items.length) return null
   return (
@@ -91,7 +91,7 @@ function Subagents({ items, now }: { items: Session[]; now: number }) {
  * Something needs the user. The elapsed clock is the largest thing on the page: the
  * question this card answers is "how long has this been waiting on me?".
  */
-export function AttentionCard({ session, subagents, now, history = false }: { session: Session; subagents: Session[]; now: number; history?: boolean }) {
+export function AttentionCard({ session, subagents, now, history = false }: Readonly<{ session: Session; subagents: Session[]; now: number; history?: boolean }>) {
   const { t } = useI18n()
   const reason = useReason()
   const style = STATE_STYLE[session.state]
@@ -147,7 +147,7 @@ export function AttentionCard({ session, subagents, now, history = false }: { se
 }
 
 /** Busy and fine: what it is doing right now and how far it has got. */
-export function WorkingCard({ session, subagents, now, history = false }: { session: Session; subagents: Session[]; now: number; history?: boolean }) {
+export function WorkingCard({ session, subagents, now, history = false }: Readonly<{ session: Session; subagents: Session[]; now: number; history?: boolean }>) {
   const { t } = useI18n()
   const reason = useReason()
   const { steps, todos } = session.progress
@@ -182,7 +182,7 @@ export function WorkingCard({ session, subagents, now, history = false }: { sess
 }
 
 /** Finished or idle: one line, with the details folded away. */
-export function QuietRow({ session, now, history = false }: { session: Session; now: number; history?: boolean }) {
+export function QuietRow({ session, now, history = false }: Readonly<{ session: Session; now: number; history?: boolean }>) {
   const { t } = useI18n()
   const reason = useReason()
   return (

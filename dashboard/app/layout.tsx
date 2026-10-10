@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Is your OpenCode agent working, waiting for you, stuck, finished, or failed?",
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${prompt.variable} ${plexMono.variable} antialiased`}>
       <body className="min-h-dvh">

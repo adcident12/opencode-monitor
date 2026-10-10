@@ -57,7 +57,7 @@ export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, ru
         output: reserve?.output ?? null,
         input: reserve?.input ?? null,
         // Where the window size came from: OpenCode's config, or the monitor's own override.
-        source: own != null ? 'opencode' : context != null ? 'monitor' : null,
+        source: sourceOf(own, context),
         compactAt: compactionPoint(context, reserve, settings),
       };
     })
@@ -115,7 +115,16 @@ export function weeklyText(notify, t, lang = 'en') {
 }
 
 const yes = (t, value) => t(value ? 'setup.yes' : 'setup.no');
-const kilo = n => (n == null ? '?' : n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n));
+/** Where a model's window size came from: OpenCode's config, or the monitor's own override. */
+function sourceOf(own, context) {
+  if (own != null) return 'opencode';
+  return context == null ? null : 'monitor';
+}
+
+function kilo(n) {
+  if (n == null) return '?';
+  return n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
+}
 
 /** The same report as plain text, for `node server.mjs --doctor`. */
 export function formatSetupReport(report, t, lang = 'en') {
@@ -144,7 +153,9 @@ export function formatSetupReport(report, t, lang = 'en') {
   head('setup.models');
   if (!models.length) lines.push(`  ${t('setup.noModels')}`);
   for (const m of models) {
-    lines.push(`  ${m.id}: ${m.context == null ? t('setup.limitUnknown') : `${t('setup.context')} ${kilo(m.context)}, ${t('setup.compactAt')} ${m.compactAt == null ? '-' : kilo(m.compactAt)}`}`);
+    const compactAt = m.compactAt == null ? '-' : kilo(m.compactAt);
+    const limits = m.context == null ? t('setup.limitUnknown') : `${t('setup.context')} ${kilo(m.context)}, ${t('setup.compactAt')} ${compactAt}`;
+    lines.push(`  ${m.id}: ${limits}`);
   }
 
   head('setup.mcp');

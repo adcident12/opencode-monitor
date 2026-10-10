@@ -26,7 +26,7 @@ const ROW = "grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 
 /** @param session  the one session to count, kept in the URL so a card can link straight here */
-export function Stats({ session, onSession }: { session: string | null; onSession: (id: string | null) => void }) {
+export function Stats({ session, onSession }: Readonly<{ session: string | null; onSession: (id: string | null) => void }>) {
   const { t } = useI18n()
   const [days, setDays] = useState<number>(14)
   // A day inside the period: what was changed that day is judged by the days on either side.
@@ -101,7 +101,7 @@ const SHOWN_SETTINGS = 4
  * Saves of OpenCode's config that changed a setting, each with a way to see the days before
  * it beside the days after. Left out when there were none.
  */
-function ConfigChanges({ changes, days, split, onCompare }: { changes: ConfigChange[]; days: number; split: string | null; onCompare: (day: string) => void }) {
+function ConfigChanges({ changes, days, split, onCompare }: Readonly<{ changes: ConfigChange[]; days: number; split: string | null; onCompare: (day: string) => void }>) {
   const { t, lang } = useI18n()
   const splittable = new Set(useSplittable(days).map(dayOf))
   if (!changes.length) return null
@@ -163,7 +163,7 @@ function ConfigChanges({ changes, days, split, onCompare }: { changes: ConfigCha
 }
 
 /** Picks the day a setting was changed. The first day of the period would leave nothing before it. */
-function SplitPicker({ value, onChange, days, changed }: { value: string | null; onChange: (day: string | null) => void; days: number; changed: string[] }) {
+function SplitPicker({ value, onChange, days, changed }: Readonly<{ value: string | null; onChange: (day: string | null) => void; days: number; changed: string[] }>) {
   const { t, lang } = useI18n()
   const label = new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short" })
   const splittable = useSplittable(days)
@@ -197,7 +197,7 @@ type Metric = { key: keyof PeriodSummary; better: "lower" | "higher" | null; sho
  * and each change is said in words as well as coloured, because "up" is good for some rows
  * and bad for others.
  */
-function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
+function Compare({ compare }: Readonly<{ compare: NonNullable<StatsData["compare"]> }>) {
   const { t, lang } = useI18n()
   const { before, after } = compare
   const day = new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(new Date(`${compare.split}T12:00:00`))
@@ -260,14 +260,20 @@ function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
   )
 }
 
-function Change({ before, after, better }: { before: number | null; after: number | null; better: Metric["better"] }) {
+/** Whether a change is for the better, for a figure where one direction is. */
+function verdictOf(better: Metric["better"], up: boolean) {
+  if (better == null) return null
+  return (better === "higher") === up ? "better" : "worse"
+}
+
+function Change({ before, after, better }: Readonly<{ before: number | null; after: number | null; better: Metric["better"] }>) {
   const { t } = useI18n()
   if (before == null || after == null) return <span className="text-muted-foreground">–</span>
   if (before === after) return <span className="text-muted-foreground">{t("compare.same")}</span>
   const up = after > before
   // From zero there is no percentage to give.
   const size = before === 0 ? "" : ` ${Math.round((Math.abs(after - before) / Math.abs(before)) * 100)}%`
-  const verdict = better == null ? null : (better === "higher") === up ? "better" : "worse"
+  const verdict = verdictOf(better, up)
   return (
     <span className={cn("tabular-nums", verdict === "better" && "text-working", verdict === "worse" && "text-error", !verdict && "text-muted-foreground")}>
       {up ? "↑" : "↓"}
@@ -285,7 +291,7 @@ type GroupId = (typeof GROUPS)[number]
  * A chapter: a real heading, a rule above it, and room. Without these the page was one long
  * run of equally weighted lists, and finding "how fast is the model" meant reading all of it.
  */
-function Group({ id, note, children }: { id: GroupId; note?: string; children: React.ReactNode }) {
+function Group({ id, note, children }: Readonly<{ id: GroupId; note?: string; children: React.ReactNode }>) {
   const { t } = useI18n()
   return (
     <Chapter id={`stats-${id}`} title={t(`stats.group.${id}`)} note={note}>
@@ -301,7 +307,7 @@ const goTo = (anchor: string) => {
 }
 
 /** Links to the chapters. */
-function Jump({ shown }: { shown: GroupId[] }) {
+function Jump({ shown }: Readonly<{ shown: GroupId[] }>) {
   const { t } = useI18n()
   const go = (id: GroupId) => goTo(`stats-${id}`)
   return (
@@ -316,12 +322,14 @@ function Jump({ shown }: { shown: GroupId[] }) {
   )
 }
 
-function Figures({ stats }: { stats: StatsData }) {
+function Figures({ stats }: Readonly<{ stats: StatsData }>) {
   const { t } = useI18n()
   const { totals } = stats
   const hasModel = stats.usage.requests > 0 || stats.speed.models.length > 0 || stats.context != null
   const hasDone = stats.work.files.edits > 0 || stats.work.plans.total > 0
-  const shown = GROUPS.filter(id => (id === "model" ? hasModel : id === "mcp" ? stats.mcp.length > 0 : id === "done" ? hasDone : true))
+  // Chapters with nothing to show are left out, of the page and of the links to it.
+  const has: Partial<Record<GroupId, boolean>> = { model: hasModel, mcp: stats.mcp.length > 0, done: hasDone }
+  const shown = GROUPS.filter(id => has[id] ?? true)
 
   return (
     <>
@@ -445,7 +453,7 @@ function Figures({ stats }: { stats: StatsData }) {
  * What the figures below say, in a sentence each, with a link to where they are. Shown only
  * when a rule held: an empty box would suggest something was looked for and not found.
  */
-function Takeaways({ items }: { items: Takeaway[] }) {
+function Takeaways({ items }: Readonly<{ items: Takeaway[] }>) {
   const { t } = useI18n()
   if (!items.length) return null
   return (
@@ -473,7 +481,7 @@ function Takeaways({ items }: { items: Takeaway[] }) {
   )
 }
 
-function Tile({ label, value, note, tone }: { label: string; value: string; note: string; tone?: "waiting" | "stuck" }) {
+function Tile({ label, value, note, tone }: Readonly<{ label: string; value: string; note: string; tone?: "waiting" | "stuck" }>) {
   return (
     <div className="space-y-1">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -483,7 +491,7 @@ function Tile({ label, value, note, tone }: { label: string; value: string; note
   )
 }
 
-function When({ at, project }: { at: number; project: string }) {
+function When({ at, project }: Readonly<{ at: number; project: string }>) {
   const { lang } = useI18n()
   const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(at)
   return (
@@ -497,7 +505,7 @@ function When({ at, project }: { at: number; project: string }) {
 }
 
 /** @param shortBy  show only this many until asked for the rest */
-function Ranked({ title, note, empty, shortBy, children }: { title: string; note?: string; empty: string; shortBy?: number; children: React.ReactNode[] }) {
+function Ranked({ title, note, empty, shortBy, children }: Readonly<{ title: string; note?: string; empty: string; shortBy?: number; children: React.ReactNode[] }>) {
   const { t } = useI18n()
   const [all, setAll] = useState(false)
   const hidden = shortBy && !all ? Math.max(0, children.length - shortBy) : 0
@@ -519,7 +527,7 @@ function Ranked({ title, note, empty, shortBy, children }: { title: string; note
 }
 
 /** One bar per day, in hours. */
-function DayChart({ title, days, pick, color }: { title: string; days: DayStats[]; pick: (d: DayStats) => number; color: string }) {
+function DayChart({ title, days, pick, color }: Readonly<{ title: string; days: DayStats[]; pick: (d: DayStats) => number; color: string }>) {
   const { t } = useI18n()
   const total = days.reduce((n, d) => n + pick(d), 0)
   const points = days.map(d => ({ date: d.date, value: hours(pick(d)), text: pick(d) ? duration(pick(d)) : "0" }))
@@ -527,7 +535,7 @@ function DayChart({ title, days, pick, color }: { title: string; days: DayStats[
 }
 
 /** One bar per day. Single series: the title names it, so there is no legend. */
-function Bars({ title, summary, points, color, tick }: { title: string; summary: string; points: { date: string; value: number; text: string }[]; color: string; tick: (v: number) => string }) {
+function Bars({ title, summary, points, color, tick }: Readonly<{ title: string; summary: string; points: { date: string; value: number; text: string }[]; color: string; tick: (v: number) => string }>) {
   const { lang } = useI18n()
   const label = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short" })
   const data = points.map(p => ({ ...p, label: label.format(new Date(`${p.date}T12:00:00`)) }))
@@ -567,7 +575,7 @@ function Bars({ title, summary, points, color, tick }: { title: string; summary:
 }
 
 /** The same figures as text, for screen readers and for reading exact values. */
-function NumbersTable({ rows }: { rows: [string, string][] }) {
+function NumbersTable({ rows }: Readonly<{ rows: [string, string][] }>) {
   const { t } = useI18n()
   return (
     <Collapsible>
@@ -591,7 +599,7 @@ function NumbersTable({ rows }: { rows: [string, string][] }) {
 }
 
 /** Calls per tool as a bar list; errors are named in the row, not encoded by colour alone. */
-function ToolUse({ stats }: { stats: StatsData }) {
+function ToolUse({ stats }: Readonly<{ stats: StatsData }>) {
   const { t } = useI18n()
   const max = Math.max(1, ...stats.tools.map(x => x.count))
   const { graft, other } = stats.explore
@@ -628,7 +636,7 @@ function ToolUse({ stats }: { stats: StatsData }) {
  * One session's context window over its requests: how full it got, where it was compacted
  * (dashed lines), and what each compaction cost in files read a second time.
  */
-function Context({ stats }: { stats: StatsData }) {
+function Context({ stats }: Readonly<{ stats: StatsData }>) {
   const { t, lang } = useI18n()
   const context = stats.context
   if (!context || context.points.length < 2) return null
@@ -696,7 +704,7 @@ function Context({ stats }: { stats: StatsData }) {
  * How fast each model answers. Writing and reading are kept apart: a slow first token is a
  * long or uncached prompt, slow writing is the server itself.
  */
-function Speed({ stats }: { stats: StatsData }) {
+function Speed({ stats }: Readonly<{ stats: StatsData }>) {
   const { t } = useI18n()
   const models = stats.speed.models.filter(m => m.writeTps != null || m.readTps != null)
   if (!models.length) return null
@@ -743,7 +751,7 @@ function Speed({ stats }: { stats: StatsData }) {
 }
 
 /** What the model was sent and what it wrote, and how big a session is before it starts. */
-function Usage({ stats }: { stats: StatsData }) {
+function Usage({ stats }: Readonly<{ stats: StatsData }>) {
   const { t } = useI18n()
   const { usage } = stats
   if (!usage.requests) return null
@@ -787,7 +795,7 @@ function Usage({ stats }: { stats: StatsData }) {
  * One row per MCP server. Failures are split in two on purpose: a tool that reported an
  * error was reached and answered, a server that did not answer is a different problem.
  */
-function McpServers({ stats }: { stats: StatsData }) {
+function McpServers({ stats }: Readonly<{ stats: StatsData }>) {
   const { t, lang } = useI18n()
   if (!stats.mcp.length) return null
   const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
@@ -820,7 +828,7 @@ function McpServers({ stats }: { stats: StatsData }) {
   )
 }
 
-function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeFormat }) {
+function McpRow({ server: m, when }: Readonly<{ server: McpStat; when: Intl.DateTimeFormat }>) {
   const { t } = useI18n()
   const summary = (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-1 py-2.5 text-left sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
@@ -869,7 +877,7 @@ function McpRow({ server: m, when }: { server: McpStat; when: Intl.DateTimeForma
   )
 }
 
-function Tag({ tone, children }: { tone?: "warn"; children: React.ReactNode }) {
+function Tag({ tone, children }: Readonly<{ tone?: "warn"; children: React.ReactNode }>) {
   return <span className={cn("rounded-full border px-1.5 text-2xs leading-5 whitespace-nowrap text-muted-foreground", tone === "warn" && "border-waiting/50 text-waiting")}>{children}</span>
 }
 

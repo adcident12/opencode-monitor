@@ -3,6 +3,7 @@
 // This is the monitor's own file. Only already-redacted snapshot data is written to it.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { compareText } from './text.mjs';
 
 // Everything within retention is kept in memory, so any page can be served without reading
 // the file again. The cap only guards against a runaway; if it is ever hit, pages say so.
@@ -13,7 +14,7 @@ const PAGE_MAX = 500;
 const NEEDS_YOU = new Set(['waiting', 'stuck', 'error']);
 
 /** Newest first. Two sessions can change state in the same tick, so the id breaks ties. */
-const newestFirst = (a, b) => b.t - a.t || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+const newestFirst = (a, b) => b.t - a.t || compareText(b.id, a.id);
 
 /**
  * A position in the history: "<time>:<session id>". Pages are cut at a position, not at a

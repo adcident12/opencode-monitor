@@ -16,7 +16,7 @@ const PARTS = [
   { key: "toolMs", color: "var(--color-part-4)" },
 ] as const
 
-function Heading({ title, note }: { title: string; note?: string }) {
+function Heading({ title, note }: Readonly<{ title: string; note?: string }>) {
   return (
     <div>
       <h3 className={H3}>{title}</h3>
@@ -29,7 +29,7 @@ function Heading({ title, note }: { title: string; note?: string }) {
  * Where the agent's time went, as one bar split four ways. Every part is also written out
  * with its time and share, so nothing depends on telling the colours apart.
  */
-export function TimeSplit({ work }: { work: Work }) {
+export function TimeSplit({ work }: Readonly<{ work: Work }>) {
   const { t } = useI18n()
   const total = PARTS.reduce((n, p) => n + work.time[p.key], 0)
   if (!total) return null
@@ -69,7 +69,7 @@ export function TimeSplit({ work }: { work: Work }) {
 const ENDINGS = ["done", "continued", "cut", "aborted", "error", "unanswered", "open"] as const
 
 /** Each prompt you wrote: how many steps, how long, and how it ended. */
-export function Turns({ work }: { work: Work }) {
+export function Turns({ work }: Readonly<{ work: Work }>) {
   const { t, lang } = useI18n()
   const { turns } = work
   if (!turns.count) return null
@@ -115,7 +115,7 @@ export function Turns({ work }: { work: Work }) {
 }
 
 /** Time, tokens and cost per agent. Only worth a table when more than one agent worked. */
-export function Agents({ work }: { work: Work }) {
+export function Agents({ work }: Readonly<{ work: Work }>) {
   const { t } = useI18n()
   const agents = work.agents
   if (agents.length < 2) return null
@@ -167,7 +167,7 @@ export function Agents({ work }: { work: Work }) {
  * What interrupted you most. The rule shown is a suggestion to copy into opencode.json; the
  * monitor never changes OpenCode's config.
  */
-export function Permissions({ work }: { work: Work }) {
+export function Permissions({ work }: Readonly<{ work: Work }>) {
   const { t } = useI18n()
   const { permissions } = work
   if (!permissions.asked) return null
@@ -192,7 +192,7 @@ export function Permissions({ work }: { work: Work }) {
 }
 
 /** Files the agent changed, and which it kept coming back to. */
-export function Files({ work }: { work: Work }) {
+export function Files({ work }: Readonly<{ work: Work }>) {
   const { t } = useI18n()
   const { files } = work
   if (!files.edits) return null
@@ -213,7 +213,7 @@ export function Files({ work }: { work: Work }) {
 }
 
 /** The agent's own task lists: how many items it finished, and where it left some undone. */
-export function Plans({ work }: { work: Work }) {
+export function Plans({ work }: Readonly<{ work: Work }>) {
   const { t } = useI18n()
   const { plans } = work
   if (!plans.total) return null

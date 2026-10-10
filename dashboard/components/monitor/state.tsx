@@ -14,7 +14,7 @@ export const STATE_STYLE: Record<State, { icon: LucideIcon; text: string; soft: 
   idle: { icon: CircleDashedIcon, text: "text-idle", soft: "bg-idle-soft", bar: "bg-idle", ring: "ring-idle/30" },
 }
 
-export function StateBadge({ state, label, className }: { state: State; label: string; className?: string }) {
+export function StateBadge({ state, label, className }: Readonly<{ state: State; label: string; className?: string }>) {
   const { icon: Icon, text, soft } = STATE_STYLE[state]
   return (
     <Badge variant="outline" className={cn("h-6 gap-1.5 border-transparent px-2.5 text-code font-medium", soft, text, className)}>
@@ -24,8 +24,14 @@ export function StateBadge({ state, label, className }: { state: State; label: s
   )
 }
 
+/** Yes, no, or not known yet, as the tone of a dot. */
+export function toneOf(ok: boolean | null | undefined): "ok" | "bad" | "unknown" {
+  if (ok == null) return "unknown"
+  return ok ? "ok" : "bad"
+}
+
 /** A single coloured dot with a tooltip-free text label next to it, for compact chips. */
-export function Dot({ tone }: { tone: "ok" | "bad" | "unknown" }) {
+export function Dot({ tone }: Readonly<{ tone: "ok" | "bad" | "unknown" }>) {
   return (
     <span
       aria-hidden

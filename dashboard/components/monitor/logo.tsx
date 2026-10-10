@@ -16,7 +16,7 @@ const DOT: Record<MarkTone, string> = {
  * The mark beside the title. Drawn with the page's own colours, so it follows the theme;
  * the dot shows what your sessions are doing, the same as the icon in the browser tab.
  */
-export function Logo({ tone, className }: { tone: MarkTone; className?: string }) {
+export function Logo({ tone, className }: Readonly<{ tone: MarkTone; className?: string }>) {
   return (
     <svg viewBox="3.5 3.5 25 25" aria-hidden className={cn("size-7 shrink-0", className)}>
       <circle className="stroke-foreground" cx={RING.cx} cy={RING.cy} r={RING.r} fill="none" strokeWidth={RING.strokeWidth} strokeLinecap="round" strokeDasharray={RING.dash} transform={RING.rotate} />

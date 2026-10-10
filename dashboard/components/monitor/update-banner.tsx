@@ -13,7 +13,7 @@ const OWN_BUILD = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev"
  * update, so nothing looks wrong, but the page itself stays old. The server says which build
  * it serves; when that differs from this page's, offer a reload.
  */
-export function UpdateBanner({ served }: { served: string | null }) {
+export function UpdateBanner({ served }: Readonly<{ served: string | null }>) {
   const { t } = useI18n()
   if (OWN_BUILD === "dev" || !served || served === OWN_BUILD) return null
   return (

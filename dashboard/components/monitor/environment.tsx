@@ -4,20 +4,31 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useI18n } from "@/lib/i18n"
 import type { CheckedTarget, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { Dot } from "./state"
+import { Dot, toneOf } from "./state"
 
 // One line under the header: what the agent depends on, each with a dot and a short note.
-export function Environment({ environment }: { environment: Snapshot["environment"] }) {
+// "disabled" servers are not listed; the entry is here so that every status has a tone.
+const MCP_TONE = { failed: "bad", ok: "ok", unknown: "unknown", disabled: "unknown" } as const
+
+export function Environment({ environment }: Readonly<{ environment: Snapshot["environment"] }>) {
   const { t } = useI18n()
   if (!environment) return null
 
+  const checkedNote = (item: CheckedTarget) => {
+    if (item.ok == null) return "…"
+    return item.ok ? `${item.ms} ms` : t(`env.${item.error ?? "error"}`, { status: item.status ?? "" })
+  }
   const checked = (item: CheckedTarget) => ({
     key: item.name,
     name: item.name,
-    tone: item.ok == null ? ("unknown" as const) : item.ok ? ("ok" as const) : ("bad" as const),
-    note: item.ok == null ? "…" : item.ok ? `${item.ms} ms` : t(`env.${item.error ?? "error"}`, { status: item.status ?? "" }),
+    tone: toneOf(item.ok),
+    note: checkedNote(item),
     tip: item.target,
   })
+  const mcpNote = (m: NonNullable<Snapshot["environment"]>["mcp"][number]) => {
+    if (m.status === "failed") return t(`env.mcp.${m.kind}`)
+    return m.status === "ok" ? "" : t("env.mcp.unknown")
+  }
 
   const groups = [
     { label: t("env.model"), items: environment.models.map(checked) },
@@ -28,8 +39,8 @@ export function Environment({ environment }: { environment: Snapshot["environmen
         .map(m => ({
           key: m.name,
           name: m.name,
-          tone: m.status === "failed" ? ("bad" as const) : m.status === "ok" ? ("ok" as const) : ("unknown" as const),
-          note: m.status === "failed" ? t(`env.mcp.${m.kind}`) : m.status === "ok" ? "" : t("env.mcp.unknown"),
+          tone: MCP_TONE[m.status],
+          note: mcpNote(m),
           tip: t(`env.mcp.tip.${m.status}`),
         })),
     },

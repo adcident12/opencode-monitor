@@ -71,3 +71,16 @@ test('the weekly summary: when it goes out, or why it does not', async () => {
   assert.equal(weeklyText({ discord: true, weekly: { enabled: true, weekday: 1, hour: 9 } }, t), 'Monday at 09:00, to Discord');
   assert.equal(weeklyText({ discord: true, weekly: { enabled: true, weekday: 0, hour: 20 } }, t), 'Sunday at 20:00, to Discord');
 });
+
+test('--doctor lists each model with its window and where it is compacted, or says the limit is unknown', async () => {
+  const { loadTranslator } = await import('../src/format.mjs');
+  const cfg = machine();
+  cfg.contextLimit.models = { 'other/mystery': 64_000 };
+  const report = buildSetupReport({ cfg, opencode: opencode(), db: db([used('llama', 'small'), used('other', 'mystery'), used('other', 'nolimit')]), opencodeVersion: '1.18.35', now: NOW });
+  assert.deepEqual(Object.fromEntries(report.models.map(m => [m.id, m.source])), { 'llama/small': 'opencode', 'other/mystery': 'monitor', 'other/nolimit': null });
+  const text = formatSetupReport(report, loadTranslator('en'));
+  assert.ok(text.includes('llama/small: Context 32.8k, Compacts at 28.7k'), text);
+  // No output limit is set for it, so OpenCode keeps its largest reply free: 64,000 - 32,000.
+  assert.ok(text.includes('other/mystery: Context 64k, Compacts at 32k'), text);
+  assert.ok(text.includes('other/nolimit: limit unknown'), text);
+});

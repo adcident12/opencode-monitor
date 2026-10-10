@@ -150,10 +150,11 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   // Once per compaction: the session is close to the point where OpenCode compacts it.
   function compactSoon(session, now) {
     const c = session.health?.compaction;
-    const lines = [
-      `${session.project} — ${session.title}`,
-      c ? t(c.requestsLeft == null ? 'notify.compact_room' : 'notify.compact_room_requests', { room: `${Math.round(c.room / 1000)}k`, n: c.requestsLeft ?? 0 }) : '',
-    ].filter(Boolean);
+    const lines = [`${session.project} — ${session.title}`];
+    if (c) {
+      const key = c.requestsLeft == null ? 'notify.compact_room' : 'notify.compact_room_requests';
+      lines.push(t(key, { room: `${Math.round(c.room / 1000)}k`, n: c.requestsLeft ?? 0 }));
+    }
     deliver('compact_soon', t('notify.compact_soon'), lines, now);
   }
 

@@ -12,12 +12,12 @@ import { cn } from "@/lib/utils"
 import { Facts } from "./section"
 
 /** A command, path, or question exactly as the agent wrote it. */
-export function Code({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Code({ children, className }: Readonly<{ children: React.ReactNode; className?: string }>) {
   return <code className={cn("block font-mono text-code break-words whitespace-pre-wrap", className)}>{children}</code>
 }
 
 /** What the running command has printed, and how long ago its last line came. */
-export function Output({ output, now }: { output: NonNullable<Session["current"]>["output"]; now: number }) {
+export function Output({ output, now }: Readonly<{ output: NonNullable<Session["current"]>["output"]; now: number }>) {
   const { t } = useI18n()
   if (!output) return <p className="text-xs text-muted-foreground">{t("output.none")}</p>
   const quiet = now - output.at
@@ -33,7 +33,7 @@ export function Output({ output, now }: { output: NonNullable<Session["current"]
 
 const MARK: Record<Step["status"], string> = { completed: "✓", error: "✕", running: "●", pending: "●" }
 
-export function Steps({ steps, now }: { steps: Step[]; now: number }) {
+export function Steps({ steps, now }: Readonly<{ steps: Step[]; now: number }>) {
   const { t } = useI18n()
   return (
     <div className="space-y-1.5">
@@ -48,7 +48,7 @@ export function Steps({ steps, now }: { steps: Step[]; now: number }) {
               </span>
               <span>{step.tool}</span>
               <span className={cn("truncate font-mono text-code", step.status === "error" && "text-error")}>{step.text}</span>
-              <span className="tabular-nums">{live ? duration(now - step.startedAt) : step.durationMs == null ? "" : duration(step.durationMs)}</span>
+              <span className="tabular-nums">{stepTime(step, live, now)}</span>
             </li>
           )
         })}
@@ -57,7 +57,7 @@ export function Steps({ steps, now }: { steps: Step[]; now: number }) {
   )
 }
 
-export function Todos({ todos }: { todos: Session["progress"]["todos"] }) {
+export function Todos({ todos }: Readonly<{ todos: Session["progress"]["todos"] }>) {
   const { t } = useI18n()
   if (!todos) return null
   return (
@@ -91,8 +91,14 @@ function ContextValue({ session, high }: Readonly<{ session: Session; high: bool
   )
 }
 
+/** How long a step ran, or has run so far; nothing when that was not recorded. */
+function stepTime(step: { startedAt: number; durationMs: number | null }, live: boolean, now: number) {
+  if (live) return duration(now - step.startedAt)
+  return step.durationMs == null ? "" : duration(step.durationMs)
+}
+
 /** Context, compactions, age, errors: one quiet line, with the numbers that are bad in colour. */
-export function Health({ session, now, showActivity }: { session: Session; now: number; showActivity: boolean }) {
+export function Health({ session, now, showActivity }: Readonly<{ session: Session; now: number; showActivity: boolean }>) {
   const { t } = useI18n()
   const h = session.health
   const warn = (hint: string) => h.hints.includes(hint)
@@ -124,7 +130,7 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
  * The context window as a bar, with a tick where OpenCode will compact: the part of the bar
  * that matters is the stretch up to the tick, not the whole window.
  */
-function ContextBar({ session, high }: { session: Session; high: boolean }) {
+function ContextBar({ session, high }: Readonly<{ session: Session; high: boolean }>) {
   const { t } = useI18n()
   const h = session.health
   const tick = h.compaction && h.contextLimit ? Math.min(100, (h.compaction.at / h.contextLimit) * 100) : null
@@ -136,15 +142,16 @@ function ContextBar({ session, high }: { session: Session; high: boolean }) {
   )
 }
 
-export function Hints({ session, now }: { session: Session; now: number }) {
+export function Hints({ session, now }: Readonly<{ session: Session; now: number }>) {
   const { t } = useI18n()
   const h = session.health
   if (!h.hints.length) return null
   const text: Record<string, () => string> = {
-    context_high: () =>
-      h.compaction
-        ? t(h.compaction.requestsLeft == null ? "hint.compact_soon" : "hint.compact_soon_requests", { room: kilo(h.compaction.room), n: h.compaction.requestsLeft ?? 0 })
-        : t("hint.context_high", { pct: h.contextPct ?? 0 }),
+    context_high: () => {
+      if (!h.compaction) return t("hint.context_high", { pct: h.contextPct ?? 0 })
+      const key = h.compaction.requestsLeft == null ? "hint.compact_soon" : "hint.compact_soon_requests"
+      return t(key, { room: kilo(h.compaction.room), n: h.compaction.requestsLeft ?? 0 })
+    },
     many_compactions: () => t("hint.many_compactions", { n: h.compactions }),
     old_session: () => t("hint.old_session", { t: rough(now - session.createdAt) }),
     looping: () => t("hint.looping", { tool: h.repeat?.tool ?? "", n: h.repeat?.count ?? 0, text: h.repeat?.text ?? "" }),
@@ -166,7 +173,7 @@ export function Hints({ session, now }: { session: Session; now: number }) {
 }
 
 /** A fold-out section whose open state survives the re-render on every update. */
-function Section({ title, summary, children }: { title: string; summary: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, summary, children }: Readonly<{ title: string; summary: React.ReactNode; children: React.ReactNode }>) {
   const [open, setOpen] = useState(false)
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="border-t border-border/70 pt-2">
@@ -180,7 +187,7 @@ function Section({ title, summary, children }: { title: string; summary: React.R
   )
 }
 
-export function Work({ session }: { session: Session }) {
+export function Work({ session }: Readonly<{ session: Session }>) {
   const { t } = useI18n()
   const { files, git, warnProtected, warnUnknownBranch, running } = session.work
   if (!files.count && !git && !running?.items.length) return null
@@ -230,7 +237,7 @@ export function Work({ session }: { session: Session }) {
 }
 
 /** Background processes the agent started that are still alive, and how to stop them yourself. */
-function Running({ items }: { items: NonNullable<Session["work"]["running"]>["items"] }) {
+function Running({ items }: Readonly<{ items: NonNullable<Session["work"]["running"]>["items"] }>) {
   const { t } = useI18n()
   return (
     <div className="space-y-2">
@@ -265,7 +272,7 @@ function stopCommand(pid: number) {
 const KIND_ORDER: FlagKind[] =["risky", "secret_value", "secret_file", "outbound", "background"]
 const SERIOUS = new Set<FlagKind>(["risky", "secret_value"])
 
-export function Review({ session }: { session: Session }) {
+export function Review({ session }: Readonly<{ session: Session }>) {
   const { t } = useI18n()
   const { counts, total, items, more, ignored } = session.review
   if (!total) return null

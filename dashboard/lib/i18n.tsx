@@ -44,7 +44,7 @@ async function load(code: Lang): Promise<Strings> {
   return res.json()
 }
 
-export function I18nProvider({ children }: { children: ReactNode }) {
+export function I18nProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [lang, setLangState] = useState<Lang>("en")
   const [strings, setStrings] = useState<Strings>(english)
 

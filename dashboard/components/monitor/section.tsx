@@ -22,7 +22,7 @@ export const GRID = "grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 lg:grid-col
  * A few labelled figures side by side. Each label sits on top and its value at the bottom of
  * the row, so a label that wraps onto two lines does not push its value below its neighbours'.
  */
-export function Facts({ items, className }: { items: { key: string; label: React.ReactNode; value: React.ReactNode; wide?: boolean; tone?: string }[]; className?: string }) {
+export function Facts({ items, className }: Readonly<{ items: { key: string; label: React.ReactNode; value: React.ReactNode; wide?: boolean; tone?: string }[]; className?: string }>) {
   return (
     <dl className={cn("grid gap-x-6 gap-y-3", className)}>
       {items.map(item => (
@@ -43,7 +43,7 @@ export const TD = "py-2 pr-3 last:pr-0"
  * @param first   the first chapter of a tab has no rule above it
  * @param action  a control that belongs to the whole chapter, shown beside the heading
  */
-export function Chapter({ id, title, note, action, first = false, children }: { id: string; title: string; note?: string; action?: React.ReactNode; first?: boolean; children: React.ReactNode }) {
+export function Chapter({ id, title, note, action, first = false, children }: Readonly<{ id: string; title: string; note?: string; action?: React.ReactNode; first?: boolean; children: React.ReactNode }>) {
   return (
     <section id={id} aria-labelledby={`${id}-title`} className={cn("scroll-mt-6 space-y-8", !first && "border-t pt-8")}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">

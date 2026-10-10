@@ -41,7 +41,8 @@ export default function Page() {
   const { attention, working, rest } = groupByUrgency(sessions)
 
   // One word for everything on screen: the most urgent state there is.
-  const tone: MarkTone = attention.length ? (attention[0].state as MarkTone) : working.length ? "working" : "quiet"
+  const calm: MarkTone = working.length ? "working" : "quiet"
+  const tone: MarkTone = attention.length ? (attention[0].state as MarkTone) : calm
   useTabIcon(tone)
 
   // The tab title carries the count, so it can be read from another tab or the taskbar.
