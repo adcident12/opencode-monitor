@@ -48,27 +48,33 @@ const PART_COLUMNS = `
   json_extract(data,'$.overflow') overflow,
   (select json_extract(m.data,'$.summary') from message m where m.id = part.message_id) msg_summary`;
 
-export function openDb(dataDir) {
-  const path = join(dataDir, 'opencode.db');
+/** The database file, opened so that nothing can be written to it. */
+function openReadOnly(path) {
   if (!existsSync(path)) {
     throw new UserError(
       `OpenCode database not found at ${path}.\n` +
       'Run OpenCode at least once, point --data-dir at its data directory, or try --sample.'
     );
   }
-  let db;
   try {
-    db = new DatabaseSync(path, { readOnly: true });
+    return new DatabaseSync(path, { readOnly: true });
   } catch (err) {
     throw new UserError(`Could not open ${path} read-only: ${err.message}`);
   }
+}
 
+/**
+ * The columns of each table the monitor reads. Refuses, saying what is missing, a database
+ * that does not have the layout the queries were written for.
+ * @returns {Record<string, Set<string>>}
+ */
+function checkLayout(db, path) {
   const columns = {};
   const problems = [];
   for (const [table, required] of Object.entries(REQUIRED)) {
     columns[table] = new Set(db.prepare(`pragma table_info(${table})`).all().map(c => c.name));
-    if (!columns[table].size) problems.push(`table "${table}" is missing`);
-    else for (const c of required) if (!columns[table].has(c)) problems.push(`column "${table}.${c}" is missing`);
+    if (columns[table].size) problems.push(...required.filter(c => !columns[table].has(c)).map(c => `column "${table}.${c}" is missing`));
+    else problems.push(`table "${table}" is missing`);
   }
   if (problems.length) {
     db.close();
@@ -78,6 +84,13 @@ export function openDb(dataDir) {
       '\nYour OpenCode version is probably newer or older than the tested ones (see README).'
     );
   }
+  return columns;
+}
+
+export function openDb(dataDir) {
+  const path = join(dataDir, 'opencode.db');
+  const db = openReadOnly(path);
+  const columns = checkLayout(db, path);
 
   const optional = OPTIONAL_SESSION.map(c => (columns.session.has(c) ? c : `null as ${c}`)).join(', ');
   const stmt = {

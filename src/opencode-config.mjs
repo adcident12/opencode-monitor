@@ -60,18 +60,19 @@ export function stripJsonc(text) {
   return out;
 }
 
+/** A token limit as the config gives it, or null when it is missing or not a positive number. */
+const limitOf = value => (Number.isFinite(value) && value > 0 ? value : null);
+
 function collectLimits(limits, providers, reserves = new Map()) {
   for (const [providerId, provider] of Object.entries(providers ?? {})) {
     for (const [modelId, model] of Object.entries(provider?.models ?? {})) {
       const key = `${providerId}/${modelId}`;
-      const context = model?.limit?.context;
-      if (Number.isFinite(context) && context > 0) limits.set(key, context);
+      const context = limitOf(model?.limit?.context);
+      if (context != null) limits.set(key, context);
       // What compaction needs: the output it keeps free, and an explicit input limit if any.
-      const output = model?.limit?.output;
-      const input = model?.limit?.input;
-      if ((Number.isFinite(output) && output > 0) || (Number.isFinite(input) && input > 0)) {
-        reserves.set(key, { output: Number.isFinite(output) && output > 0 ? output : null, input: Number.isFinite(input) && input > 0 ? input : null });
-      }
+      const output = limitOf(model?.limit?.output);
+      const input = limitOf(model?.limit?.input);
+      if (output != null || input != null) reserves.set(key, { output, input });
     }
   }
 }

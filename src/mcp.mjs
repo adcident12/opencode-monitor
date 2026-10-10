@@ -78,6 +78,25 @@ export function latestFailures(marked) {
   return failures;
 }
 
+/** One call into its server's row and into that server's row for the tool. */
+function countCall(row, name, call) {
+  row.calls++;
+  row.sessions.add(call.session_id);
+  if (row.lastUsedAt == null || call.at > row.lastUsedAt) row.lastUsedAt = call.at;
+  if (call.runMs != null) {
+    row.totalMs += call.runMs;
+    row.timed++;
+  }
+  const tool = row.tools.get(name) ?? { tool: name, count: 0, errors: 0, faults: 0 };
+  row.tools.set(name, tool);
+  tool.count++;
+  if (call.status !== 'error') return;
+  // A server that did not answer is the server's fault; anything else is the call's.
+  const kind = faultOf(call.error) ? 'faults' : 'errors';
+  row[kind]++;
+  tool[kind]++;
+}
+
 /**
  * One row per server for a period.
  * @param {object} input
@@ -97,27 +116,7 @@ export function computeMcpStats({ servers, calls, events, from, now }) {
   for (const call of calls) {
     const hit = match(call.tool);
     if (!hit) continue;
-    const row = rows.get(hit.server);
-    row.calls++;
-    row.sessions.add(call.session_id);
-    if (row.lastUsedAt == null || call.at > row.lastUsedAt) row.lastUsedAt = call.at;
-    if (call.runMs != null) {
-      row.totalMs += call.runMs;
-      row.timed++;
-    }
-    const tool = row.tools.get(hit.tool) ?? { tool: hit.tool, count: 0, errors: 0, faults: 0 };
-    tool.count++;
-    if (call.status === 'error') {
-      // A server that did not answer is the server's fault; anything else is the call's.
-      if (faultOf(call.error)) {
-        row.faults++;
-        tool.faults++;
-      } else {
-        row.errors++;
-        tool.errors++;
-      }
-    }
-    row.tools.set(hit.tool, tool);
+    countCall(rows.get(hit.server), hit.tool, call);
   }
 
   for (const e of events ?? []) {

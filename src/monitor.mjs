@@ -205,6 +205,35 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     return { failed: leftovers.failed(), items: items.toSorted((a, b) => b.startedAt - a.startedAt) };
   }
 
+  /** The group a flagged call falls into: one per rule, and per host for requests. */
+  function groupOf(groups, flag, p) {
+    const key = `${flag.rule}|${flag.host ?? ''}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        kind: flag.kind,
+        rule: flag.rule,
+        host: flag.host ? show(flag.host, 80) : null,
+        at: p.started ?? p.time_created,
+        count: 0,
+        approvals: { asked: 0, rule: 0, refused: 0 },
+        distinct: new Map(), // raw command text -> { count, at, tool, approvals }
+      };
+      groups.set(key, group);
+    }
+    return group;
+  }
+
+  /** The group's entry for this exact command text. */
+  function exampleOf(group, text, p) {
+    let example = group.distinct.get(text);
+    if (!example) {
+      example = { tool: p.tool, at: p.started ?? p.time_created, count: 0, approvals: { asked: 0, rule: 0, refused: 0 } };
+      group.distinct.set(text, example);
+    }
+    return example;
+  }
+
   // Tool calls worth a second look, newest first, with who let each one run.
   function reviewOf(digest, asks) {
     const counts = Object.fromEntries(FLAG_KINDS.map(kind => [kind, 0]));
@@ -226,27 +255,10 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
         counts[flag.kind]++;
         approval ??= approvalOf(p, asks);
         text ??= describePart(p);
-        const key = `${flag.rule}|${flag.host ?? ''}`;
-        let group = groups.get(key);
-        if (!group) {
-          group = {
-            kind: flag.kind,
-            rule: flag.rule,
-            host: flag.host ? show(flag.host, 80) : null,
-            at: p.started ?? p.time_created,
-            count: 0,
-            approvals: { asked: 0, rule: 0, refused: 0 },
-            distinct: new Map(), // raw command text -> { count, at, tool, approvals }
-          };
-          groups.set(key, group);
-        }
+        const group = groupOf(groups, flag, p);
         group.count++;
         group.approvals[approval]++;
-        let example = group.distinct.get(text);
-        if (!example) {
-          example = { tool: p.tool, at: p.started ?? p.time_created, count: 0, approvals: { asked: 0, rule: 0, refused: 0 } };
-          group.distinct.set(text, example);
-        }
+        const example = exampleOf(group, text, p);
         example.count++;
         example.approvals[approval]++;
       }
