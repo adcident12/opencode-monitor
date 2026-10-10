@@ -70,6 +70,11 @@
       "webhookUrl": "",
       "mention": "",
       "includeDetail": false
+    },
+    "weekly": {
+      "enabled": false,
+      "weekday": 1,
+      "hour": 9
     }
   }
 }

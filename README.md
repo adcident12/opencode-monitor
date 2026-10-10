@@ -155,11 +155,15 @@ The **Stats** tab looks back over the last 7, 14, or 30 days, from OpenCode's ow
 - **model speed**, per model: tokens per second while writing, tokens per second while reading the new part of a prompt, and the typical wait for the first token, with writing speed per day for the model used most. Writing is timed from the first token to the last thing the model wrote, so a tool running or a prompt waiting for you does not make the model look slow.
 - **tokens**: how much was sent to the model, how much of that the model server could reuse from its cache, how much the model wrote, and the cost when OpenCode recorded one. Also how big a session is at its first request, before any work: instructions, skills, and the tool list of every MCP server that is switched on. That is the number to watch when deciding which MCP servers to leave on.
 
+**Worth knowing.** Above the figures, up to five sentences say what they add up to: replies cut off at the output limit, MCP servers switched on and never called, a permission asked again and again, a server that often does not answer, where most of the agent's time goes, compactions per session, a prompt cache that is barely reused, a tool that fails often, how long you were waited for, plans left unfinished. Each is a fixed rule over figures shown further down (the ones `npm run verify` checks), with a minimum of evidence: an unused MCP server is not called unused on two sessions, and three calls not answered out of hundreds is not a broken server. Nothing is guessed and no model is asked. The ones marked "To change" have something you can change; "Details" goes to the chapter with the figures. When no rule holds, the box is not there.
+
 Pick a session next to the period to see the same figures for that session and its subagents only. Each session card on the first tab links straight to its own Stats and History (`#stats/<session id>`, so the view can be bookmarked).
 
 **Context of one session.** With a session selected, a chart shows the size of each of its requests in order, against the model's context window, with a dashed line at every compaction. Under it, each compaction is listed with what it shrank the context from and to, and how many files the agent had already read and then read again afterwards: the cost of a compaction that the token count alone does not show.
 
 **Before and after.** Changed a setting (switched an MCP server off, moved to another model, edited `AGENTS.md`)? Pick the day you did it under "Compare from", and the days before it are set beside the days from it on: tokens a session starts at, compactions and re-read files per session, failed tool calls, cache reuse, model speed. Only rates and typical values are compared, because the two sides are rarely the same length, and each change is labelled better or worse. With fewer than 3 sessions on one side the page says the difference is only a first hint.
+
+**When OpenCode's settings changed.** While it runs, the monitor looks once a minute at OpenCode's config (the global `opencode.json[c]`, and the config of each project on screen). A save that changed a setting is listed at the top of Stats with what changed, for example `limit.output 8192 → 16384`, and a button that compares the days before it with the days from it on; the same days are marked in the "Compare from" list. A change made while the monitor was not running is found at the next start and dated by the file. What is kept, in `data/config-changes.jsonl` beside the history and for as long: numbers, on/off, setting words such as `allow` or `high`, and model names, with their values; other text (an address, a command) only as "changed", from a hash; and settings whose name says secret (`apiKey`, `headers`, `env`, anything with token or password) are not read at all. A file saved without any setting changing is not listed. With `history.enabled` off, nothing is written and changes are only known while the monitor runs.
 
 The size of each MCP server's tool list is not shown: OpenCode does not record the tool definitions it sends, so it could only be measured by starting every server, which the monitor does not do.
 
@@ -172,6 +176,33 @@ The **History** tab lists every change of state, newest first: when a session st
 Tick "Only what needed you" to see just the waits, hangs, and errors, or pick one session to follow it from start to finish. The newest 100 entries are shown; "Load older entries" brings the next 100, and new entries keep appearing at the top without moving what is already loaded. Both filters are applied to the whole record, not only to what is on screen.
 
 History is recorded only while the monitor is running, into `data/history.jsonl` (git-ignored, one JSON object per line, already redacted). Entries older than `history.retentionDays` are removed at startup. Set `history.enabled` to `false` to turn it off. Delete the file to clear it.
+
+## Ask Claude about it
+
+The page shows figures; deciding what to do about them is a conversation. `mcp.mjs` gives the same figures to [Claude Code](https://claude.com/claude-code), or any other MCP client, so you can ask "why did last week take so long" or "what should I change in my OpenCode setup" and get an answer from your own numbers:
+
+```sh
+claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
+```
+
+Then, in Claude Code: *use opencode-monitor and tell me what to change*. `--data-dir` and `--config` work as for `server.mjs`.
+
+| Tool | Answers |
+| --- | --- |
+| `opencode_takeaways` | The sentences from "Worth knowing", with the figures each is based on |
+| `opencode_stats` | The figures of the Stats tab for 7, 14 or 30 days, or for one session |
+| `opencode_sessions` | The sessions of a period and what each took |
+| `opencode_settings` | Limits of the models you used and where OpenCode compacts each, the compaction settings, MCP servers and whether each is on, which config files exist |
+| `opencode_config_changes` | The recorded changes of OpenCode's config |
+
+What to know before you connect it:
+
+- **It is read-only.** Every tool is declared read-only and none changes anything; the process writes no file, not even the monitor's own. If Claude suggests a change to `opencode.json`, it is Claude Code that edits the file, under its own permission prompt, and you who approve it. The monitor never does.
+- **What you ask for is sent to the assistant.** Until you run the command above, nothing leaves your machine. After it, the answers to the tools Claude calls go to Claude like anything else in that conversation: figures, and with them what the Stats tab shows beside them: session titles, project folder names, file paths, permission patterns, the command of each of the slowest tool calls, the questions the agent asked you, model and MCP server names. They pass through the same redaction as the page. Keys, model server addresses, the commands that start MCP servers, and the text of your prompts and of the model's replies are never in them.
+- **It runs on its own.** It reads OpenCode's data itself (the database read-only), so the monitor does not have to be running, and a monitor that is running is not touched. Only the config changes come from what the monitor recorded.
+- To disconnect: `claude mcp remove opencode-monitor`.
+
+Plain JSON-RPC over stdio, no dependencies; `node mcp.mjs --sample` answers from generated fake data.
 
 ## Settings
 
@@ -202,6 +233,9 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `notify.discord.webhookUrl` | `""` | Discord webhook; also settable as `OPENCODE_MONITOR_DISCORD_WEBHOOK` |
 | `notify.discord.mention` | `""` | For example `<@123456789>` to ping yourself |
 | `notify.discord.includeDetail` | `false` | Also send the (redacted) command or question text |
+| `notify.weekly.enabled` | `false` | Send the week's summary to Discord (see below) |
+| `notify.weekly.weekday` | 1 | The day it is sent: 0 Sunday to 6 Saturday |
+| `notify.weekly.hour` | 9 | The hour it is sent, 0 to 23, local time |
 
 ### Discord
 
@@ -209,12 +243,15 @@ In Discord: channel settings → Integrations → Webhooks → New Webhook → C
 
 By default a Discord message carries only the state, the project folder name, the session title, and how long it has lasted. Command text stays on your machine unless you turn on `includeDetail`.
 
+**Weekly summary.** With `notify.weekly.enabled`, the monitor sends one message a week to the same webhook: the last seven days in a line (sessions, time the agent worked, time it waited for you) and the "Worth knowing" sentences from Stats. It is off by default, goes to Discord only (a desktop pop-up cannot hold it), and needs the monitor to be running at that hour or within the day after; a summary is never sent late or twice. It names models, tools and MCP servers; a permission's pattern, which can hold a path, is left out unless `includeDetail` is on. `--test-notify` sends this week's summary too when it is switched on, so you can see it before Monday.
+
 ## Where the data comes from
 
 - `opencode.db` in OpenCode's data directory (`~/.local/share/opencode`, or `$XDG_DATA_HOME/opencode`), opened read-only: sessions, messages, and parts.
 - `log/opencode.log` in the same directory: the only place permission prompts are recorded.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
 - Each project directory's own OpenCode config (`opencode.json[c]`, also under `.opencode/`), for the names of MCP servers it adds or switches on. Only small regular files on a local disk are read, and only names, types and the enabled flag are kept.
+- The same config files again, once a minute, to notice a changed setting (see Stats). Secrets are not read; other text is kept only as a hash.
 - The process list, to tell whether OpenCode is running.
 - Each project directory: one file, `.git/HEAD`, for the branch name. The `git` program is never run, because git executes programs named in a repository's own config, and the agent can write that config. Commits and uncommitted changes are therefore not shown.
 - HTTP or TCP checks against the model server and the services you configured.
@@ -249,6 +286,7 @@ By default a Discord message carries only the state, the project folder name, th
 
 ```
 server.mjs              entry point, Node version check
+mcp.mjs                 entry point of the MCP server for Claude Code (stdio, read-only)
 src/config.mjs          defaults, config.json, command line
 src/db.mjs              read-only queries, schema check
 src/logtail.mjs         follows opencode.log for prompts
@@ -262,6 +300,10 @@ src/stats.mjs           figures for the Stats tab (pure); stats-source.mjs reads
 src/work.mjs            time split, prompts, permissions, files, agents and plans for the Stats tab (pure)
 src/leftovers.mjs       background processes still running, matched to the command that started them
 src/history.mjs         record of state changes (data/history.jsonl)
+src/takeaways.mjs       the rules behind "Worth knowing" (pure)
+src/config-changes.mjs  notices a changed OpenCode setting (data/config-changes.jsonl)
+src/digest.mjs          the weekly summary to Discord
+src/mcp-server.mjs      the MCP protocol and its five tools (pure); mcp-main.mjs wires them to the data
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications
 src/process.mjs         is OpenCode running
