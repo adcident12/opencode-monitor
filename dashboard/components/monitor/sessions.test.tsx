@@ -70,4 +70,20 @@ describe("AttentionCard", () => {
     expect(screen.getByText("listening on 3000")).toBeInTheDocument()
     expect(screen.getByText(/taskkill \/PID 4242|kill 4242/)).toBeInTheDocument()
   })
+
+  it("links to this session's own stats, and to its history only when history is kept", async () => {
+    renderCard()
+    expect(await screen.findByRole("link", { name: "Stats" })).toHaveAttribute("href", "#stats/s1")
+    expect(screen.queryByRole("link", { name: "History" })).not.toBeInTheDocument()
+
+    render(
+      <I18nProvider>
+        <TooltipProvider>
+          <AttentionCard session={{ ...waiting, id: "s1-sub", parentId: "s1" }} subagents={[]} now={NOW} history />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+    // A subagent points at its parent: that is where its entries are recorded.
+    expect(await screen.findByRole("link", { name: "History" })).toHaveAttribute("href", "#history/s1")
+  })
 })

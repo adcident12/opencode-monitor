@@ -8,7 +8,7 @@ const TIMEOUT_MS = 4000;
 
 /**
  * MCP status is inferred, because OpenCode only logs failures:
- *   failed  - the running OpenCode logged a failure, or a tool call could not reach the
+ *   failed  - an OpenCode that is still running logged a failure, or a tool call could not reach the
  *             server, and no tool of that server has worked since
  *   ok      - a tool of that server completed (and after any failure)
  *   unknown - no evidence either way (never used in the sessions on screen)
@@ -16,12 +16,13 @@ const TIMEOUT_MS = 4000;
  *
  * @param {object} input
  * @param {{name, type, enabled, scope}[]} input.servers  global and project servers, merged
+ * @param {Set<string>} input.liveRuns  OpenCode runs still going (logtail's liveRuns)
  * @param {Map<string, {okAt: number|null, connErrAt: number|null}>} input.use  per server
  */
-export function mcpStatus({ servers, failures, lastRun, use, opencodeRunning }) {
+export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning }) {
   const names = new Map(servers.map(s => [s.name, s]));
   // A server from a config we could not read is unknown to us until it fails.
-  for (const [name, failure] of failures) if (!names.has(name) && failure.run === lastRun) names.set(name, { name, type: 'local', enabled: true, scope: 'project' });
+  for (const [name, failure] of failures) if (!names.has(name) && liveRuns.has(failure.run)) names.set(name, { name, type: 'local', enabled: true, scope: 'project' });
 
   return [...names.values()].map(server => {
     const { okAt: lastOkAt = null, connErrAt = null } = use.get(server.name) ?? {};
@@ -29,7 +30,7 @@ export function mcpStatus({ servers, failures, lastRun, use, opencodeRunning }) 
     const logged = failures.get(server.name);
     // Whichever is newer: what the log said, or a call that found the connection gone.
     const candidates = [
-      logged && logged.run === lastRun && !worksSince(logged.t) ? { t: logged.t, kind: logged.kind } : null,
+      logged && liveRuns.has(logged.run) && !worksSince(logged.t) ? { t: logged.t, kind: logged.kind } : null,
       connErrAt != null && !worksSince(connErrAt) ? { t: connErrAt, kind: 'closed' } : null,
     ].filter(Boolean).sort((a, b) => b.t - a.t);
     const failure = candidates[0] ?? null;
@@ -135,7 +136,7 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
       mcp: mcpStatus({
         servers: mergeServers(opencode.mcp, projectServers),
         failures: log.mcpFailures(),
-        lastRun: log.lastRun(),
+        liveRuns: log.liveRuns(),
         use: mcpUse,
         opencodeRunning: probe.running,
       }),

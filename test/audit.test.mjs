@@ -124,7 +124,7 @@ test('MCP status needs a failure from the current run that no later success cont
     ['project-only', { t: 2000, run: 'new', kind: 'unavailable', name: 'project-only' }],
   ]);
   const run = (use, opencodeRunning = true) =>
-    Object.fromEntries(mcpStatus({ servers, failures, lastRun: 'new', use, opencodeRunning }).map(m => [m.name, m.status]));
+    Object.fromEntries(mcpStatus({ servers, failures, liveRuns: new Set(['new']), use, opencodeRunning }).map(m => [m.name, m.status]));
 
   assert.deepEqual(run(new Map()), { graft: 'failed', memory: 'unknown', off: 'disabled', 'project-only': 'failed' });
   assert.equal(run(new Map([['graft', { okAt: 1000 }]])).graft, 'failed', 'worked before it died');

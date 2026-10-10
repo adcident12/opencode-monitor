@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { computeMcpStats, createServerMatcher, faultOf, latestFailures, markShutdowns, mergeServers } from '../src/mcp.mjs';
 import { createProjectMcp } from '../src/opencode-config.mjs';
 import { mcpStatus } from '../src/environment.mjs';
+import { createLogTail, liveRuns } from '../src/logtail.mjs';
 
 const T = 1_800_000_000_000;
 
@@ -37,7 +38,7 @@ test('closing connections because OpenCode quit is not a server failing', () => 
     close('now', 'context7', T + 91_000),
     { t: T + 50_000, run: 'now', kind: 'unavailable', name: 'sonarqube' },
   ];
-  const marked = markShutdowns(events, new Map([['old', T + 500], ['now', T + 91_000]]), 'now');
+  const marked = markShutdowns(events, new Map([['old', T + 500], ['now', T + 91_000]]), new Set(['now']));
   assert.deepEqual(marked.map(e => e.shutdown), [true, false, true, true, true, false]);
   assert.deepEqual([...latestFailures(marked).keys()].sort(), ['memory', 'sonarqube']);
 });
@@ -103,9 +104,42 @@ test('one session: disconnects are not claimed, because the log does not name a 
 test('a tool call that could not reach its server marks it failed until one works again', () => {
   const status = use => mcpStatus({
     servers: mergeServers([{ name: 'graft', type: 'local', enabled: true }]),
-    failures: new Map(), lastRun: 'r', opencodeRunning: true, use: new Map([['graft', use]]),
+    failures: new Map(), liveRuns: new Set(['r']), opencodeRunning: true, use: new Map([['graft', use]]),
   })[0];
   assert.deepEqual([status({ okAt: T, connErrAt: T + 1 }).status, status({ okAt: T, connErrAt: T + 1 }).kind], ['failed', 'closed']);
   assert.equal(status({ okAt: T + 2, connErrAt: T + 1 }).status, 'ok');
   assert.equal(status({ okAt: null, connErrAt: null }).status, 'unknown');
+});
+
+test('which OpenCode is still running: not the one-off command, and both of two windows', () => {
+  const run = (first, last, afterDispose = null) => ({ first, last, afterDispose });
+  // A window that is working, then `opencode mcp list` run beside it and finished.
+  assert.deepEqual([...liveRuns(new Map([['window', run(T, T + 60_000)], ['list', run(T + 70_000, T + 80_000, 0)]]))], ['window']);
+  // Two windows writing in turns.
+  assert.deepEqual([...liveRuns(new Map([['a', run(T, T + 90_000)], ['b', run(T + 30_000, T + 80_000)]]))].sort(), ['a', 'b']);
+  // Yesterday's window was killed and logged no shutdown; today's started after its last line.
+  assert.deepEqual([...liveRuns(new Map([['killed', run(T, T + 1000)], ['today', run(T + 86_400_000, T + 86_500_000)]]))], ['today']);
+  // "disposing instance" in the middle of a run that went on is not its end.
+  assert.deepEqual([...liveRuns(new Map([['busy', run(T, T + 5000, 40)]]))], ['busy']);
+  assert.equal(liveRuns(new Map([['done', run(T, T + 5000, 1)]])).size, 0);
+});
+
+test('a one-off command does not hide a failure the open window logged', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-log-'));
+  const file = join(dir, 'opencode.log');
+  const line = (ms, run, rest) => `timestamp=${new Date(T + ms).toISOString()} level=INFO run=${run} ${rest}\n`;
+  writeFileSync(file, [
+    line(0, 'window', 'message="creating instance"'),
+    line(1000, 'window', 'message="server unavailable" key=sonarqube type=local status=failed'),
+    line(2000, 'window', 'message=loop'),
+    line(60_000, 'list', 'message="creating instance"'),
+    line(61_000, 'list', 'message="server unavailable" key=trivy type=local status=failed'),
+    line(62_000, 'list', 'message="disposing instance"'),
+  ].join(''));
+  const log = createLogTail(file);
+  log.poll();
+  assert.equal(log.lastRun(), 'list');
+  assert.deepEqual([...log.liveRuns()], ['window']);
+  // Only what the window itself logged counts; the finished command's own failure does not.
+  assert.deepEqual([...log.mcpFailures().keys()], ['sonarqube']);
 });

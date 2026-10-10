@@ -51,7 +51,7 @@ export function mergeServers(global, project = []) {
  * the last thing a finished run wrote, or several servers closing in the same moment.
  * One server closing alone while its run goes on is the only case counted as a failure.
  */
-export function markShutdowns(events, runEnds = new Map(), lastRun = null) {
+export function markShutdowns(events, runEnds = new Map(), live = new Set()) {
   const closesByRun = new Map();
   for (const e of events) {
     if (e.kind !== 'closed') continue;
@@ -64,7 +64,7 @@ export function markShutdowns(events, runEnds = new Map(), lastRun = null) {
     for (let i = 0; i < closes.length; i++) {
       const group = closes.filter(c => Math.abs(c.t - closes[i].t) <= SHUTDOWN_MS);
       const together = new Set(group.map(c => c.name)).size > 1;
-      const atEnd = run !== lastRun && runEnds.has(run) && runEnds.get(run) - closes[i].t <= SHUTDOWN_MS;
+      const atEnd = !live.has(run) && runEnds.has(run) && runEnds.get(run) - closes[i].t <= SHUTDOWN_MS;
       if (together || atEnd) shutdown.add(closes[i]);
     }
   }

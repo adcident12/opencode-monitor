@@ -12,10 +12,9 @@ import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
 /** @param count  number of recorded entries, from the live snapshot: a change means "fetch again" */
-export function History({ count, active }: { count: number | null; active: boolean }) {
+export function History({ count, active, session, onSession }: { count: number | null; active: boolean; session: string | null; onSession: (id: string | null) => void }) {
   const { t, lang } = useI18n()
   const [onlyAttention, setOnlyAttention] = useState(false)
-  const [session, setSession] = useState<string | null>(null)
   const events = useHistory(count, active, session)
   const sessions = useHistorySessions(count, active)
 
@@ -36,7 +35,7 @@ export function History({ count, active }: { count: number | null; active: boole
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <SessionFilter value={session} onChange={setSession} sessions={sessions} />
+        <SessionFilter value={session} onChange={onSession} sessions={sessions} current={session && !sessions.some(s => s.id === session) ? { id: session, title: "", project: "" } : null} />
         <div className="flex items-center gap-2.5">
           <Switch id="only-attention" checked={onlyAttention} onCheckedChange={setOnlyAttention} />
           <Label htmlFor="only-attention" className="font-normal text-muted-foreground">

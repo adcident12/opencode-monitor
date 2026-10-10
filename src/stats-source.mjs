@@ -58,7 +58,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       compactions: db.stats.compactions(since),
       asks,
       replies: log.replies(),
-      currentRun: log.lastRun(),
+      liveRuns: log.liveRuns(),
       runEnds: log.runEnds(),
       eventTimes,
       now,

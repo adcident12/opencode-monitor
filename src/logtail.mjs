@@ -12,6 +12,29 @@ const PREFIX = /^timestamp=(\S+) level=\S+ run=(\S+) /;
 const ASK = /^timestamp=(\S+) level=\S+ run=(\S+) message=asking id=((per|que)_\S+)(?: permission=(\S+))?(?: patterns=(.*))?/;
 const MCP = /^timestamp=(\S+) level=\S+ run=(\S+) message="(server unavailable|MCP connection closed)" (?:key|server)=(\S+)/;
 
+// What OpenCode logs last when it exits by itself.
+const DISPOSE = /^timestamp=\S+ level=\S+ run=\S+ message="disposing (?:all instances|instance)"/;
+// A few lines can still follow the last "disposing" line of a run that has ended.
+const LINES_AFTER_DISPOSE = 3;
+
+/**
+ * Which OpenCode processes are still there, as far as the log can tell.
+ *
+ * The newest line alone is not enough: a one-off command (`opencode mcp list`) or a second
+ * window writes lines too, and would hide what the window you are working in logged.
+ * A run that logged its own shutdown is over. Of the rest, the one that wrote last is alive,
+ * and so is any other that has written since that one started.
+ *
+ * @param {Map<string, {first: number, last: number, afterDispose: number|null}>} runs
+ * @returns {Set<string>}
+ */
+export function liveRuns(runs) {
+  const open = [...runs].filter(([, r]) => r.afterDispose == null || r.afterDispose > LINES_AFTER_DISPOSE);
+  if (!open.length) return new Set();
+  const newest = open.reduce((a, b) => (b[1].last >= a[1].last ? b : a));
+  return new Set(open.filter(([, r]) => r.last >= newest[1].first).map(([id]) => id));
+}
+
 const REPLY = /^timestamp=(\S+) level=\S+ run=\S+ message=replied requestID=(que_\S+)/;
 
 /** The answer to a question prompt: { t, id }. Permission answers are not logged. */
@@ -64,12 +87,58 @@ export function createLogTail(path) {
   let asks = [];
   let mcpEvents = []; // every MCP failure line read, oldest first
   let mcpMarked = []; // the same, each marked as a shutdown or not
-  let mcpFailures = new Map(); // server name -> its latest failure that was not a shutdown
+  let mcpFailures = new Map(); // server name -> its latest failure in a live run that was not a shutdown
   let firstAt = null; // time of the oldest line read: nothing is known from before it
   let replies = new Map(); // question id -> when it was answered
   let lastRun = null; // id of the OpenCode process that wrote the newest line
   let runEnds = new Map(); // run id -> time of its last line
+  let runs = new Map(); // run id -> { first, last, afterDispose }
+  let live = new Set(); // runs still going, see liveRuns
   let started = false;
+
+  function reset() {
+    offset = 0;
+    carry = '';
+    asks = [];
+    mcpEvents = [];
+    mcpMarked = [];
+    mcpFailures = new Map();
+    firstAt = null;
+    replies = new Map();
+    runEnds = new Map();
+    runs = new Map();
+    live = new Set();
+    lastRun = null;
+  }
+
+  // Which run wrote the line, and whether that run is winding down.
+  function noteRun(line, id, at) {
+    lastRun = id;
+    if (Number.isNaN(at)) return;
+    runEnds.set(id, at);
+    firstAt ??= at;
+    const run = runs.get(id) ?? { first: at, last: at, afterDispose: null };
+    run.last = at;
+    if (DISPOSE.test(line)) run.afterDispose = 0;
+    else if (run.afterDispose != null) run.afterDispose++;
+    runs.set(id, run);
+  }
+
+  function take(line) {
+    const prefix = PREFIX.exec(line);
+    if (!prefix) return;
+    noteRun(line, prefix[2], Date.parse(prefix[1]));
+    if (line.includes('message=asking')) {
+      const ask = parseAskLine(line);
+      if (ask) asks.push(ask);
+    } else if (line.includes('message=replied')) {
+      const reply = parseReplyLine(line);
+      if (reply) replies.set(reply.id, reply.t);
+    } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
+      const failure = parseMcpLine(line);
+      if (failure) mcpEvents.push(failure);
+    }
+  }
 
   function poll() {
     let fd;
@@ -80,19 +149,7 @@ export function createLogTail(path) {
     }
     try {
       const { size } = fstatSync(fd);
-      if (size < offset) {
-        // Rotated or truncated: start over.
-        offset = 0;
-        carry = '';
-        asks = [];
-        mcpEvents = [];
-        mcpMarked = [];
-        mcpFailures = new Map();
-        firstAt = null;
-        replies = new Map();
-        runEnds = new Map();
-        lastRun = null;
-      }
+      if (size < offset) reset(); // Rotated or truncated: start over.
       if (!started) {
         started = true;
         offset = Math.max(0, size - MAX_INITIAL_BYTES);
@@ -103,31 +160,13 @@ export function createLogTail(path) {
       offset += read;
       const lines = (carry + buffer.toString('utf8', 0, read)).split('\n');
       carry = lines.pop();
-      for (const line of lines) {
-        const prefix = PREFIX.exec(line);
-        if (!prefix) continue;
-        lastRun = prefix[2];
-        const at = Date.parse(prefix[1]);
-        if (!Number.isNaN(at)) {
-          runEnds.set(lastRun, at);
-          firstAt ??= at;
-        }
-        if (line.includes('message=asking')) {
-          const ask = parseAskLine(line);
-          if (ask) asks.push(ask);
-        } else if (line.includes('message=replied')) {
-          const reply = parseReplyLine(line);
-          if (reply) replies.set(reply.id, reply.t);
-        } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
-          const failure = parseMcpLine(line);
-          if (failure) mcpEvents.push(failure);
-        }
-      }
+      for (const line of lines) take(line);
       if (mcpEvents.length > MAX_MCP_EVENTS) mcpEvents = mcpEvents.slice(-MAX_MCP_EVENTS);
       // Whether a close was a shutdown depends on what its run wrote afterwards, so every
       // read can change the answer for the newest lines.
-      mcpMarked = markShutdowns(mcpEvents, runEnds, lastRun);
-      mcpFailures = latestFailures(mcpMarked);
+      live = liveRuns(runs);
+      mcpMarked = markShutdowns(mcpEvents, runEnds, live);
+      mcpFailures = latestFailures(mcpMarked.filter(e => live.has(e.run)));
       if (asks.length > MAX_ASKS) asks = asks.slice(-MAX_ASKS);
       if (replies.size > MAX_ASKS) replies = new Map([...replies].slice(-MAX_ASKS));
     } finally {
@@ -144,5 +183,6 @@ export function createLogTail(path) {
     mcpEvents: () => mcpMarked,
     firstAt: () => firstAt,
     lastRun: () => lastRun,
+    liveRuns: () => live,
   };
 }

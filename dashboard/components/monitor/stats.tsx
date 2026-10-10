@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { duration, quick, rough } from "@/lib/format"
+import { compact, duration, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useStats } from "@/lib/live"
 import type { DayStats, McpStat, Stats as StatsData } from "@/lib/types"
@@ -17,10 +17,10 @@ const RANGES = [7, 14, 30] as const
 
 const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 
-export function Stats() {
+/** @param session  the one session to count, kept in the URL so a card can link straight here */
+export function Stats({ session, onSession }: { session: string | null; onSession: (id: string | null) => void }) {
   const { t } = useI18n()
   const [days, setDays] = useState<number>(14)
-  const [session, setSession] = useState<string | null>(null)
   const { stats, failed } = useStats(days, session, true)
   // The list comes with the figures; keep the last one so the filter does not empty while loading.
   const [choices, setChoices] = useState<StatsData["sessions"]>([])
@@ -41,7 +41,7 @@ export function Stats() {
             ))}
           </SelectContent>
         </Select>
-        <SessionFilter value={session} onChange={setSession} sessions={choices} current={stats?.session} />
+        <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
         <p className="text-sm text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
       </div>
 
@@ -127,6 +127,7 @@ function Figures({ stats }: { stats: StatsData }) {
         </div>
       </div>
 
+      <Usage stats={stats} />
       <McpServers stats={stats} />
 
       {(totals.abandoned > 0 || totals.abandonedCalls > 0) && (
@@ -261,6 +262,38 @@ function ToolUse({ stats }: { stats: StatsData }) {
         ))}
       </ul>
       {graft + other > 0 && <p className="text-sm text-muted-foreground">{t("stats.graftShare", { graft, other, pct: Math.round((graft / (graft + other)) * 100) })}</p>}
+    </section>
+  )
+}
+
+/** What the model was sent and what it wrote, and how big a session is before it starts. */
+function Usage({ stats }: { stats: StatsData }) {
+  const { t } = useI18n()
+  const { usage } = stats
+  if (!usage.requests) return null
+  const sent = usage.input + usage.cacheRead + usage.cacheWrite
+  return (
+    <section className="space-y-4">
+      <div>
+        <h3 className="font-medium">{t("stats.usage")}</h3>
+        <p className="text-xs text-muted-foreground">{t("stats.usageNote", { n: usage.requests })}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+        <Tile label={t("stats.usageSent")} value={compact(sent)} note={usage.cachedPct == null ? "" : t("stats.usageCached", { pct: usage.cachedPct })} />
+        <Tile label={t("stats.usageNew")} value={compact(usage.input + usage.cacheWrite)} note={t("stats.usageNewNote")} />
+        <Tile label={t("stats.usageOutput")} value={compact(usage.output)} note={usage.reasoning ? t("stats.usageReasoning", { n: compact(usage.reasoning) }) : ""} />
+        {usage.cost > 0 ? (
+          <Tile label={t("stats.usageCost")} value={`$${usage.cost.toFixed(2)}`} note={t("stats.usageCostNote")} />
+        ) : (
+          usage.start && <Tile label={t("stats.usageStart")} value={compact(usage.start.median)} note={t("stats.usageStartRange", { min: compact(usage.start.min), max: compact(usage.start.max), n: usage.start.sessions })} />
+        )}
+      </div>
+      {usage.start && (
+        <p className="text-sm text-muted-foreground">
+          {usage.cost > 0 && <>{t("stats.usageStartLine", { median: compact(usage.start.median), n: usage.start.sessions })} </>}
+          {t("stats.usageStartNote")}
+        </p>
+      )}
     </section>
   )
 }

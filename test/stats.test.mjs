@@ -25,7 +25,7 @@ test('a permission prompt waits until the call it blocked is next updated', () =
     asks: [{ t: askAt, run: 'r1', kind: 'permission', permission: 'read', patterns: '/work/shop/.env' }],
     // Drawn at +2ms (ignored), approved after 8h10m.
     eventTimes: new Map([['p1', [askAt + 2, askAt + 8 * HOUR + 10 * MIN]]]),
-    currentRun: 'r1',
+    liveRuns: new Set(['r1']),
   });
   assert.equal(s.totals.prompts, 1);
   assert.equal(s.waits[0].waitMs, 8 * HOUR + 10 * MIN);
@@ -41,7 +41,7 @@ test('a question waits until its logged reply', () => {
     tools: [tool('q1', 's1', 'question', askAt, askAt + 5 * MIN, { question: 'Which library?' })],
     asks: [{ t: askAt, id: 'que_1', run: 'r1', kind: 'question', permission: null, patterns: '' }],
     replies: new Map([['que_1', askAt + 4 * MIN]]),
-    currentRun: 'r1',
+    liveRuns: new Set(['r1']),
   });
   assert.equal(s.waits[0].waitMs, 4 * MIN);
   assert.equal(s.totals.medianAnswerMs, 4 * MIN);
@@ -57,7 +57,7 @@ test('prompts and calls left behind by a crash are not counted as hours of waiti
     asks: [{ t: askAt, run: 'old-process', kind: 'permission', permission: 'read', patterns: 'x' }],
     // The process that asked wrote its last line 20 minutes later and is gone.
     runEnds: new Map([['old-process', askAt + 20 * MIN]]),
-    currentRun: 'new-process',
+    liveRuns: new Set(['new-process']),
     // The session went on with a new message after the write was left running.
     messages: [{ session_id: 's1', role: 'user', time_created: askAt + 2 * HOUR, completed: null }],
   });
@@ -72,7 +72,7 @@ test('a prompt that is still waiting right now stays open', () => {
   const s = run({
     tools: [tool('p1', 's1', 'bash', askAt, null, { cmd: 'npm outdated' })],
     asks: [{ t: askAt, run: 'r1', kind: 'permission', permission: 'bash', patterns: 'npm outdated' }],
-    currentRun: 'r1',
+    liveRuns: new Set(['r1']),
   });
   assert.deepEqual([s.totals.open, s.waits[0].waitMs, s.waits[0].answered], [1, 30 * MIN, false]);
 });
@@ -133,7 +133,7 @@ test('one session: its own calls, prompts and subagents, and nothing from the ot
     ],
     compactions: [{ session_id: 's2', time_created: at }],
     asks: [{ t: at + 10 * MIN, run: 'r1', kind: 'permission', permission: 'bash', patterns: 'npm test' }],
-    currentRun: 'r1',
+    liveRuns: new Set(['r1']),
     sessionId: 's1',
     mcp: { servers: [{ name: 'graft', type: 'local', enabled: true, scope: 'global' }], events: [{ t: at, run: 'r1', kind: 'closed', name: 'graft', shutdown: false }], logFrom: at },
   });
@@ -149,4 +149,34 @@ test('one session: its own calls, prompts and subagents, and nothing from the ot
   const all = run({ tools: [tool('d', 's1', 'graft_find_code', at, at + MIN, { status: 'error', error: 'MCP error -32000: Connection closed' })],
     mcp: { servers: [{ name: 'graft', type: 'local', enabled: true, scope: 'global' }], events: [{ t: at, run: 'r1', kind: 'closed', name: 'graft', shutdown: false }], logFrom: at } });
   assert.deepEqual([all.session, all.mcp[0].calls, all.mcp[0].faults, all.mcp[0].disconnects, all.mcpLogFrom], [null, 1, 1, 1, at]);
+});
+
+test('tokens: what was sent and written, the share served from cache, and how big a session starts', () => {
+  const at = NOW - 3 * HOUR;
+  const reply = (session, offset, input, cacheRead, output, extra = {}) => ({
+    session_id: session, role: 'assistant', time_created: at + offset, completed: at + offset + MIN,
+    tokens_input: input, tokens_cache_read: cacheRead, tokens_cache_write: 0, tokens_output: output, tokens_reasoning: 0, cost: 0, ...extra,
+  });
+  const s = run({
+    sessions: [
+      { id: 's1', parent_id: null, directory: '/work/shop', title: 'Shop', time_created: at - MIN },
+      { id: 's1-sub', parent_id: 's1', directory: '/work/shop', title: 'Explore', time_created: at },
+      { id: 'old', parent_id: null, directory: '/work/blog', title: 'Blog', time_created: NOW - 30 * 24 * HOUR },
+    ],
+    messages: [
+      reply('s1', 0, 32_000, 0, 200),
+      reply('s1', 2 * MIN, 4_000, 32_000, 150, { cost: 0.25 }),
+      reply('s1-sub', 3 * MIN, 9_000, 0, 50), // a subagent starts smaller: not a session start
+      reply('old', 4 * MIN, 500, 90_000, 100), // began before the range: its first request is not in view
+      { session_id: 's1', role: 'user', time_created: at, completed: null },
+      reply('s1', 5 * MIN, 0, 0, 0), // still being written: nothing reported yet
+    ],
+  });
+  assert.deepEqual(
+    [s.usage.requests, s.usage.input, s.usage.cacheRead, s.usage.output, s.usage.cost, s.usage.cachedPct],
+    [4, 45_500, 122_000, 500, 0.25, 73],
+  );
+  assert.deepEqual(s.usage.start, { median: 32_000, min: 32_000, max: 32_000, sessions: 1 });
+  assert.equal(s.daily.find(d => d.date === dayKey(at)).tokens, 45_500 + 122_000 + 500);
+  assert.equal(run({}).usage.start, null);
 });

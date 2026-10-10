@@ -47,6 +47,33 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
     return { lines: lines.map(line => (line.length > 200 ? line.slice(0, 199) + '…' : line)), chars: part.out_len, at: part.time_updated };
   }
 
+  // When this tool last worked, or last found its MCP server gone.
+  function noteToolUse(toolUse, p) {
+    const lost = p.status === 'error' && faultOf(p.error) === 'connection';
+    if (p.status !== 'completed' && !lost) return;
+    const use = toolUse.get(p.tool) ?? { okAt: null, connErrAt: null };
+    use[lost ? 'connErrAt' : 'okAt'] = p.time_updated;
+    toolUse.set(p.tool, use);
+  }
+
+  // The newest success and the newest lost connection of each MCP server, over every
+  // session on screen.
+  function mcpUseOf(serverOf) {
+    const newer = (a, b) => (a == null || b > a ? b : a);
+    const mcpUse = new Map(); // server -> { okAt, connErrAt }
+    for (const entry of cache.values()) {
+      for (const [tool, use] of entry.digest.toolUse) {
+        const server = serverOf(tool)?.server;
+        if (!server) continue;
+        const known = mcpUse.get(server) ?? { okAt: null, connErrAt: null };
+        if (use.okAt != null) known.okAt = newer(known.okAt, use.okAt);
+        if (use.connErrAt != null) known.connErrAt = newer(known.connErrAt, use.connErrAt);
+        mcpUse.set(server, known);
+      }
+    }
+    return mcpUse;
+  }
+
   // Per-session facts that only change when parts change: flagged calls, files touched,
   // and when each tool last worked or last found its server gone. Kept per tool name, not
   // per MCP server: which server a tool belongs to can change when a project config does.
@@ -60,12 +87,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
       } else if (p.type === 'tool') {
         if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) touch(files, p.file, p.time_updated);
         if (p.flags.length) flagged.push(p);
-        const lost = p.status === 'error' && faultOf(p.error) === 'connection';
-        if (p.status === 'completed' || lost) {
-          const use = toolUse.get(p.tool) ?? { okAt: null, connErrAt: null };
-          use[lost ? 'connErrAt' : 'okAt'] = p.time_updated;
-          toolUse.set(p.tool, use);
-        }
+        noteToolUse(toolUse, p);
       }
     }
     return { flagged, files, toolUse };
@@ -299,19 +321,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, probe, mcpNam
 
       const projectServers = projectMcp?.forDirs(directories) ?? [];
       const serverOf = createServerMatcher([...mcpNames, ...projectServers.map(s => s.name)]);
-      const newer = (a, b) => (a == null || b > a ? b : a);
-      const mcpUse = new Map(); // server -> { okAt, connErrAt }, the newest of each
-      for (const entry of cache.values()) {
-        for (const [tool, use] of entry.digest.toolUse) {
-          const server = serverOf(tool)?.server;
-          if (!server) continue;
-          const known = mcpUse.get(server) ?? { okAt: null, connErrAt: null };
-          if (use.okAt != null) known.okAt = newer(known.okAt, use.okAt);
-          if (use.connErrAt != null) known.connErrAt = newer(known.connErrAt, use.connErrAt);
-          mcpUse.set(server, known);
-        }
-      }
-      previous = { sessions, environment: environment?.view(mcpUse, projectServers) ?? null };
+      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers) ?? null };
       return { ...base, stale: false, ...previous };
     } catch (err) {
       // Usually a brief lock while OpenCode writes. Keep showing the last good data, marked stale.

@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "@/lib/i18n"
 import type { McpStat, Stats as StatsData } from "@/lib/types"
@@ -25,6 +26,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
     server("github", { enabled: false, type: "remote" }),
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
+  usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
   stuckMs: 600_000,
   daily: [],
   totals: { sessions: 1, activeMs: 0, waitMs: 0, prompts: 0, open: 0, abandoned: 0, medianAnswerMs: null, stuck: 0, abandonedCalls: 0, toolCalls: 43, toolErrors: 8, compactions: 0 },
@@ -48,12 +50,30 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/?lang=en")
 })
 
+// The page keeps the chosen session in the URL; here plain state stands in for it.
+function Harness() {
+  const [session, setSession] = useState<string | null>(null)
+  return <Stats session={session} onSession={setSession} />
+}
+
 const renderStats = () =>
   render(
     <I18nProvider>
-      <Stats />
+      <Harness />
     </I18nProvider>
   )
+
+describe("Tokens in Stats", () => {
+  it("shows what was sent, how much of it was cached, and how big a session starts", async () => {
+    renderStats()
+    expect(await screen.findByText("1.3M")).toBeInTheDocument()
+    expect(screen.getByText("96% reused from its cache")).toBeInTheDocument()
+    expect(screen.getByText("32.4k")).toBeInTheDocument()
+    expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
+    // No cost was recorded (a local model), so no cost is shown.
+    expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
 
 describe("MCP servers in Stats", () => {
   it("keeps a tool's own errors apart from the server not answering", async () => {

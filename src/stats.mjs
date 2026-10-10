@@ -39,7 +39,7 @@ const isGraft = tool => /^graft_/.test(tool);
  * Questions: OpenCode logs the reply. Permissions: it does not, so the answer is the first
  * update to the tool call after the prompt (approving resumes it, refusing ends it).
  */
-export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = () => null, currentRun = null, runEnds = new Map() }) {
+export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = () => null, liveRuns = null, runEnds = new Map() }) {
   const byStart = [...tools].sort((a, b) => startOf(a) - startOf(b));
   const prompts = [];
   // Without an answer, a prompt ends when its session moved on without it (a new message), or
@@ -51,7 +51,7 @@ export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = 
       const candidates = [];
       const next = part ? movedOn(part.session_id, ask.t) : null;
       if (next != null) candidates.push(next);
-      if (ask.run && currentRun && ask.run !== currentRun) candidates.push(Math.max(ask.t, runEnds.get(ask.run) ?? ask.t));
+      if (ask.run && liveRuns && !liveRuns.has(ask.run)) candidates.push(Math.max(ask.t, runEnds.get(ask.run) ?? ask.t));
       if (candidates.length) abandonedAt = Math.min(...candidates);
     }
     return { ...ask, part, answeredAt, abandonedAt, abandoned: abandonedAt != null, waitMs: (answeredAt ?? abandonedAt ?? now) - ask.t };
@@ -125,10 +125,10 @@ function withDescendants(sessions, sessionId) {
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, currentRun = null, runEnds = new Map(), sessionId = null, mcp = null }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
-  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0 }]));
+  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0 }]));
   const bucket = t => daily.get(dayKey(t));
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const scope = sessionId ? withDescendants(sessions, sessionId) : null;
@@ -143,19 +143,45 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   for (const c of compactions) if (inScope(c.session_id)) bucket(c.time_created) && bucket(c.time_created).compactions++;
 
   // Agent time: from each model request to its reply, clipped to the range.
+  // Tokens: what each of those requests sent and got back, as the model server reported it.
+  const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
+  const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
   for (const m of messages) {
     if (m.role !== 'assistant' || !inScope(m.session_id)) continue;
     const start = Math.max(m.time_created, from);
     const end = Math.min(m.completed ?? m.time_created, now);
     if (end > start && bucket(start)) bucket(start).activeMs += end - start;
+
+    const sent = (m.tokens_input ?? 0) + (m.tokens_cache_read ?? 0) + (m.tokens_cache_write ?? 0);
+    const b = bucket(m.time_created);
+    if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
+    usage.requests++;
+    usage.input += m.tokens_input ?? 0;
+    usage.cacheRead += m.tokens_cache_read ?? 0;
+    usage.cacheWrite += m.tokens_cache_write ?? 0;
+    usage.output += m.tokens_output ?? 0;
+    usage.reasoning += m.tokens_reasoning ?? 0;
+    usage.cost += m.cost ?? 0;
+    b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
+    const first = firstRequest.get(m.session_id);
+    if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
   }
+  // What a session costs before it has done anything: instructions, skills, and the tool
+  // list of every MCP server that is switched on. Only top-level sessions that began in the
+  // range, where the first request we see really is the session's first.
+  const startSizes = [...firstRequest]
+    .filter(([id]) => {
+      const s = sessionById.get(id);
+      return s && !s.parent_id && s.time_created >= from;
+    })
+    .map(([, first]) => first.tokens);
 
   // Prompts: how long each one waited for an answer.
   const inRange = asks.filter(a => a.t >= from && a.t <= now);
   const movedOn = nextMessageFinder(messages);
   // Matched against every session's calls first, so a prompt is never pinned on this session
   // just because the call it really belonged to was left out.
-  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now, movedOn, currentRun, runEnds })
+  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now, movedOn, liveRuns, runEnds })
     .filter(p => !scope || (p.part && scope.has(p.part.session_id)));
   const waitByPart = new Map();
   const deadAt = new Map(); // tool part id -> when the process that prompted for it went away
@@ -238,6 +264,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     toolErrors: [...daily.values()].reduce((n, d) => n + d.toolErrors, 0),
     compactions: [...daily.values()].reduce((n, d) => n + d.compactions, 0),
   };
+  const sentTotal = usage.input + usage.cacheRead + usage.cacheWrite;
 
   const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
   return {
@@ -252,6 +279,12 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // failure counts are left out rather than shown for the wrong session.
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
     mcpLogFrom: mcp?.logFrom ?? null,
+    usage: {
+      ...usage,
+      // Share of what was sent that the model server could reuse from its cache.
+      cachedPct: sentTotal ? Math.round((usage.cacheRead / sentTotal) * 100) : null,
+      start: startSizes.length ? { median: median(startSizes), min: Math.min(...startSizes), max: Math.max(...startSizes), sessions: startSizes.length } : null,
+    },
     stuckMs,
     daily: [...daily.values()],
     totals,

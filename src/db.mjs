@@ -109,7 +109,13 @@ export function openDb(dataDir) {
         substr(json_extract(data,'$.state.input.name'),1,100) skill,
         substr(json_extract(data,'$.state.error'),1,200) error
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
-    messages: db.prepare(`select session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed
+    messages: db.prepare(`select session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
+        json_extract(data,'$.tokens.input') tokens_input,
+        json_extract(data,'$.tokens.output') tokens_output,
+        json_extract(data,'$.tokens.reasoning') tokens_reasoning,
+        json_extract(data,'$.tokens.cache.read') tokens_cache_read,
+        json_extract(data,'$.tokens.cache.write') tokens_cache_write,
+        json_extract(data,'$.cost') cost
       from message where time_created >= ?`),
     compactions: db.prepare("select session_id, time_created from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'"),
   };

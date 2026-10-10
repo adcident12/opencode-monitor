@@ -26,6 +26,26 @@ function Project({ session }: { session: Session }) {
   )
 }
 
+/** Jumps to this session's own figures and record of state changes. */
+function SessionLinks({ session, history }: { session: Session; history: boolean }) {
+  const { t } = useI18n()
+  const link = "rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+  // A subagent has no entries of its own; its parent's cover it.
+  const id = session.parentId ?? session.id
+  return (
+    <nav aria-label={t("links.label", { title: session.title || session.id })} className="flex gap-3 text-xs text-muted-foreground">
+      <a href={`#stats/${id}`} className={link}>
+        {t("links.stats")}
+      </a>
+      {history && (
+        <a href={`#history/${id}`} className={link}>
+          {t("links.history")}
+        </a>
+      )}
+    </nav>
+  )
+}
+
 /** The command or tool call in progress, with its output when it is a shell command. */
 function Current({ session, now }: { session: Session; now: number }) {
   const { t } = useI18n()
@@ -68,7 +88,7 @@ function Subagents({ items, now }: { items: Session[]; now: number }) {
  * Something needs the user. The elapsed clock is the largest thing on the page: the
  * question this card answers is "how long has this been waiting on me?".
  */
-export function AttentionCard({ session, subagents, now }: { session: Session; subagents: Session[]; now: number }) {
+export function AttentionCard({ session, subagents, now, history = false }: { session: Session; subagents: Session[]; now: number; history?: boolean }) {
   const { t } = useI18n()
   const reason = useReason()
   const style = STATE_STYLE[session.state]
@@ -117,13 +137,14 @@ export function AttentionCard({ session, subagents, now }: { session: Session; s
         <Subagents items={subagents} now={now} />
         <Work session={session} />
         <Review session={session} />
+        <SessionLinks session={session} history={history} />
       </CardContent>
     </Card>
   )
 }
 
 /** Busy and fine: what it is doing right now and how far it has got. */
-export function WorkingCard({ session, subagents, now }: { session: Session; subagents: Session[]; now: number }) {
+export function WorkingCard({ session, subagents, now, history = false }: { session: Session; subagents: Session[]; now: number; history?: boolean }) {
   const { t } = useI18n()
   const reason = useReason()
   const { steps, todos } = session.progress
@@ -151,13 +172,14 @@ export function WorkingCard({ session, subagents, now }: { session: Session; sub
         <Subagents items={subagents} now={now} />
         <Work session={session} />
         <Review session={session} />
+        <SessionLinks session={session} history={history} />
       </CardContent>
     </Card>
   )
 }
 
 /** Finished or idle: one line, with the details folded away. */
-export function QuietRow({ session, now }: { session: Session; now: number }) {
+export function QuietRow({ session, now, history = false }: { session: Session; now: number; history?: boolean }) {
   const { t } = useI18n()
   const reason = useReason()
   return (
@@ -168,6 +190,7 @@ export function QuietRow({ session, now }: { session: Session; now: number }) {
         <span className="text-xs text-muted-foreground">{reason(session)}</span>
         <span className="tabular-nums text-xs text-muted-foreground">{t("time.ago", { t: rough(now - session.since) })}</span>
         <Project session={session} />
+        <SessionLinks session={session} history={history} />
       </div>
       {(session.review.total > 0 || session.work.warnProtected || (session.work.running?.items.length ?? 0) > 0) && (
         <div className="space-y-1">

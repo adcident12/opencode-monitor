@@ -23,8 +23,12 @@ export default function Page() {
   const { snapshot, connected, skew } = useSnapshot()
   const now = useNow(skew)
   const [hash, setHash] = useHash()
-  const tab: Tab = hash === "#history" ? "history" : hash === "#stats" ? "stats" : "now"
+  // #stats or #history, optionally narrowed to one session: #stats/<session id>.
+  const [, hashTab, hashSession] = /^#(history|stats)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
+  const tab: Tab = (hashTab as Tab | undefined) ?? "now"
+  const session = hashSession ?? null
   const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
+  const changeSession = (id: string | null) => setHash(id ? `${tab}/${id}` : tab)
 
   const historyEnabled = snapshot?.historyCount != null
   const sessions = snapshot?.sessions ?? []
@@ -71,7 +75,7 @@ export default function Page() {
                 {attention.length ? t("summary.attention", { n: attention.length }) : t("summary.none")}
               </h2>
               {attention.map(s => (
-                <AttentionCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} />
+                <AttentionCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} history={historyEnabled} />
               ))}
             </section>
           )}
@@ -83,7 +87,7 @@ export default function Page() {
               </h2>
               <div className="grid gap-3 lg:grid-cols-2">
                 {working.map(s => (
-                  <WorkingCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} />
+                  <WorkingCard key={s.id} session={s} subagents={childrenOf(sessions, s.id)} now={now} history={historyEnabled} />
                 ))}
               </div>
             </section>
@@ -96,7 +100,7 @@ export default function Page() {
               </h2>
               <ul className="divide-y rounded-xl border bg-card">
                 {rest.map(s => (
-                  <QuietRow key={s.id} session={s} now={now} />
+                  <QuietRow key={s.id} session={s} now={now} history={historyEnabled} />
                 ))}
               </ul>
             </section>
@@ -112,11 +116,11 @@ export default function Page() {
 
         {historyEnabled && (
           <TabsContent value="history">
-            <History count={snapshot?.historyCount ?? null} active={tab === "history"} />
+            <History count={snapshot?.historyCount ?? null} active={tab === "history"} session={session} onSession={changeSession} />
           </TabsContent>
         )}
 
-        <TabsContent value="stats">{tab === "stats" && <Stats />}</TabsContent>
+        <TabsContent value="stats">{tab === "stats" && <Stats session={session} onSession={changeSession} />}</TabsContent>
       </Tabs>
     </div>
   )

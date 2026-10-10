@@ -104,7 +104,11 @@ The **Stats** tab looks back over the last 7, 14, or 30 days, from OpenCode's ow
 - calls per tool and how many failed, how often graft was used instead of read/grep/glob, files read again and again in one session, and skills loaded;
 - one row per **MCP server**: calls, time per call, when it was last used, how often its connection dropped or it failed to start, and its most used tools. Failures are split in two: *failed* is a tool reporting an error (a script with a typo), *no answer* is the server itself not responding (connection closed, request timed out). Servers that are switched on but were never called are named, because each one still adds its tool list to every prompt.
 
-Pick a session next to the period to see the same figures for that session and its subagents only.
+- **tokens**: how much was sent to the model, how much of that the model server could reuse from its cache, how much the model wrote, and the cost when OpenCode recorded one. Also how big a session is at its first request, before any work: instructions, skills, and the tool list of every MCP server that is switched on. That is the number to watch when deciding which MCP servers to leave on.
+
+Pick a session next to the period to see the same figures for that session and its subagents only. Each session card on the first tab links straight to its own Stats and History (`#stats/<session id>`, so the view can be bookmarked).
+
+The size of each MCP server's tool list is not shown: OpenCode does not record the tool definitions it sends, so it could only be measured by starting every server, which the monitor does not do.
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
 
@@ -164,7 +168,9 @@ By default a Discord message carries only the state, the project folder name, th
 - **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Reports welcome.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
-- MCP status is inferred from failure lines in the log plus tool calls. With two OpenCode windows open, a failure logged by the older one can be missed.
+- MCP status is inferred from failure lines in the log plus tool calls.
+- Which OpenCode processes are still running is read off the log: a run that logged its own shutdown is over; of the rest, the one that wrote last is alive, and so is any other that has written since that one started. So a one-off command such as `opencode mcp list` no longer hides what the open window logged, and two windows are both followed. A window that has logged nothing since a newer one started is still missed, and one that was killed leaves no shutdown line.
+- Token counts are the model server's own, per request. A server that reports none (some local servers do not report cached tokens) shows zeros, and "how big a session starts" needs the session's first request to fall inside the period.
 - A closed MCP connection is taken as OpenCode shutting down when it is the last thing a finished run logged, or when two or more servers close within two seconds. Several servers really dying in the same moment would be missed, and with a single server configured a shutdown of the running OpenCode looks like a failure.
 - MCP tool calls are attributed by name (`<server>_<tool>`). A server whose project config has since been deleted or renamed is not recognised, and its calls stay in the plain tool list.
 - Dropped connections and failed starts are counted from OpenCode's log, which does not say which session they happened in and is eventually rotated. They are left out when one session is selected, and the page says so when the log starts later than the period shown.

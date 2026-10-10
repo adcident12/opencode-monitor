@@ -176,6 +176,7 @@ export interface DayStats {
   toolErrors: number
   compactions: number
   sessions: number
+  tokens: number
 }
 
 export interface Stats {
@@ -185,6 +186,19 @@ export interface Stats {
   mcp: McpStat[]
   /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
   mcpLogFrom: number | null
+  /** Tokens as the model server reported them, per request, summed over the period. */
+  usage: {
+    requests: number
+    input: number
+    cacheRead: number
+    cacheWrite: number
+    output: number
+    reasoning: number
+    cost: number
+    cachedPct: number | null
+    /** Size of the first request of each session that began in the period. */
+    start: { median: number; min: number; max: number; sessions: number } | null
+  }
   stuckMs: number
   daily: DayStats[]
   totals: {
