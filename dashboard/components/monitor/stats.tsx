@@ -332,6 +332,7 @@ function Figures({ stats }: { stats: StatsData }) {
       {hasModel && (
         <Group id="model">
           <Context stats={stats} />
+          {totals.serverLimitCompactions > 0 && <p className="max-w-prose rounded-lg bg-stuck-soft/60 px-3 py-2 text-sm text-stuck">{t("hint.server_limit", { n: totals.serverLimitCompactions })}</p>}
           <Speed stats={stats} />
           <Usage stats={stats} />
         </Group>
@@ -512,7 +513,10 @@ function Context({ stats }: { stats: StatsData }) {
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div>
           <h3 className={H3}>{t("stats.context")}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("stats.contextNote", { n: context.requests })}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("stats.contextNote", { n: context.requests })}
+            {context.compactAt != null && <> {t("stats.contextCompactAt", { n: compact(context.compactAt) })}</>}
+          </p>
         </div>
         <span className="text-sm tabular-nums text-muted-foreground">
           {peakPct == null ? t("stats.contextPeak", { n: compact(context.peak) }) : t("stats.contextPeakOf", { n: compact(context.peak), limit: compact(context.limit!), pct: peakPct })}
@@ -537,6 +541,7 @@ function Context({ stats }: { stats: StatsData }) {
                 )
               }}
             />
+            {context.compactAt != null && <ReferenceLine y={context.compactAt} stroke="var(--color-stuck)" strokeOpacity={0.7} strokeDasharray="2 4" />}
             {context.compactions.map(c => c.at != null && <ReferenceLine key={c.t} x={c.at} stroke="var(--color-waiting)" strokeDasharray="4 3" />)}
             <Area dataKey="tokens" type="stepAfter" stroke="var(--color-working)" fill="var(--color-working)" fillOpacity={0.18} strokeWidth={1.5} isAnimationActive={false} />
           </AreaChart>

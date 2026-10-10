@@ -92,6 +92,7 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
               <ContextBar session={session} high={warn("context_high")} />
               {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
             </span>
+            {!h.autoCompact && <span className="block text-xs font-normal text-muted-foreground">{t("health.compactOff")}</span>}
             {h.compaction && (
               <span className={cn("block text-xs", warn("context_high") ? "text-stuck" : "font-normal text-muted-foreground")}>
                 {h.compaction.room === 0
@@ -150,6 +151,7 @@ export function Hints({ session, now }: { session: Session; now: number }) {
     old_session: () => t("hint.old_session", { t: rough(now - session.createdAt) }),
     looping: () => t("hint.looping", { tool: h.repeat?.tool ?? "", n: h.repeat?.count ?? 0, text: h.repeat?.text ?? "" }),
     many_errors: () => t("hint.many_errors", { n: h.toolErrors }),
+    server_limit: () => t("hint.server_limit", { n: h.overflowCompactions }),
   }
   return (
     <div className="space-y-1 rounded-lg bg-stuck-soft/60 px-3 py-2 text-sm">

@@ -42,7 +42,11 @@ const PART_COLUMNS = `
   json_extract(data,'$.tokens.input') tokens_input,
   json_extract(data,'$.tokens.cache.read') tokens_cache_read,
   json_extract(data,'$.tokens.cache.write') tokens_cache_write,
-  json_extract(data,'$.tokens.output') tokens_output`;
+  json_extract(data,'$.tokens.output') tokens_output,
+  json_extract(data,'$.tokens.total') tokens_total,
+  json_extract(data,'$.auto') auto,
+  json_extract(data,'$.overflow') overflow,
+  (select json_extract(m.data,'$.summary') from message m where m.id = part.message_id) msg_summary`;
 
 export function openDb(dataDir) {
   const path = join(dataDir, 'opencode.db');
@@ -111,6 +115,7 @@ export function openDb(dataDir) {
         substr(json_extract(data,'$.state.error'),1,200) error
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
     messages: db.prepare(`select id, session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
+        json_extract(data,'$.summary') summary,
         json_extract(data,'$.providerID') provider_id,
         json_extract(data,'$.modelID') model_id,
         json_extract(data,'$.tokens.input') tokens_input,
@@ -120,7 +125,8 @@ export function openDb(dataDir) {
         json_extract(data,'$.tokens.cache.write') tokens_cache_write,
         json_extract(data,'$.cost') cost
       from message where time_created >= ?`),
-    compactions: db.prepare("select session_id, time_created from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'"),
+    compactions: db.prepare(`select session_id, time_created, json_extract(data,'$.auto') auto, json_extract(data,'$.overflow') overflow
+      from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'`),
     // Per model request: when the first token arrived, and when the model stopped writing
     // (the end of its last text, or the moment its last tool call was complete and could run).
     steps: db.prepare(`select message_id,

@@ -54,6 +54,7 @@
   "progress.lastActivity": "ความเคลื่อนไหวล่าสุด",
 
   "health.context": "Context",
+  "health.compactOff": "ปิด auto compact ไว้ใน OpenCode",
   "health.compacting": "กำลัง compact ขนาดใหม่จะแสดงหลัง request ถัดไป",
   "health.compactRoom": "เหลือ {room} ก่อนถูก compact",
   "health.compactRoomRequests": "เหลือ {room} ก่อนถูก compact ประมาณ {n} request",
@@ -71,6 +72,7 @@
   "hint.old_session": "Session นี้เปิดมาแล้ว {t}",
   "hint.looping": "เรียก {tool} แบบเดิมซ้ำ {n} ครั้งในช่วงหลัง: {text}",
   "hint.many_errors": "มี tool ที่ล้มเหลว {n} ครั้ง",
+  "hint.server_limit": "model server ปฏิเสธ request เพราะยาวเกิน {n} ครั้ง ก่อนถึงจุดที่ OpenCode จะ compact เอง แปลว่าขนาด context ของเซิร์ฟเวอร์ (llama.cpp คือ --ctx-size) น่าจะเล็กกว่า limit.context ใน opencode.json ควรตั้งให้ตรงกัน",
   "hint.new_session": "ควรเริ่ม session ใหม่",
 
   "env.model": "Model server",
@@ -230,6 +232,7 @@
   "stats.noSkills": "ไม่มีการโหลด skill",
   "stats.abandonedNote": "มี {prompts} คำถามและ {calls} การเรียก tool ที่ค้างไว้ไม่จบเพราะ session ไปต่อหรือ OpenCode ถูกปิด ไม่นับเป็นเวลารอหรือความช้า",
   "stats.context": "Context ของ session นี้",
+  "stats.contextCompactAt": "เส้นจุดคือจุดที่ OpenCode จะ compact ({n})",
   "stats.contextNote": "ขนาดของแต่ละ request ทั้ง {n} ครั้ง เรียงตามลำดับ เส้นประคือจุดที่ compaction",
   "stats.contextPeak": "สูงสุด {n} token",
   "stats.contextPeakOf": "สูงสุด {n} จาก {limit} ({pct}%)",

@@ -74,7 +74,14 @@ For a session that is still going, the page also shows how far it has got:
 
 OpenCode stores a model reply only when it starts and when it ends, so while the model is writing there is no partial text to show, only how long it has been quiet.
 
-Each session also shows its health: context used against the model's limit, number of compactions, session age, failed tool calls, and whether the same command keeps repeating. The context bar has a tick where OpenCode will compact the session: the context window less the output it keeps free for the reply (at most 32,000 tokens), or the model's `limit.input` if one is set. Under the bar the page says how many tokens are left before that and, from how much the last few requests grew, roughly how many requests. It warns once the session is 85% of the way there or 3 requests away (`thresholds.compactWarnPct`, `thresholds.compactWarnRequests`). When these look bad the page suggests starting a new session.
+Each session also shows its health: context used against the model's limit, number of compactions, session age, failed tool calls, and whether the same command keeps repeating. The context bar has a tick where OpenCode will compact the session. Nothing about that point is fixed in the monitor: it is worked out for each session with OpenCode's own rule, from the limits you set for that model in `opencode.json` (the project's file over the global one):
+
+- reply = the smaller of `limit.output` and 32,000 (or `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`)
+- a model with `limit.input`: `limit.input` − (`compaction.reserved`, or the smaller of 20,000 and reply)
+- any other model: `limit.context` − reply
+- `compaction.auto: false`: never, and the card says so
+
+So a 32,768 window with 4,096 output compacts at 28,672, and a 131,072 window with 32,768 output at 99,072. Under the bar the page says how many tokens are left before that and, from how much the last few requests grew, roughly how many requests. It warns once the session is 85% of the way there or 3 requests away (`thresholds.compactWarnPct`, `thresholds.compactWarnRequests`). When these look bad the page suggests starting a new session.
 
 ## Environment
 
@@ -196,6 +203,8 @@ By default a Discord message carries only the state, the project folder name, th
 - Model speed needs OpenCode to have recorded when a reply's first token arrived and when its text or tool call was complete. Replies without both are left out, and so are replies too short to time (under 20 output tokens for writing, under 500 new prompt tokens for reading). When a reply calls several tools, the ones that ran while the model was still writing the next call are inside the writing time.
 - In the context chart, the size a compaction left behind is the smallest of the three requests after it, because the first is usually the summarising call that still carries everything. "Read again" counts files read before a compaction and again before the next one; a file re-read for a good reason (it changed) is counted the same. Subagents have their own context and are not drawn.
 - Before and after is a split by calendar day, nothing more. It does not know what you changed or whether anything else changed with it (a different project, a different kind of task), and a session that runs across the chosen midnight has its calls counted on both sides by the day they happened.
+- The compaction point follows OpenCode's settings, not the model server's. If the server's real context is smaller than `limit.context` (for llama.cpp, `--ctx-size`), the server refuses a request before OpenCode would have compacted; OpenCode records that compaction as forced, and the monitor then says the two do not match. It cannot see the server's own setting. A model that is not in `opencode.json` or OpenCode's model catalogue has no known point, and none is guessed.
+- The rule was read from OpenCode 1.18.35 and checked against every automatic compaction in a real database (237 of 237). A later OpenCode may change it.
 - Token counts are the model server's own, per request. A server that reports none (some local servers do not report cached tokens) shows zeros, and "how big a session starts" needs the session's first request to fall inside the period.
 - A closed MCP connection is taken as OpenCode shutting down when it is the last thing a finished run logged, or when two or more servers close within two seconds. Several servers really dying in the same moment would be missed, and with a single server configured a shutdown of the running OpenCode looks like a failure.
 - MCP tool calls are attributed by name (`<server>_<tool>`). A server whose project config has since been deleted or renamed is not recognised, and its calls stay in the plain tool list.

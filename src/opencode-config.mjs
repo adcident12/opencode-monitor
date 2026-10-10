@@ -55,19 +55,49 @@ function collectLimits(limits, providers, reserves = new Map()) {
   }
 }
 
-// OpenCode never reserves more than this for the reply, whatever the model allows.
+// OpenCode's own constants (1.18): the most it ever keeps free for a reply, unless
+// OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX says otherwise, and the default reserve for models
+// that have an input limit.
 export const OUTPUT_TOKEN_MAX = 32_000;
+export const COMPACTION_RESERVED = 20_000;
+
+/** OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX, if set to a positive number. */
+export function outputTokenMaxFrom(env = process.env) {
+  const n = Number(env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 /**
- * The context size at which OpenCode compacts a session: an explicit input limit, or the
- * context window less the output it keeps free for the reply. Measured against the
- * compactions in real sessions: they all happened just above this line.
- * @returns {number|null}
+ * The size at which OpenCode compacts a session, worked out the way OpenCode itself does
+ * (SessionCompaction.isOverflow), from the limits the user set for that model:
+ *
+ *   reply  = min(limit.output, outputTokenMax) || outputTokenMax
+ *   limit.input set:  limit.input - (compaction.reserved ?? min(20 000, reply))
+ *   otherwise:        limit.context - reply
+ *
+ * It compacts when a request's total tokens reach this. null when it never compacts on its
+ * own: compaction.auto is false, or the context window is unknown or 0.
+ *
+ * @param {number|null} context  limit.context of the model
+ * @param {{output: number|null, input: number|null}} [reserve]  limit.output and limit.input
+ * @param {{auto?: boolean, reserved?: number|null, outputTokenMax?: number|null}} [settings]
  */
-export function compactionPoint(context, reserve) {
-  if (reserve?.input) return reserve.input;
-  if (!context) return null;
-  return context - Math.min(reserve?.output ?? OUTPUT_TOKEN_MAX, OUTPUT_TOKEN_MAX);
+export function compactionPoint(context, reserve, { auto = true, reserved = null, outputTokenMax = null } = {}) {
+  if (auto === false || !context) return null;
+  const max = outputTokenMax > 0 ? outputTokenMax : OUTPUT_TOKEN_MAX;
+  const reply = Math.min(reserve?.output ?? Number.NaN, max) || max;
+  if (reserve?.input) return Math.max(0, reserve.input - (reserved ?? Math.min(COMPACTION_RESERVED, reply)));
+  return Math.max(0, context - reply);
+}
+
+/** The `compaction` settings of one config file: only what decides when it happens. */
+function compactionOf(config) {
+  const c = config?.compaction;
+  if (!c || typeof c !== 'object') return {};
+  const out = {};
+  if (typeof c.auto === 'boolean') out.auto = c.auto;
+  if (Number.isFinite(c.reserved) && c.reserved >= 0) out.reserved = c.reserved;
+  return out;
 }
 
 function readJson(path) {
@@ -106,17 +136,35 @@ function readProjectJson(path) {
  * Only names, types and the enabled flag are kept; commands and credentials are not.
  */
 export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = {}) {
-  const cache = new Map(); // directory -> { at, entries }
+  const cache = new Map(); // directory -> { at, entries, limits, reserves, compaction }
 
-  function read(dir) {
+  function load(dir) {
     const hit = cache.get(dir);
-    if (hit && now() - hit.at < everyMs) return hit.entries;
-    const entries = [];
+    if (hit && now() - hit.at < everyMs) return hit;
+    const found = { at: now(), entries: [], limits: new Map(), reserves: new Map(), compaction: {} };
     if (isSafeLocalPath(dir)) {
-      for (const file of PROJECT_CONFIG_FILES) entries.push(...mcpEntries(readProjectJson(join(dir, file))));
+      for (const file of PROJECT_CONFIG_FILES) {
+        const config = readProjectJson(join(dir, file));
+        if (!config) continue;
+        found.entries.push(...mcpEntries(config));
+        collectLimits(found.limits, config.provider, found.reserves);
+        found.compaction = { ...found.compaction, ...compactionOf(config) };
+      }
     }
-    cache.set(dir, { at: now(), entries });
-    return entries;
+    cache.set(dir, found);
+    return found;
+  }
+  const read = dir => load(dir).entries;
+
+  /**
+   * What a project's own config says about model limits and compaction; empty when it says
+   * nothing. Applied over the global config, as OpenCode does.
+   * @returns {{limits: Map<string, number>, reserves: Map<string, object>, compaction: object}}
+   */
+  function settingsFor(dir) {
+    if (!dir) return { limits: new Map(), reserves: new Map(), compaction: {} };
+    const { limits, reserves, compaction } = load(dir);
+    return { limits, reserves, compaction };
   }
 
   /** @returns {{name: string, type: string|null, enabled: boolean}[]} one entry per name */
@@ -138,7 +186,7 @@ export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = 
     return [...byName.values()];
   }
 
-  return { forDirs };
+  return { forDirs, settingsFor };
 }
 
 /**
@@ -151,6 +199,7 @@ export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = 
 export function loadOpencodeConfig(configDir, env = process.env) {
   const limits = new Map();
   const reserves = new Map(); // "provider/model" -> { output, input }
+  let compaction = {}; // { auto, reserved } as the user set them
   const mcp = new Map();
   const providers = new Map();
 
@@ -162,11 +211,12 @@ export function loadOpencodeConfig(configDir, env = process.env) {
     const config = readJson(join(configDir, name));
     if (!config) continue;
     collectLimits(limits, config.provider, reserves);
+    compaction = { ...compaction, ...compactionOf(config) };
     for (const [id, provider] of Object.entries(config.provider ?? {})) {
       const baseURL = provider?.options?.baseURL;
       if (typeof baseURL === 'string' && /^https?:\/\//i.test(baseURL)) providers.set(id, { id, baseURL });
     }
     for (const entry of mcpEntries(config)) mcp.set(entry.name, { ...entry, type: entry.type ?? 'local' });
   }
-  return { limits, reserves, mcp: [...mcp.values()], providers: [...providers.values()] };
+  return { limits, reserves, compaction, mcp: [...mcp.values()], providers: [...providers.values()] };
 }

@@ -25,7 +25,7 @@ const waiting: Session = {
   since: NOW - (8 * 3600 + 10 * 60 + 42) * 1000, limitMs: null, current: null,
   prompt: { kind: "permission", permission: "read", detail: "/work/clinic-app/.env" },
   progress: { lastActivityAt: NOW - 8 * 3_600_000, steps: [], todos: null },
-  health: { contextTokens: 54_000, contextLimit: 131_072, contextPct: 41, compaction: { at: 99_072, room: 44_000, growth: 5500, requestsLeft: 8 }, compacting: false, compactions: 0, toolCalls: 9, toolErrors: 0, lastError: null, repeat: null, hints: ["old_session"], suggestNewSession: true },
+  health: { contextTokens: 54_000, contextLimit: 131_072, contextPct: 41, compaction: { at: 99_072, room: 44_000, growth: 5500, requestsLeft: 8 }, compacting: false, overflowCompactions: 0, autoCompact: true, compactions: 0, toolCalls: 9, toolErrors: 0, lastError: null, repeat: null, hints: ["old_session"], suggestNewSession: true },
   work: { files: { count: 0, recent: [] }, git: { branch: "main", detached: false, state: "ok" }, warnProtected: true, warnUnknownBranch: false, running: { failed: false, items: [{ pid: 4242, pids: [4242, 4243], name: "cmd.exe", command: "cmd /c npm run dev", startedAt: NOW - 600_000, ports: [3000], processes: 2, from: "Start-Process npm -ArgumentList run,dev" }] } },
   review: {
     counts: { risky: 0, secret_value: 0, secret_file: 1, outbound: 0, background: 0 }, total: 1, more: 0, ignored: 0,

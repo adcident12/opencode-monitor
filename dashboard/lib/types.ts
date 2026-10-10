@@ -66,6 +66,10 @@ export interface Session {
     compaction: { at: number; room: number; growth: number | null; requestsLeft: number | null } | null
     /** Compacted, and no ordinary request since: the size of the new context is not known yet. */
     compacting: boolean
+    /** Compactions forced by the model server refusing a request as too long. */
+    overflowCompactions: number
+    /** false when compaction.auto is off in OpenCode's config: it will not compact by itself. */
+    autoCompact: boolean
     compactions: number
     toolCalls: number
     toolErrors: number
@@ -222,6 +226,8 @@ export interface Stats {
   /** Only with one session selected: how its context filled and where it was compacted. */
   context: {
     limit: number | null
+    /** Where OpenCode compacts this session, by its own rule. null: unknown, or switched off. */
+    compactAt: number | null
     peak: number
     requests: number
     points: { t: number; tokens: number }[]
@@ -261,6 +267,7 @@ export interface Stats {
     toolCalls: number
     toolErrors: number
     compactions: number
+    serverLimitCompactions: number
   }
   waits: { at: number; kind: "permission" | "question"; permission: string | null; detail: string; waitMs: number; answered: boolean; abandoned: boolean; project: string; title: string }[]
   slow: { at: number; tool: string; text: string; runMs: number; status: string; running: boolean; project: string; title: string }[]

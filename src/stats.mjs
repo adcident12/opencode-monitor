@@ -16,8 +16,6 @@ const MIN_PROMPT_TOKENS = 500;
 const MIN_TIMED_MS = 300;
 const TOP_MODELS = 6;
 const MAX_CONTEXT_POINTS = 240;
-// How many requests after a compaction to look at for the context it left behind.
-const SETTLE_REQUESTS = 3;
 
 /** Local calendar day, YYYY-MM-DD. */
 export function dayKey(t) {
@@ -183,7 +181,7 @@ export function summarize(stats, model = null) {
  * @param {number[]} compactions  times, ascending
  * @param {object[]} reads        { t, file } of its completed read calls, oldest first
  */
-export function contextTimeline({ requests, compactions, reads, limit = null }) {
+export function contextTimeline({ requests, compactions, reads, limit = null, compactAt = null }) {
   if (!requests.length) return null;
   const edges = [...compactions, Infinity];
   const marks = compactions.map((t, i) => {
@@ -194,9 +192,8 @@ export function contextTimeline({ requests, compactions, reads, limit = null }) 
       // Index of the first request after the compaction, to place it on the chart.
       at: requests.findIndex(r => r.t >= t),
       before: requests.findLast(r => r.t < t)?.tokens ?? null,
-      // The first request after the marker is usually the summarising call itself, which
-      // still carries the whole context; the smaller context shows a request or two later.
-      after: requests.filter(r => r.t >= t && r.t < edges[i + 1]).slice(0, SETTLE_REQUESTS).reduce((low, r) => (low == null || r.tokens < low ? r.tokens : low), null),
+      // Summaries are left out of `requests`, so this is the first request in the new context.
+      after: requests.find(r => r.t >= t && r.t < edges[i + 1])?.tokens ?? null,
       reread: again.size,
     };
   });
@@ -209,6 +206,7 @@ export function contextTimeline({ requests, compactions, reads, limit = null }) 
   }
   return {
     limit,
+    compactAt,
     peak: Math.max(...requests.map(r => r.tokens)),
     requests: requests.length,
     points: points.map(p => ({ t: p.t, tokens: p.tokens })),
@@ -269,7 +267,7 @@ function tallyRequests(ctx, messages, steps) {
     const sent = tokensSent(m);
     const b = ctx.bucket(m.time_created);
     if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
-    if (m.session_id === ctx.sessionId && sent > 0) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
+    if (m.session_id === ctx.sessionId && sent > 0 && !m.summary) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
     usage.requests++;
     usage.input += m.tokens_input ?? 0;
     usage.cacheRead += m.tokens_cache_read ?? 0;
@@ -418,7 +416,7 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0 }]));
@@ -462,6 +460,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     toolCalls: sum('toolCalls'),
     toolErrors: sum('toolErrors'),
     compactions: sum('compactions'),
+    // Compactions OpenCode did because the model server refused a request as too long.
+    serverLimitCompactions: compactions.filter(c => c.overflow && c.time_created >= from && inScope(c.session_id)).length,
     // Files read three or more times within one session.
     rereads: [...reads.values()].filter(n => n >= 3).length,
   };
@@ -489,6 +489,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
           compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
           reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
           limit: own.length ? contextLimit(own.at(-1).provider, own.at(-1).model) : null,
+          compactAt: own.length ? compactAt(own.at(-1).provider, own.at(-1).model, sessionById.get(sessionId)?.directory) : null,
         })
       : null,
     speed: computeSpeed({ requests: timed, keys, show }),

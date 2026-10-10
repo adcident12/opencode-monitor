@@ -8,7 +8,7 @@ import { ROOT, HELP, VERSION, UserError, parseArgs, loadConfig } from './config.
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
 import { createRedactor } from './redact.mjs';
-import { createProjectMcp, loadOpencodeConfig } from './opencode-config.mjs';
+import { createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './opencode-config.mjs';
 import { createEnvironment } from './environment.mjs';
 import { createGitProbe } from './git.mjs';
 import { createLeftoverProbe } from './leftovers.mjs';
@@ -70,6 +70,8 @@ export async function main(argv) {
     redact: createRedactor(cfg.redact),
     modelLimits: opencode.limits,
     modelReserves: opencode.reserves,
+    compactionSettings: opencode.compaction,
+    outputTokenMax: outputTokenMaxFrom(),
     mcpNames: opencode.mcp.map(server => server.name),
   });
   const notify = createNotifier(cfg.notify, loadTranslator(cfg.lang));
@@ -98,7 +100,7 @@ export async function main(argv) {
   tick();
   setInterval(tick, cfg.pollMs);
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const allowedHosts = new Set([`127.0.0.1:${cfg.port}`, `localhost:${cfg.port}`]);
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).

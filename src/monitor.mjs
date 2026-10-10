@@ -32,7 +32,7 @@ function touch(files, path, at) {
  * @param {object} [deps.environment]  from createEnvironment
  * @param {object} [deps.git]          from createGitProbe
  */
-export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
+export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
@@ -141,8 +141,15 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     provider ??= lastAssistant?.provider_id;
     model ??= lastAssistant?.model_id;
     const key = `${provider}/${model}`;
-    const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? modelLimits.get(key) ?? cfg.contextLimit.default;
-    return { model: model ?? null, limit: limit ?? null, compactAt: compactionPoint(limit ?? null, modelReserves.get(key)) };
+    const project = projectMcp?.settingsFor(session.directory);
+    // What OpenCode itself uses for this session: the project's config over the global one.
+    const opencodeLimit = project?.limits.get(key) ?? modelLimits.get(key) ?? null;
+    const reserve = project?.reserves.get(key) ?? modelReserves.get(key);
+    const settings = { ...compactionSettings, ...project?.compaction, outputTokenMax };
+    // config.json can name a window the monitor could not read; OpenCode's own value wins
+    // for the compaction point, because that is the one OpenCode compacts by.
+    const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? opencodeLimit ?? cfg.contextLimit.default;
+    return { model: model ?? null, limit: limit ?? null, autoCompact: settings.auto !== false, compactAt: compactionPoint(opencodeLimit ?? limit ?? null, reserve, settings) };
   }
 
   const shortPath = (file, root) => {
@@ -260,8 +267,8 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     const { sorted: parts, maxUpdated, digest } = loadParts(session.id);
     const messages = db.lastMessages(session.id);
     const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running });
-    const { model, limit, compactAt } = contextLimitFor(session, messages);
-    const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt });
+    const { model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
+    const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt, autoCompact });
     const progress = deriveProgress({ parts, messages, todos: db.todos(session.id) });
 
     return {

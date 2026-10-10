@@ -3,6 +3,7 @@
 import { computeStats, summarize } from './stats.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
+import { compactionPoint } from './opencode-config.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
 const CACHE_MS = 60_000;
@@ -31,7 +32,14 @@ function compareAround(split, whole, input) {
  * @param {object} [deps.projectMcp]    from createProjectMcp
  * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
  */
-export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map() }) {
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null }) {
+  // Where OpenCode compacts a session of this model in this directory: its own rule, with
+  // the project's config over the global one.
+  const compactAt = (provider, model, directory) => {
+    const key = `${provider}/${model}`;
+    const project = projectMcp?.settingsFor(directory);
+    return compactionPoint(project?.limits.get(key) ?? modelLimits.get(key) ?? null, project?.reserves.get(key) ?? modelReserves.get(key), { ...compactionSettings, ...project?.compaction, outputTokenMax });
+  };
   // The same order the live page uses: config.json first, then OpenCode's own config.
   const contextLimit = (provider, model) => {
     const key = `${provider}/${model}`;
@@ -79,6 +87,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       sessions,
       sessionId,
       contextLimit,
+      compactAt,
       mcp: { servers: mergeServers(mcpServers, projectServers), events: log.mcpEvents(), logFrom: log.firstAt() },
       tools,
       messages: db.stats.messages(since),

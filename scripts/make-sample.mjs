@@ -153,8 +153,6 @@ export function buildSample(dir, now = Date.now()) {
     message(sid, 'user', 30 * MIN);
     const mid = message(sid, 'assistant', 29 * MIN, assistant({ finish: 'tool-calls', time: { created: now - 29 * MIN, completed: now - 2 * MIN } }));
     for (let i = 0; i < 19; i++) part(sid, mid, 28 * MIN - i * 1000, { type: 'compaction', auto: true });
-    // As in OpenCode, the request right after a compaction is the summary, still the old size.
-    part(sid, mid, 27 * MIN, stepFinish('stop', 118_000));
     for (let i = 0; i < 5; i++) {
       part(sid, mid, 20 * MIN - i * MIN, tool('bash', i % 2 ? 'error' : 'completed', { command: 'npx prisma migrate dev' }, 20 * MIN - i * MIN, i % 2 ? { error: 'Error: P3006 migration failed to apply' } : { output: 'ok' }));
     }

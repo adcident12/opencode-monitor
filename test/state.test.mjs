@@ -101,7 +101,7 @@ test('health: context, compactions, errors, repeats, hints', () => {
     ...Array.from({ length: 4 }, (_, i) => ({ type: 'compaction', time_updated: i })),
     ...Array.from({ length: 3 }, (_, i) => tool(m, 'bash', i ? 'error' : 'completed', i + 1, { input: '{"command":"npm test"}', input_len: 22, cmd: 'npm test', error: 'boom' })),
     tool(m, 'read', 'completed', 9, { input: '{"filePath":"a"}', input_len: 16, file: 'a' }),
-    { type: 'step-finish', tokens_input: 500, tokens_cache_read: 90_000, tokens_cache_write: 0 }, // the summary
+    { type: 'step-finish', tokens_input: 500, tokens_cache_read: 90_000, tokens_cache_write: 0, msg_summary: 1 }, // the summary
     { type: 'step-finish', tokens_input: 2000, tokens_cache_read: 118_000, tokens_cache_write: 0 },
   ];
   const h = deriveHealth({ session: { time_created: NOW - 7 * 60 * MIN }, parts, now: NOW, thresholds, contextLimit: 131_072 });
@@ -141,8 +141,15 @@ test('health: room before OpenCode compacts, and roughly how many requests that 
   const at = compactionPoint(131_072, { output: 32_768, input: null });
   assert.equal(at, 99_072);
   assert.equal(compactionPoint(131_072, { output: 8192, input: null }), 122_880);
-  assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }), 150_000);
+  // An input limit: less the reserve, 20 000 by default or compaction.reserved.
+  assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }), 130_000);
+  assert.equal(compactionPoint(200_000, { output: 8000, input: 150_000 }), 142_000);
+  assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }, { reserved: 5000 }), 145_000);
+  // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX changes the cap; compaction.auto false means never.
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { outputTokenMax: 16_000 }), 115_072);
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { auto: false }), null);
   assert.equal(compactionPoint(null, null), null);
+  assert.equal(compactionPoint(0, { output: 100, input: null }), null);
 
   const step = (sent, out = 500) => ({ type: 'step-finish', tokens_input: 1000, tokens_cache_read: sent - 1000, tokens_cache_write: 0, tokens_output: out });
   const health = parts => deriveHealth({ session: { time_created: NOW - MIN }, parts, now: NOW, thresholds, contextLimit: 131_072, compactAt: at });
@@ -174,9 +181,22 @@ test('health: right after a compaction the old size is not shown, and the summar
   assert.deepEqual([marked.compacting, marked.contextTokens, marked.compaction], [true, null, null]);
   assert.ok(!marked.hints.includes('context_high'));
   // The summary sent the whole old context (97k): still compacting, not "at the limit".
-  const summarised = health([...before, { type: 'compaction' }, step(97_500)]);
+  const summarised = health([...before, { type: 'compaction' }, { ...step(97_500), msg_summary: 1 }]);
   assert.deepEqual([summarised.compacting, summarised.contextTokens], [true, null]);
   // The first ordinary request shows the new, smaller context.
-  const after = health([...before, { type: 'compaction' }, step(97_500), step(41_000)]);
+  const after = health([...before, { type: 'compaction' }, { ...step(97_500), msg_summary: 1 }, step(41_000)]);
   assert.deepEqual([after.compacting, after.contextTokens, after.compaction.room], [false, 41_000, 99_072 - 41_500]);
+});
+
+test('health: the request total OpenCode compares is used, and a compaction the server forced is named', () => {
+  const parts = [
+    { type: 'step-finish', tokens_input: 1000, tokens_cache_read: 60_000, tokens_cache_write: 0, tokens_output: 500, tokens_total: 64_000 },
+    { type: 'compaction', overflow: 1 },
+    { type: 'step-finish', tokens_input: 1000, tokens_cache_read: 60_000, tokens_cache_write: 0, tokens_output: 500, msg_summary: 1 },
+    { type: 'step-finish', tokens_input: 1000, tokens_cache_read: 29_000, tokens_cache_write: 0, tokens_output: 500, tokens_total: 31_000 },
+  ];
+  const h = deriveHealth({ session: { time_created: NOW - MIN }, parts, now: NOW, thresholds, contextLimit: 131_072, compactAt: 99_072 });
+  assert.equal(h.compaction.room, 99_072 - 31_000);
+  assert.equal(h.overflowCompactions, 1);
+  assert.ok(h.hints.includes('server_limit'));
 });

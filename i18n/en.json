@@ -54,6 +54,7 @@
   "progress.lastActivity": "Last activity",
 
   "health.context": "Context",
+  "health.compactOff": "automatic compaction is off in OpenCode",
   "health.compacting": "being compacted; the new size shows after the next request",
   "health.compactRoom": "{room} left before it is compacted",
   "health.compactRoomRequests": "{room} left before it is compacted · about {n} requests at this pace",
@@ -71,6 +72,7 @@
   "hint.old_session": "This session has been open for {t}.",
   "hint.looping": "The same {tool} call ran {n} times recently: {text}",
   "hint.many_errors": "{n} tool calls have failed.",
+  "hint.server_limit": "The model server refused a request as too long {n} times, before OpenCode would have compacted. Its context size (for llama.cpp, --ctx-size) is probably smaller than limit.context in opencode.json; make them match.",
   "hint.new_session": "Consider starting a new session.",
 
   "env.model": "Model server",
@@ -230,6 +232,7 @@
   "stats.noSkills": "No skills were loaded.",
   "stats.abandonedNote": "{prompts} prompts and {calls} tool calls were left unfinished when a session moved on or OpenCode closed. They are not counted as waiting or as slow.",
   "stats.context": "Context of this session",
+  "stats.contextCompactAt": "The dotted line is where OpenCode compacts ({n}).",
   "stats.contextNote": "Size of each of its {n} requests, in order. Dashed lines are compactions.",
   "stats.contextPeak": "peak {n} tokens",
   "stats.contextPeakOf": "peak {n} of {limit} ({pct}%)",

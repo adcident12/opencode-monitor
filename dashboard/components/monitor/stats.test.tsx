@@ -32,7 +32,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
   stuckMs: 600_000,
   daily: [],
-  totals: { sessions: 1, activeMs: 0, waitMs: 0, prompts: 0, open: 0, abandoned: 0, medianAnswerMs: null, stuck: 0, abandonedCalls: 0, toolCalls: 43, toolErrors: 8, compactions: 0 },
+  totals: { sessions: 1, activeMs: 0, waitMs: 0, prompts: 0, open: 0, abandoned: 0, medianAnswerMs: null, stuck: 0, abandonedCalls: 0, toolCalls: 43, toolErrors: 8, compactions: 0, serverLimitCompactions: 0 },
   waits: [], slow: [], tools: [], explore: { graft: 0, other: 0 }, skills: [],
   rereads: Array.from({ length: 12 }, (_, i) => ({ file: `/src/file${i}.ts`, count: 20 - i, project: "shop", title: "Checkout flow" })),
   ...extra,
@@ -56,7 +56,7 @@ beforeEach(() => {
         return Response.json(figures({ compare: { split, model: "local-llama/qwen3.8-27b-v3", before: summary(), after } }))
       }
       const one = url.includes("session=ses_shop")
-      const context = { limit: 131_072, peak: 120_000, requests: 4, rereadAfterCompaction: 3, points: [30_000, 120_000, 35_000, 60_000].map((tokens, i) => ({ t: NOW + i, tokens })), compactions: [{ t: NOW + 2, at: 2, before: 120_000, after: 35_000, reread: 3 }] }
+      const context = { limit: 131_072, compactAt: 99_072, peak: 120_000, requests: 4, rereadAfterCompaction: 3, points: [30_000, 120_000, 35_000, 60_000].map((tokens, i) => ({ t: NOW + i, tokens })), compactions: [{ t: NOW + 2, at: 2, before: 120_000, after: 35_000, reread: 3 }] }
       return Response.json(figures(one ? { context, session: { id: "ses_shop", title: "Checkout flow", project: "shop" }, mcp: [server("memory", { unused: true, disconnects: null, startFailures: null })] } : {}))
     }
     const code = /\/i18n\/(\w+)\.json$/.exec(url)?.[1] ?? "en"

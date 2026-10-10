@@ -159,11 +159,11 @@ function growthOf(sizes) {
 /**
  * @param {number|null} [compactAt] context size at which OpenCode compacts (compactionPoint)
  */
-export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null }) {
+export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null, autoCompact = true }) {
   let contextTokens = null;
   let sizes = []; // what each request counted against compaction, since the last compaction
-  let summaryPending = false; // a compaction was marked and its summarising request is not done
   let compacting = false; // compacted, and no ordinary request has run since
+  let overflowCompactions = 0; // compactions forced by the model server refusing the request
   let compactions = 0;
   let toolCalls = 0;
   let toolErrors = 0;
@@ -173,20 +173,17 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   for (const p of parts) {
     if (p.type === 'step-finish') {
       const sent = (p.tokens_input ?? 0) + (p.tokens_cache_read ?? 0) + (p.tokens_cache_write ?? 0);
-      // The first request after a compaction is the summary itself: it still sends the whole
-      // old context, so it says nothing about the new one.
-      if (summaryPending) {
-        summaryPending = false;
-        continue;
-      }
+      // The summary that a compaction writes still sends the whole old context, so it says
+      // nothing about the new one. OpenCode marks its message as a summary.
+      if (p.msg_summary) continue;
       compacting = false;
       contextTokens = sent;
-      // OpenCode counts the reply too when it decides to compact.
-      if (sent > 0) sizes.push(sent + (p.tokens_output ?? 0));
+      // What OpenCode compares with the compaction point: the request's total.
+      if (sent > 0) sizes.push(p.tokens_total || sent + (p.tokens_output ?? 0));
     } else if (p.type === 'compaction') {
       compactions++;
+      if (p.overflow) overflowCompactions++;
       sizes = [];
-      summaryPending = true;
       compacting = true;
     } else if (p.type === 'tool') {
       toolCalls++;
@@ -228,10 +225,13 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   if (compactions >= thresholds.compactionWarn) hints.push('many_compactions');
   if (ageMs >= thresholds.sessionAgeWarnHours * 3_600_000) hints.push('old_session');
   if (repeat) hints.push('looping');
+  // The model server turned a request away before OpenCode's own limit was reached: its
+  // context size is smaller than limit.context in opencode.json.
+  if (overflowCompactions) hints.push('server_limit');
   if (toolErrors >= thresholds.toolErrorWarn) hints.push('many_errors');
 
   return {
-    contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction, compacting,
+    contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction, compacting, overflowCompactions, autoCompact,
     compactions, toolCalls, toolErrors, lastError,
     repeat: repeat ? { count: repeat.count, tool: repeat.part.tool, text: describePart(repeat.part) } : null,
     hints,

@@ -53,10 +53,13 @@ test('a project config adds servers and can switch a globally disabled one on', 
 
 test('project configs are read for MCP names only, and not from a network path', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ocm-mcp-'));
-  writeFileSync(join(dir, 'opencode.json'), '{ "mcp": { "godot": { "type": "local", "command": ["godot-mcp"], "environment": { "TOKEN": "secret" } } } }');
+  writeFileSync(join(dir, 'opencode.json'), '{ "mcp": { "godot": { "type": "local", "command": ["godot-mcp"], "environment": { "TOKEN": "secret" } } }, "compaction": { "auto": false }, "provider": { "llama": { "models": { "small": { "limit": { "context": 32768, "output": 4096 } } } } } }');
   mkdirSync(join(dir, '.opencode'));
   writeFileSync(join(dir, '.opencode', 'opencode.jsonc'), '{ /* per project */ "mcp": { "open-design": { "enabled": true }, "off": { "enabled": false } } }');
   const project = createProjectMcp();
+  // The same files say how this project's sessions are compacted.
+  const settings = project.settingsFor(dir);
+  assert.deepEqual([settings.limits.get('llama/small'), settings.reserves.get('llama/small'), settings.compaction], [32_768, { output: 4096, input: null }, { auto: false }]);
   assert.deepEqual(project.forDirs([dir, '\\\\server\\share\\repo', join(dir, 'missing')]), [
     { name: 'godot', type: 'local', enabled: true },
     { name: 'open-design', type: null, enabled: true },
