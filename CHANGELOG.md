@@ -3,6 +3,21 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 8.1.0 - 2026-10-10
+
+Notifications you can check, and one rhythm for every tab.
+
+- **Fixed:** with four tabs the tab bar was wider than a 360px screen, so the whole page
+  scrolled sideways on a phone (since 8.0.0).
+- Every notification is kept with how each channel answered, shown on the This machine tab
+  and printed as it is sent. A refused message is warned about instead of vanishing.
+- `--test-notify` sends one sample of every kind in `notify.on` through the same code as the
+  real ones, so "stuck" and "about to be compacted" are tested, not only the channel.
+- "About to be compacted" is announced once per compaction. It could be sent twice when the
+  estimate of requests left moved out of the warning and back.
+- All four tabs share one definition of spacing, chapter headings and table heads; History
+  gains its two chapters, and tables end flush with the right edge.
+
 ## 8.0.0 - 2026-10-10
 
 Made to work well on a machine that is not the author's.

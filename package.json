@@ -1,6 +1,6 @@
 {
   "name": "opencode-monitor",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "description": "Local, read-only status page for OpenCode: is the agent working, waiting for you, stuck, finished, or failed?",
   "license": "MIT",
   "repository": "github:adcident12/opencode-monitor",
