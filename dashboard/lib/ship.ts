@@ -32,10 +32,12 @@ export function layout(count: number, columns = COLUMNS) {
   const width = shipWidth(columns)
   const rows = Math.max(1, Math.ceil(count / columns))
   const left = Math.round((width - columns * STATION_W) / 2)
-  const stations = Array.from({ length: count }, (_, i) => ({
-    x: left + (i % columns) * STATION_W,
-    y: HULL_TOP + Math.floor(i / columns) * STATION_H,
-  }))
+  const stations = Array.from({ length: count }, (_, i) => {
+    const row = Math.floor(i / columns)
+    // A row that is not full stands in the middle of the bridge, not against its left wall.
+    const inRow = Math.min(columns, count - row * columns)
+    return { x: left + ((columns - inRow) * STATION_W) / 2 + (i % columns) * STATION_W, y: HULL_TOP + row * STATION_H }
+  })
   return { stations, width, height: HULL_TOP + rows * STATION_H + 8 }
 }
 
@@ -43,6 +45,19 @@ const SHELL = new Set(["bash", "shell", "pwsh", "powershell"])
 const CODE = new Set(["edit", "write", "patch", "multiedit", "apply_patch"])
 const READ = new Set(["read", "grep", "glob", "list", "ls"])
 const WEB = new Set(["webfetch", "websearch", "fetch"])
+
+/** The screen for the tool being run: one rule for the live bridge and for a replay. */
+export function screenForTool(name: string | null | undefined): Screen {
+  const tool = (name ?? "").toLowerCase()
+  if (!tool) return "think"
+  if (SHELL.has(tool)) return "shell"
+  if (CODE.has(tool)) return "code"
+  if (READ.has(tool)) return "read"
+  if (tool === "task") return "task"
+  // An MCP tool is named <server>_<tool>: it reaches outside, like the web.
+  if (WEB.has(tool) || tool.includes("_")) return "web"
+  return "think"
+}
 
 /** The screen for a session: its state first, then, while it works, the tool it is running. */
 export function screenOf(s: Session): Screen {
@@ -52,15 +67,7 @@ export function screenOf(s: Session): Screen {
   if (s.state === "finished") return "done"
   if (s.state === "idle") return "off"
   if (s.health.compacting || s.reason === "compacting") return "compact"
-  const tool = s.current?.tool?.toLowerCase() ?? ""
-  if (!tool) return "think"
-  if (SHELL.has(tool)) return "shell"
-  if (CODE.has(tool)) return "code"
-  if (READ.has(tool)) return "read"
-  if (tool === "task") return "task"
-  // An MCP tool is named <server>_<tool>: it reaches outside, like the web.
-  if (WEB.has(tool) || tool.includes("_")) return "web"
-  return "think"
+  return screenForTool(s.current?.tool)
 }
 
 /**
@@ -84,6 +91,16 @@ export function bubbleOf(s: Session, now: number, t: (key: string, vars?: Record
   if (s.state === "error") return t("ship.bubble.error")
   if (s.state === "finished") return t("ship.bubble.finished")
   return null
+}
+
+/**
+ * The name on a station's tag: its folder, or its title when another station on the bridge
+ * is in the same folder, so that two sessions of one project can be told apart.
+ */
+export function tagOf(s: Session, crew: Session[]) {
+  const folder = (x: Session) => x.project || x.title || x.id
+  const shared = crew.some(other => other.id !== s.id && folder(other) === folder(s))
+  return shared ? s.title || folder(s) : folder(s)
 }
 
 /** The same person at the same station every time: a look picked from the session id. */

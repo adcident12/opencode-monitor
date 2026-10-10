@@ -3,13 +3,14 @@
 import { ChartColumnIcon, HistoryIcon, PauseIcon, PlayIcon, RotateCcwIcon, SkipBackIcon, SkipForwardIcon } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { duration, kilo, stopwatch } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useReplay, useReplaySessions } from "@/lib/live"
 import { clockOf, eventsOf, figuresAt, screenAt, segAt, stateAt, toolOf, type Replay as ReplayData, type ReplayEvent, type ReplayState, type Seg } from "@/lib/replay"
-import { drawScene, toolsOf } from "@/lib/replay-scene"
+import { drawScene, toolInUse, toolsOf, type SceneInput } from "@/lib/replay-scene"
 import { layout, lookOf } from "@/lib/ship"
 import { drawShip } from "@/lib/ship-draw"
 import { cn } from "@/lib/utils"
@@ -19,7 +20,14 @@ import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
 /** Times real time: 1 plays a session as it happened. */
-const SPEEDS = [1, 30, 60, 180] as const
+const SPEEDS = [1, 1.5, 2.5, 3, 30, 60, 180] as const
+type Speed = (typeof SPEEDS)[number]
+const SPEED_ITEMS = SPEEDS.map(s => ({ value: String(s), label: `${s}×` }))
+/** The tools given a place of their own in the picture; the rest share one. */
+const TOOLS_SHOWN = 6
+/** How long the dot takes from the agent to a tool, and how long a line stays after its call, in ms on screen. */
+const TRAVEL_MS = 1500
+const GLOW_MS = 700
 /** The events kept in view; the list keeps room for this many, so it never grows while playing. */
 const EVENTS_SHOWN = 7
 const FRAME_MS = 125
@@ -80,7 +88,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
   const clock = useMemo(() => clockOf(replay, skip), [replay, skip])
   const [play, setPlay] = useState(0) // ms of playback
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(60)
+  const [speed, setSpeed] = useState<Speed>(60)
   const frame = useFrame()
 
   // Playing: playback time moves at `speed` times real time, until the end.
@@ -107,7 +115,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
   const figures = figuresAt(replay, now)
   const events = useMemo(() => eventsOf(replay), [replay])
   // A moment within a millisecond of the playhead is the playhead: going back twice goes back twice.
-  const before = events.findLast(e => e.at < now - 1)
+  const before = events.findLast(e => e.at < now - 2)
   const after = events.find(e => e.at > now + 1)
   const at = (ms: number) => new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(ms)
   const toggleSkip = (on: boolean) => {
@@ -116,6 +124,9 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
     setSkip(on)
     setPlay(clockOf(replay, on).toPlay(real))
   }
+  // To a moment of the session, from any part of the page: a millisecond past it, so that
+  // what happened then has happened, in the list as in the picture.
+  const goTo = (real: number) => setPlay(Math.min(clock.length, clock.toPlay(real) + 1))
   const ended = play >= clock.length
   const togglePlay = () => {
     // At the end, playing again starts over.
@@ -147,10 +158,10 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
           {t(playLabel)}
         </Button>
         <div className="flex items-center gap-0.5">
-          <Hint label={t("replay.previous")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.previous")} disabled={!before} onClick={() => before && setPlay(clock.toPlay(before.at))} />}>
+          <Hint label={t("replay.previous")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.previous")} disabled={!before} onClick={() => before && goTo(before.at)} />}>
             <SkipBackIcon aria-hidden />
           </Hint>
-          <Hint label={t("replay.next")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.next")} disabled={!after} onClick={() => after && setPlay(clock.toPlay(after.at))} />}>
+          <Hint label={t("replay.next")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.next")} disabled={!after} onClick={() => after && goTo(after.at)} />}>
             <SkipForwardIcon aria-hidden />
           </Hint>
         </div>
@@ -171,14 +182,21 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
           aria-label={t("replay.position")}
           className="h-2 min-w-40 flex-1 cursor-pointer accent-[var(--color-working)]"
         />
-        <fieldset className="inline-flex rounded-lg border bg-card p-0.5">
-          <legend className="sr-only">{t("replay.speed")}</legend>
-          {SPEEDS.map(s => (
-            <button key={s} type="button" aria-pressed={speed === s} onClick={() => setSpeed(s)} className={cn("h-7 rounded-md px-2.5 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring", speed === s ? "bg-muted font-medium" : "text-muted-foreground hover:text-foreground")}>
-              {s}×
-            </button>
-          ))}
-        </fieldset>
+        <label className="inline-flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">{t("replay.speed")}</span>
+          <Select value={String(speed)} onValueChange={next => setSpeed(SPEEDS.find(s => String(s) === next) ?? speed)} items={SPEED_ITEMS}>
+            <SelectTrigger size="sm" aria-label={t("replay.speed")} className="w-22 tabular-nums">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SPEED_ITEMS.map(item => (
+                <SelectItem key={item.value} value={item.value} className="tabular-nums">
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
         <label className="inline-flex items-center gap-2 text-sm">
           <Switch checked={skip} onCheckedChange={toggleSkip} aria-describedby="replay-skip-note" />
           {t("replay.skip")}
@@ -195,7 +213,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
             <Station replay={replay} now={now} play={play} state={state} seg={seg} busy={figures.busy.length} frame={frame} clock={clock} />
           </div>
           <div className="order-3">
-            <Scene replay={replay} now={now} state={state} seg={seg} frame={frame} />
+            <Scene replay={replay} now={now} state={state} seg={seg} />
           </div>
         </div>
         <div className="contents lg:flex lg:flex-col lg:gap-6">
@@ -203,7 +221,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
             <Moment replay={replay} now={now} state={state} seg={seg} figures={figures} />
           </div>
           <div className="order-4">
-            <Story replay={replay} events={events} now={now} figures={figures} at={at} />
+            <Story replay={replay} events={events} now={now} figures={figures} at={at} onSeek={goTo} />
           </div>
         </div>
       </div>
@@ -293,11 +311,12 @@ function Moment({ replay, now, state, seg, figures }: Readonly<{ replay: ReplayD
 
   return (
     <section aria-label={t("replay.moment")} className="space-y-4 rounded-xl border bg-card p-5">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="flex h-6 items-center gap-x-3 overflow-hidden whitespace-nowrap">
         <StateBadge state={state} label={t(`state.${state}`)} />
-        {seg && <span className="text-sm text-muted-foreground tabular-nums">{t("replay.for", { t: duration(now - seg[0]) })}</span>}
+        {seg && <span className="truncate text-sm text-muted-foreground tabular-nums">{t("replay.for", { t: duration(now - seg[0]) })}</span>}
       </div>
-      <Hint label={doing} onlyWhenCut render={<p />} className="line-clamp-3 min-h-[4.5em] text-base break-words">
+      {/* Three lines, always: a letter from another alphabet makes a line taller, and must not make the panel taller. */}
+      <Hint label={doing} onlyWhenCut render={<p />} className="line-clamp-3 h-18 text-base leading-6 break-words">
         {doing}
       </Hint>
       <Facts
@@ -309,7 +328,7 @@ function Moment({ replay, now, state, seg, figures }: Readonly<{ replay: ReplayD
         ]}
       />
       <div className="space-y-1.5">
-        <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground tabular-nums">
+        <div className="flex h-4 items-center justify-between gap-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           <span>{t("health.context")}</span>
           <span>{contextText}</span>
         </div>
@@ -317,9 +336,9 @@ function Moment({ replay, now, state, seg, figures }: Readonly<{ replay: ReplayD
           {ctx != null && limit != null && <span className={cn("absolute inset-y-0 left-0 rounded-full", point != null && ctx >= point * 0.85 ? "bg-waiting" : "bg-working")} style={{ width: `${Math.min(100, (ctx / limit) * 100)}%` }} />}
           {point != null && limit != null && <span aria-hidden className="absolute -inset-y-1 w-0.5 rounded-full bg-foreground" style={{ left: `${(point / limit) * 100}%` }} />}
         </div>
-        <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground tabular-nums">
-          <span>{ctx != null && point != null ? t("replay.room", { n: kilo(Math.max(0, point - ctx)) }) : ""}</span>
-          <span>{point != null ? t("replay.tick", { n: kilo(point) }) : t("replay.noPoint")}</span>
+        <div className="flex h-4 items-center justify-between gap-3 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+          <span className="truncate">{ctx != null && point != null ? t("replay.room", { n: kilo(Math.max(0, point - ctx)) }) : ""}</span>
+          <span className="shrink-0">{point != null ? t("replay.tick", { n: kilo(point) }) : t("replay.noPoint")}</span>
         </div>
       </div>
     </section>
@@ -330,39 +349,71 @@ function Moment({ replay, now, state, seg, figures }: Readonly<{ replay: ReplayD
  * The agent and the tools it reaches for, at that moment: a line runs to the tool in use,
  * subagents appear while they work, and while it waits for you the line runs to you.
  */
-function Scene({ replay, now, state, seg, frame }: Readonly<{ replay: ReplayData; now: number; state: ReplayState; seg: Seg | null; frame: number }>) {
+function Scene({ replay, now, state, seg }: Readonly<{ replay: ReplayData; now: number; state: ReplayState; seg: Seg | null }>) {
   const { t } = useI18n()
   const canvas = useRef<HTMLCanvasElement>(null)
-  const tools = useMemo(() => toolsOf(replay), [replay])
+  // More tools than places: the last place is for all the others, named while one is in use.
+  const all = useMemo(() => toolsOf(replay, Infinity), [replay])
+  const crowded = all.length > TOOLS_SHOWN
+  const tools = crowded ? all.slice(0, TOOLS_SHOWN - 1) : all
   const busy = figuresAt(replay, now).busy
-  useEffect(() => {
+  // What to draw, as of the last render; and when each tool was last reached for, on the screen's clock.
+  const scene = useRef<Omit<SceneInput, "phase" | "glow"> | null>(null)
+  const reached = useRef(new Map<string, number>())
+
+  const paint = (time: number, moving: boolean) => {
     const el = canvas.current
     const g = el?.getContext("2d")
-    if (!el || !g) return
-    const css = getComputedStyle(el)
-    const colour = (name: string) => css.getPropertyValue(name).trim() || "#888"
+    const input = scene.current
+    if (!el || !g || !input) return
     // Drawn at the screen's own pixel density, so lines stay sharp.
     const dpr = window.devicePixelRatio || 1
-    const w = el.clientWidth
-    const h = el.clientHeight
-    if (el.width !== Math.round(w * dpr)) {
-      el.width = Math.round(w * dpr)
-      el.height = Math.round(h * dpr)
+    if (el.width !== Math.round(input.width * dpr)) {
+      el.width = Math.round(input.width * dpr)
+      el.height = Math.round(input.height * dpr)
     }
     g.setTransform(dpr, 0, 0, dpr, 0, 0)
-    drawScene(g, {
-      width: w,
-      height: h,
+    const glow = new Map<string, number>()
+    if (moving) {
+      for (const name of [input.seg, ...input.busy.map(row => segAt(row, input.now))].map(toolInUse)) if (name) reached.current.set(name, time)
+      for (const [name, at] of reached.current) {
+        const age = (time - at) / GLOW_MS
+        if (age >= 1) reached.current.delete(name)
+        else if (age > 0) glow.set(name, 1 - age)
+      }
+    }
+    drawScene(g, { ...input, glow, phase: moving ? (time % TRAVEL_MS) / TRAVEL_MS : 0.5 })
+  }
+
+  useEffect(() => {
+    const el = canvas.current
+    if (!el) return
+    const css = getComputedStyle(el)
+    const colour = (name: string) => css.getPropertyValue(name).trim() || "#888"
+    scene.current = {
+      width: el.clientWidth,
+      height: el.clientHeight,
       font: css.fontFamily,
       colours: {
         fg: colour("--color-foreground"), muted: colour("--color-muted-foreground"), line: colour("--color-border"), working: colour("--color-working"),
         waiting: colour("--color-waiting"), stuck: colour("--color-stuck"), error: colour("--color-error"), finished: colour("--color-finished"),
       },
-      tools, state, seg, busy, now, frame,
+      tools, others: crowded ? t("replay.otherTools", { n: all.length - tools.length }) : null, state, seg, busy, now,
       agentName: replay.rows[0]?.name ?? "agent",
       youLabel: t("replay.you"),
-    })
+    }
+    // For anyone who asks for less motion, the picture changes only when the moment does.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) paint(0, false)
   })
+  // The dot runs on the screen's own clock, smoothly, whether the replay plays or stands still.
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    let id = requestAnimationFrame(function step(time) {
+      paint(time, true)
+      id = requestAnimationFrame(step)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [])
   return (
     <section aria-label={t("replay.scene")} className="overflow-hidden rounded-xl border bg-muted/40">
       <canvas ref={canvas} className="block h-64 w-full" />
@@ -371,7 +422,7 @@ function Scene({ replay, now, state, seg, frame }: Readonly<{ replay: ReplayData
 }
 
 /** The agent's plan at that moment, and what had happened up to it. */
-function Story({ replay, events, now, figures, at }: Readonly<{ replay: ReplayData; events: ReplayEvent[]; now: number; figures: ReturnType<typeof figuresAt>; at: (ms: number) => string }>) {
+function Story({ replay, events, now, figures, at, onSeek }: Readonly<{ replay: ReplayData; events: ReplayEvent[]; now: number; figures: ReturnType<typeof figuresAt>; at: (ms: number) => string; onSeek: (real: number) => void }>) {
   const { t, lang } = useI18n()
   const shown = events.filter(e => e.at <= now).slice(-EVENTS_SHOWN).reverse()
   // Room for the longest plan of the session and for a full list, from the start: what is
@@ -387,11 +438,13 @@ function Story({ replay, events, now, figures, at }: Readonly<{ replay: ReplayDa
         {plan.length ? (
           <ul className="space-y-1.5 text-sm" style={{ minHeight: rowsHeight(planRows, 0.375) }}>
             {plan.map(([text, status], i) => (
-              <li key={`${i}-${text}`} className="grid grid-cols-[1.125rem_minmax(0,1fr)] items-start gap-2.5">
-                <span aria-hidden className={cn("mt-1 grid size-4 place-items-center rounded-[4px] border text-[10px] leading-none", BOX[status] ?? BOX.pending)}>
+              <li key={`${i}-${text}`} className="grid h-[1.4rem] grid-cols-[1.125rem_minmax(0,1fr)] items-center gap-2.5">
+                <span aria-hidden className={cn("grid size-4 place-items-center rounded-[4px] border text-[10px] leading-none", BOX[status] ?? BOX.pending)}>
                   {status === "completed" ? "✓" : ""}
                 </span>
-                <span className={cn("break-words", (status === "completed" || status === "cancelled") && "text-muted-foreground line-through")}>{text}</span>
+                <Hint label={text} onlyWhenCut className={cn("block truncate", (status === "completed" || status === "cancelled") && "text-muted-foreground line-through")}>
+                  {text}
+                </Hint>
               </li>
             ))}
           </ul>
@@ -403,8 +456,13 @@ function Story({ replay, events, now, figures, at }: Readonly<{ replay: ReplayDa
         <h3 className={H3}>{t("replay.events")}</h3>
         <ol className="space-y-1 text-sm" style={{ minHeight: rowsHeight(eventRows, 0.25) }}>
           {shown.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-2">
-              <Hint label={at(e.at)} className="font-mono text-xs text-muted-foreground tabular-nums">
+            <li key={`${e.at}-${i}`} className="grid h-[1.4rem] grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-2 overflow-hidden">
+              {/* The time is the way back to that moment. */}
+              <Hint
+                label={`${at(e.at)} · ${t("replay.goTo")}`}
+                render={<button type="button" onClick={() => onSeek(e.at)} />}
+                className="cursor-pointer rounded-sm text-left font-mono text-xs text-muted-foreground tabular-nums underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 {time.format(e.at)}
               </Hint>
               <span className="flex min-w-0 items-baseline gap-1.5">

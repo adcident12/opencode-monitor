@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
-import { bubbleOf, COLUMNS, crewOf, dronesOf, fuelOf, layout, lookOf, NARROW_BELOW, NARROW_COLUMNS, screenOf, STATION_H, STATION_W } from "@/lib/ship"
+import { bubbleOf, COLUMNS, crewOf, dronesOf, fuelOf, layout, lookOf, NARROW_BELOW, NARROW_COLUMNS, screenOf, STATION_H, STATION_W, tagOf } from "@/lib/ship"
 import { drawShip } from "@/lib/ship-draw"
 import type { Session, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -98,7 +98,7 @@ export function Ship({ snapshot, now, history }: Readonly<{ snapshot: Snapshot; 
           <ul className="absolute inset-0" aria-label={t("ship.label", { n: crew.length })}>
             {crew.map((s, i) => (
               <li key={s.id} className="absolute" style={{ left: pct(stations[i].x + 8, width), top: pct(stations[i].y, height), width: pct(STATION_W - 16, width), height: pct(STATION_H - 6, height) }}>
-                <StationButton session={s} now={now} selected={s.id === selected?.id} onPick={() => setPicked(s.id)} drones={dronesOf(sessions, s.id).more} />
+                <StationButton session={s} tag={tagOf(s, crew)} now={now} selected={s.id === selected?.id} onPick={() => setPicked(s.id)} drones={dronesOf(sessions, s.id).more} />
               </li>
             ))}
           </ul>
@@ -146,7 +146,7 @@ function useColumns() {
  * sharp, translate, and never run into the next station: the tag is cut short with an
  * ellipsis, and the full name is in the label and the card.
  */
-function StationButton({ session, now, selected, onPick, drones }: Readonly<{ session: Session; now: number; selected: boolean; onPick: () => void; drones: number }>) {
+function StationButton({ session, tag, now, selected, onPick, drones }: Readonly<{ session: Session; tag: string; now: number; selected: boolean; onPick: () => void; drones: number }>) {
   const { t } = useI18n()
   const bubble = bubbleOf(session, now, t, ms => rough(ms))
   const name = session.project || session.title || session.id
@@ -175,7 +175,7 @@ function StationButton({ session, now, selected, onPick, drones }: Readonly<{ se
           selected ? "bg-[#e9edff] text-[#0d1022]" : "bg-[#0d1022] text-[#e9edff] group-hover:bg-[#2c3557]",
         )}
       >
-        {name}
+        {tag}
       </span>
       {drones > 0 && <span className="absolute top-[30%] right-0 font-mono text-2xs text-[#9be7c4]">+{drones}</span>}
     </Hint>

@@ -1,6 +1,6 @@
 // Playing one session back. Pure: the server's replay in, what to show at a moment out. The
 // rules are the Now tab's, so a moment of the replay looks as it would have looked live.
-import type { Screen } from "./ship"
+import { screenForTool, type Screen } from "./ship"
 
 export type SegKind = "reading" | "thinking" | "writing" | "tool" | "compact" | "waiting"
 /** [start, end, kind, detail], times in ms. */
@@ -110,10 +110,6 @@ export function stateAt(r: Replay, t: number): { state: ReplayState; seg: Seg | 
   return { state: ENDED[turn.ending] ?? "idle", seg: null }
 }
 
-const SHELL = new Set(["bash", "shell", "pwsh", "powershell"])
-const CODE = new Set(["edit", "write", "patch", "multiedit", "apply_patch"])
-const READ = new Set(["read", "grep", "glob", "list", "ls"])
-
 /** The tool a segment ran: the first word of its detail. */
 export const toolOf = (seg: Seg | null) => (seg?.[2] === "tool" ? (seg[3].split(" ")[0] ?? "") : "")
 
@@ -122,13 +118,7 @@ export function screenAt(state: ReplayState, seg: Seg | null): Screen {
   const byState: Partial<Record<ReplayState, Screen>> = { waiting: "ask", stuck: "wait", error: "fail", finished: "done", idle: "off" }
   if (byState[state]) return byState[state]
   if (seg?.[2] === "compact") return "compact"
-  const tool = toolOf(seg).toLowerCase()
-  if (!tool) return "think"
-  if (SHELL.has(tool)) return "shell"
-  if (CODE.has(tool)) return "code"
-  if (READ.has(tool)) return "read"
-  if (tool === "task") return "task"
-  return tool.includes("_") || tool.startsWith("web") ? "web" : "think"
+  return screenForTool(toolOf(seg))
 }
 
 /** The latest value at or before t of a list of [time, value], oldest first. */

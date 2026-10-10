@@ -334,6 +334,7 @@
   "replay.kind.waiting": "รอคุณ",
   "replay.scene": "agent และ tool ที่ใช้",
   "replay.you": "คุณ",
+  "replay.otherTools": "tool อื่นอีก {n} ตัว",
   "replay.story": "แผนงานและสิ่งที่เกิดขึ้น",
   "replay.plan": "แผนงานของ agent",
   "replay.noPlan": "ยังไม่ได้เขียนแผนงาน",

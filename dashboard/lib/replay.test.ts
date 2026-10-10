@@ -80,6 +80,8 @@ describe("A moment of the session", () => {
     expect(screenAt("working", segAt(r.rows[0], s(135)))).toBe("compact")
     expect(screenAt("working", [s(0), s(1), "tool", "context7_query-docs x"])).toBe("web")
     expect(screenAt("working", [s(0), s(1), "tool", "edit a.ts"])).toBe("code")
+    // The live bridge and a replay show the same screen for the same tool.
+    expect(screenAt("working", [s(0), s(1), "tool", "fetch https://example.com"])).toBe("web")
     expect(screenAt("working", null)).toBe("think")
     expect(screenAt("waiting", null)).toBe("ask")
     expect(screenAt("finished", null)).toBe("done")

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { NOW, waiting } from "./fixtures"
-import { bubbleOf, crewOf, dronesOf, fuelOf, layout, lookOf, MAX_STATIONS, screenOf } from "./ship"
+import { bubbleOf, crewOf, dronesOf, fuelOf, layout, lookOf, MAX_STATIONS, screenOf, tagOf } from "./ship"
 import type { Session } from "./types"
 
 const as = (extra: Partial<Session>): Session => ({ ...waiting, ...extra })
@@ -29,7 +29,14 @@ describe("Who is on the bridge", () => {
     const one = layout(1)
     const seven = layout(7)
     // Centred: the margin left of the first column equals the one right of the last.
-    expect(one.stations[0].x).toBe(one.width - 3 * 104 - one.stations[0].x)
+    const full = layout(3)
+    expect(full.stations[0].x).toBe(full.width - 3 * 104 - full.stations[0].x)
+    // A row that is not full stands in the middle too: one station alone, two of three, the last of seven.
+    expect(one.stations[0].x).toBe((one.width - 104) / 2)
+    const two = layout(2)
+    expect(two.stations[0].x).toBe(two.width - two.stations[1].x - 104)
+    expect(seven.stations[6].x).toBe((seven.width - 104) / 2)
+    expect(seven.stations.every(s => Number.isInteger(s.x))).toBe(true)
     expect(seven.stations.map(s => s.y)).toEqual([50, 50, 50, 114, 114, 114, 178])
     expect(seven.height).toBeGreaterThan(one.height)
     const phone = layout(7, 2)
@@ -37,6 +44,16 @@ describe("Who is on the bridge", () => {
     expect(phone.width).toBeLessThan(seven.width)
     // Every station fits inside the picture.
     for (const { stations, width } of [seven, phone]) for (const s of stations) expect(s.x + 104).toBeLessThanOrEqual(width)
+  })
+
+  it("names a station by its folder, or by its title when two stations share a folder", () => {
+    const a = { ...waiting, id: "a", project: "shop", title: "Checkout flow" }
+    const b = { ...waiting, id: "b", project: "shop", title: "Fix the cart" }
+    const c = { ...waiting, id: "c", project: "blog", title: "Write a post" }
+    expect([a, b, c].map(s => tagOf(s, [a, b, c]))).toEqual(["Checkout flow", "Fix the cart", "blog"])
+    expect(tagOf(a, [a, c])).toBe("shop")
+    // No title to tell them apart by: the folder is still better than nothing.
+    expect(tagOf({ ...a, title: "" }, [a, b])).toBe("shop")
   })
 
   it("the same session always gets the same look", () => {

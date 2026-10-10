@@ -334,6 +334,7 @@
   "replay.kind.waiting": "Waiting for you",
   "replay.scene": "The agent and its tools",
   "replay.you": "You",
+  "replay.otherTools": "{n} other tools",
   "replay.story": "The plan and what happened",
   "replay.plan": "The agent's plan",
   "replay.noPlan": "No plan written yet.",

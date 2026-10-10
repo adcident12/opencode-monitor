@@ -90,10 +90,12 @@ describe("The Replay tab", () => {
   it("plays at real speed too, and the running time keeps one shape", async () => {
     renderTab("ses_1")
     await screen.findByRole("heading", { name: "Checkout flow" })
-    const speeds = within(screen.getByRole("group", { name: "Speed" })).getAllByRole("button")
-    expect(speeds.map(b => b.textContent)).toEqual(["1×", "30×", "60×", "180×"])
-    await userEvent.click(speeds[0])
-    expect(speeds[0]).toHaveAttribute("aria-pressed", "true")
+    const speed = screen.getByRole("combobox", { name: "Speed" })
+    expect(speed).toHaveTextContent("60×")
+    await userEvent.click(speed)
+    expect((await screen.findAllByRole("option")).map(o => o.textContent)).toEqual(["1×", "1.5×", "2.5×", "3×", "30×", "60×", "180×"])
+    await userEvent.click(screen.getByRole("option", { name: "1×" }))
+    expect(speed).toHaveTextContent("1×")
     // 20 minutes with one silence of 16m 20s taken in 20 seconds: 4 minutes of playback.
     expect(screen.getByText("00:00 / 04:00")).toBeInTheDocument()
     fireEvent.change(screen.getByRole("slider", { name: "Where in the session" }), { target: { value: "80000" } })
@@ -115,13 +117,23 @@ describe("The Replay tab", () => {
     expect(within(moment).getByText("Running a tool: bash npm test")).toBeInTheDocument()
     await userEvent.click(back)
     expect(screen.getByText("00:20 / 04:00")).toBeInTheDocument()
+    // What the step lands on has happened: it heads the list, and its time leads back to it.
+    const story = screen.getByRole("region", { name: "The plan and what happened" })
+    const rows = within(story).getAllByRole("listitem").filter(li => within(li).queryByRole("button"))
+    expect(rows[0]).toHaveTextContent("explore:")
+    expect(rows[0]).toHaveTextContent("read a.ts")
+    await userEvent.click(on)
+    await userEvent.click(on)
+    expect(screen.getByText("01:10 / 04:00")).toBeInTheDocument()
+    await userEvent.click(within(within(story).getAllByRole("listitem").filter(li => within(li).queryByRole("button")).at(-1) as HTMLElement).getByRole("button"))
+    expect(screen.getByText("00:00 / 04:00")).toBeInTheDocument()
   })
 
   it("picks another session through the list", async () => {
     const onSession = vi.fn()
     renderTab("ses_1", onSession)
     await screen.findByRole("heading", { name: "Checkout flow" })
-    await userEvent.click(screen.getByRole("combobox"))
+    await userEvent.click(screen.getByRole("combobox", { name: "Session" }))
     await userEvent.click(await screen.findByRole("option", { name: /Older/ }))
     expect(onSession).toHaveBeenCalledWith("ses_9")
     // There is no "every session" to replay.
