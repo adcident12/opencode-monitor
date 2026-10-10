@@ -231,6 +231,152 @@ function withDescendants(sessions, sessionId) {
   return scope;
 }
 
+// The three passes below share this: the day buckets and which sessions count.
+// ctx = { from, now, bucket, inScope, sessionById, sessionId }
+
+const tokensSent = m => (m.tokens_input ?? 0) + (m.tokens_cache_read ?? 0) + (m.tokens_cache_write ?? 0);
+
+/** When a reply's first token arrived and when the model stopped writing, if both are known. */
+function timingOf(m, step) {
+  if (step?.first_token == null || step.written == null || step.written < step.first_token || !m.model_id) return null;
+  return {
+    model: m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id,
+    day: dayKey(m.time_created),
+    input: (m.tokens_input ?? 0) + (m.tokens_cache_write ?? 0),
+    output: (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0),
+    firstTokenMs: Math.max(0, step.first_token - m.time_created),
+    writeMs: step.written - step.first_token,
+  };
+}
+
+/**
+ * Model requests. Agent time: from each request to its reply, clipped to the range.
+ * Tokens: what each request sent and got back, as the model server reported it.
+ */
+function tallyRequests(ctx, messages, steps) {
+  const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
+  const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
+  const timed = []; // requests whose first token and last written token are both known
+  const own = []; // the selected session's own requests, for its context timeline
+  for (const m of messages) {
+    if (m.role !== 'assistant' || !ctx.inScope(m.session_id)) continue;
+    const start = Math.max(m.time_created, ctx.from);
+    const end = Math.min(m.completed ?? m.time_created, ctx.now);
+    if (end > start && ctx.bucket(start)) ctx.bucket(start).activeMs += end - start;
+
+    const sent = tokensSent(m);
+    const b = ctx.bucket(m.time_created);
+    if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
+    if (m.session_id === ctx.sessionId && sent > 0) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
+    usage.requests++;
+    usage.input += m.tokens_input ?? 0;
+    usage.cacheRead += m.tokens_cache_read ?? 0;
+    usage.cacheWrite += m.tokens_cache_write ?? 0;
+    usage.output += m.tokens_output ?? 0;
+    usage.reasoning += m.tokens_reasoning ?? 0;
+    usage.cost += m.cost ?? 0;
+    b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
+    const timing = timingOf(m, steps.get(m.id));
+    if (timing) timed.push(timing);
+    const first = firstRequest.get(m.session_id);
+    if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
+  }
+  // What a session costs before it has done anything: instructions, skills, and the tool
+  // list of every MCP server that is switched on. Only top-level sessions that began in the
+  // range, where the first request we see really is the session's first.
+  const startSizes = [...firstRequest]
+    .filter(([id]) => {
+      const s = ctx.sessionById.get(id);
+      return s && !s.parent_id && s.time_created >= ctx.from;
+    })
+    .map(([, first]) => first.tokens);
+  own.sort((a, b) => a.t - b.t);
+  return { usage, startSizes, timed, own };
+}
+
+/** Prompts: how long each one waited for an answer. */
+function tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope }) {
+  const inRange = asks.filter(a => a.t >= ctx.from && a.t <= ctx.now);
+  // Matched against every session's calls first, so a prompt is never pinned on this session
+  // just because the call it really belonged to was left out.
+  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now: ctx.now, movedOn, liveRuns, runEnds })
+    .filter(p => !scope || (p.part && scope.has(p.part.session_id)));
+  const waitByPart = new Map();
+  const deadAt = new Map(); // tool part id -> when the process that prompted for it went away
+  for (const p of prompts) {
+    if (p.part && p.abandonedAt != null) deadAt.set(p.part.id, p.abandonedAt);
+    const b = ctx.bucket(p.t);
+    if (b) {
+      b.prompts++;
+      b.waitMs += p.waitMs;
+    }
+    if (p.part) waitByPart.set(p.part.id, (waitByPart.get(p.part.id) ?? 0) + (p.answeredAt ? p.waitMs : 0));
+  }
+  return { prompts, waitByPart, deadAt };
+}
+
+/**
+ * How long a call ran once it was allowed to. null for one still unknown; "left" for one
+ * abandoned by a crash or abort, where the time it "ran" says nothing about the command.
+ */
+function runOf(p, t, ctx, { movedOn, deadAt, waitByPart }) {
+  // A call with no end either still runs, or was left behind when its session moved on.
+  const unfinished = p.ended == null && (p.status === 'running' || p.status === 'pending');
+  const leftAt = unfinished ? (movedOn(p.session_id, t) ?? deadAt.get(p.id) ?? null) : null;
+  if (leftAt != null) return { unfinished, left: true, runMs: null };
+  const end = p.ended ?? (unfinished ? ctx.now : null);
+  return { unfinished, left: false, runMs: end == null ? null : Math.max(0, end - t - (waitByPart.get(p.id) ?? 0)) };
+}
+
+/** Tool calls: counts, errors, and how long each ran. */
+function tallyTools(ctx, tools, timing, stuckMs) {
+  const perTool = new Map();
+  const slow = [];
+  const reads = new Map(); // session|file -> count
+  const skills = new Map();
+  const explore = { graft: 0, other: 0 };
+  const calls = []; // every call counted below, for the per-server figures
+  const perRoot = new Map(); // top-level session id -> { toolCalls, lastAt }, whatever the filter
+  const rootOf = id => {
+    let s = ctx.sessionById.get(id);
+    for (let depth = 0; s?.parent_id && ctx.sessionById.has(s.parent_id) && depth < 20; depth++) s = ctx.sessionById.get(s.parent_id);
+    return s?.id ?? id;
+  };
+  for (const p of tools) {
+    const t = startOf(p);
+    const b = ctx.bucket(t);
+    if (!b) continue;
+    const rootId = rootOf(p.session_id);
+    const root = perRoot.get(rootId) ?? { toolCalls: 0, lastAt: 0 };
+    root.toolCalls++;
+    root.lastAt = Math.max(root.lastAt, t);
+    perRoot.set(rootId, root);
+    if (!ctx.inScope(p.session_id)) continue;
+
+    b.toolCalls++;
+    const entry = perTool.get(p.tool) ?? { tool: p.tool, count: 0, errors: 0, totalMs: 0 };
+    entry.count++;
+    if (p.status === 'error') {
+      entry.errors++;
+      b.toolErrors++;
+    }
+    const { unfinished, left, runMs } = runOf(p, t, ctx, timing);
+    if (left) b.abandoned++;
+    if (runMs != null) {
+      entry.totalMs += runMs;
+      if (runMs > stuckMs) b.stuck++;
+      slow.push({ p, runMs, running: unfinished });
+    }
+    perTool.set(p.tool, entry);
+    calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: unfinished ? null : runMs });
+    if (isGraft(p.tool)) explore.graft++;
+    else if (isExploreTool(p.tool)) explore.other++;
+    if (p.tool === 'read' && p.file) reads.set(`${p.session_id}|${p.file}`, (reads.get(`${p.session_id}|${p.file}`) ?? 0) + 1);
+    if (p.tool === 'skill' && p.skill) skills.set(p.skill, (skills.get(p.skill) ?? 0) + 1);
+  }
+  return { perTool, slow, reads, skills, explore, calls, perRoot };
+}
+
 /**
  * @param {object} input
  * @param {object[]} input.sessions   id, title, directory, parent_id, time_created, time_updated
@@ -256,6 +402,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const scope = sessionId ? withDescendants(sessions, sessionId) : null;
   const inScope = id => !scope || scope.has(id);
+  const ctx = { from, now, bucket, inScope, sessionById, sessionId };
   const where = id => {
     const s = sessionById.get(id);
     const directory = s?.directory ?? '';
@@ -265,141 +412,26 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) bucket(s.time_created) && bucket(s.time_created).sessions++;
   for (const c of compactions) if (inScope(c.session_id)) bucket(c.time_created) && bucket(c.time_created).compactions++;
 
-  // Agent time: from each model request to its reply, clipped to the range.
-  // Tokens: what each of those requests sent and got back, as the model server reported it.
-  const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
-  const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
-  const timed = []; // requests whose first token and last written token are both known
-  const own = []; // the selected session's own requests, for its context timeline
-  for (const m of messages) {
-    if (m.role !== 'assistant' || !inScope(m.session_id)) continue;
-    const start = Math.max(m.time_created, from);
-    const end = Math.min(m.completed ?? m.time_created, now);
-    if (end > start && bucket(start)) bucket(start).activeMs += end - start;
-
-    const sent = (m.tokens_input ?? 0) + (m.tokens_cache_read ?? 0) + (m.tokens_cache_write ?? 0);
-    const b = bucket(m.time_created);
-    if (!b || !(sent + (m.tokens_output ?? 0) > 0)) continue;
-    if (m.session_id === sessionId && sent > 0) own.push({ t: m.time_created, tokens: sent, provider: m.provider_id, model: m.model_id });
-    usage.requests++;
-    usage.input += m.tokens_input ?? 0;
-    usage.cacheRead += m.tokens_cache_read ?? 0;
-    usage.cacheWrite += m.tokens_cache_write ?? 0;
-    usage.output += m.tokens_output ?? 0;
-    usage.reasoning += m.tokens_reasoning ?? 0;
-    usage.cost += m.cost ?? 0;
-    b.tokens += sent + (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0);
-    const step = steps.get(m.id);
-    if (step?.first_token != null && step.written != null && step.written >= step.first_token && m.model_id) {
-      timed.push({
-        model: m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id,
-        day: dayKey(m.time_created),
-        input: (m.tokens_input ?? 0) + (m.tokens_cache_write ?? 0),
-        output: (m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0),
-        firstTokenMs: Math.max(0, step.first_token - m.time_created),
-        writeMs: step.written - step.first_token,
-      });
-    }
-    const first = firstRequest.get(m.session_id);
-    if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
-  }
-  // What a session costs before it has done anything: instructions, skills, and the tool
-  // list of every MCP server that is switched on. Only top-level sessions that began in the
-  // range, where the first request we see really is the session's first.
-  const startSizes = [...firstRequest]
-    .filter(([id]) => {
-      const s = sessionById.get(id);
-      return s && !s.parent_id && s.time_created >= from;
-    })
-    .map(([, first]) => first.tokens);
-
-  // Prompts: how long each one waited for an answer.
-  const inRange = asks.filter(a => a.t >= from && a.t <= now);
+  const { usage, startSizes, timed, own } = tallyRequests(ctx, messages, steps);
   const movedOn = nextMessageFinder(messages);
-  // Matched against every session's calls first, so a prompt is never pinned on this session
-  // just because the call it really belonged to was left out.
-  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now, movedOn, liveRuns, runEnds })
-    .filter(p => !scope || (p.part && scope.has(p.part.session_id)));
-  const waitByPart = new Map();
-  const deadAt = new Map(); // tool part id -> when the process that prompted for it went away
-  for (const p of prompts) if (p.part && p.abandonedAt != null) deadAt.set(p.part.id, p.abandonedAt);
-  for (const p of prompts) {
-    const b = bucket(p.t);
-    if (b) {
-      b.prompts++;
-      b.waitMs += p.waitMs;
-    }
-    if (p.part) waitByPart.set(p.part.id, (waitByPart.get(p.part.id) ?? 0) + (p.answeredAt ? p.waitMs : 0));
-  }
+  const { prompts, waitByPart, deadAt } = tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope });
+  const { perTool, slow, reads, skills, explore, calls, perRoot } = tallyTools(ctx, tools, { movedOn, deadAt, waitByPart }, stuckMs);
 
-  // Tool calls: counts, errors, and how long each ran once it was allowed to.
-  const perTool = new Map();
-  const slow = [];
-  const reads = new Map(); // session|file -> count
-  const skills = new Map();
-  let graft = 0;
-  let explore = 0;
-  const calls = []; // every call counted below, for the per-server figures
-  const perRoot = new Map(); // top-level session id -> { toolCalls, lastAt }, whatever the filter
-  const rootOf = id => {
-    let s = sessionById.get(id);
-    for (let depth = 0; s?.parent_id && sessionById.has(s.parent_id) && depth < 20; depth++) s = sessionById.get(s.parent_id);
-    return s?.id ?? id;
-  };
-  for (const p of tools) {
-    const t = startOf(p);
-    const b = bucket(t);
-    if (!b) continue;
-    const root = perRoot.get(rootOf(p.session_id)) ?? { toolCalls: 0, lastAt: 0 };
-    root.toolCalls++;
-    root.lastAt = Math.max(root.lastAt, t);
-    perRoot.set(rootOf(p.session_id), root);
-    if (!inScope(p.session_id)) continue;
-    b.toolCalls++;
-    const entry = perTool.get(p.tool) ?? { tool: p.tool, count: 0, errors: 0, totalMs: 0 };
-    entry.count++;
-    if (p.status === 'error') {
-      entry.errors++;
-      b.toolErrors++;
-    }
-    // A call with no end either still runs, or was left behind when its session moved on.
-    const unfinished = p.ended == null && (p.status === 'running' || p.status === 'pending');
-    const leftAt = unfinished ? (movedOn(p.session_id, t) ?? deadAt.get(p.id) ?? null) : null;
-    let runMs = null;
-    if (leftAt != null) {
-      // Left behind by a crash or abort: how long it "ran" says nothing about the command.
-      b.abandoned++;
-    } else {
-      const end = p.ended ?? (unfinished ? now : null);
-      runMs = end == null ? null : Math.max(0, end - t - (waitByPart.get(p.id) ?? 0));
-      if (runMs != null) {
-        entry.totalMs += runMs;
-        if (runMs > stuckMs) b.stuck++;
-        slow.push({ p, runMs, running: unfinished });
-      }
-    }
-    perTool.set(p.tool, entry);
-    calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: unfinished ? null : runMs });
-    if (isGraft(p.tool)) graft++;
-    else if (isExploreTool(p.tool)) explore++;
-    if (p.tool === 'read' && p.file) reads.set(`${p.session_id}|${p.file}`, (reads.get(`${p.session_id}|${p.file}`) ?? 0) + 1);
-    if (p.tool === 'skill' && p.skill) skills.set(p.skill, (skills.get(p.skill) ?? 0) + 1);
-  }
-
+  const sum = key => [...daily.values()].reduce((n, d) => n + d[key], 0);
   const answered = prompts.filter(p => p.answeredAt != null);
   const totals = {
-    sessions: [...daily.values()].reduce((n, d) => n + d.sessions, 0),
-    activeMs: [...daily.values()].reduce((n, d) => n + d.activeMs, 0),
-    waitMs: [...daily.values()].reduce((n, d) => n + d.waitMs, 0),
+    sessions: sum('sessions'),
+    activeMs: sum('activeMs'),
+    waitMs: sum('waitMs'),
     prompts: prompts.length,
     open: prompts.filter(p => p.answeredAt == null && !p.abandoned).length,
     abandoned: prompts.filter(p => p.abandoned).length,
     medianAnswerMs: median(answered.map(p => p.waitMs)),
-    stuck: [...daily.values()].reduce((n, d) => n + d.stuck, 0),
-    abandonedCalls: [...daily.values()].reduce((n, d) => n + d.abandoned, 0),
-    toolCalls: [...daily.values()].reduce((n, d) => n + d.toolCalls, 0),
-    toolErrors: [...daily.values()].reduce((n, d) => n + d.toolErrors, 0),
-    compactions: [...daily.values()].reduce((n, d) => n + d.compactions, 0),
+    stuck: sum('stuck'),
+    abandonedCalls: sum('abandoned'),
+    toolCalls: sum('toolCalls'),
+    toolErrors: sum('toolErrors'),
+    compactions: sum('compactions'),
     // Files read three or more times within one session.
     rereads: [...reads.values()].filter(n => n >= 3).length,
   };
@@ -421,7 +453,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // Only for one session: a context window belongs to a session, not to a period.
     context: sessionId
       ? contextTimeline({
-          requests: own.sort((a, b) => a.t - b.t),
+          requests: own,
           compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
           reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
           limit: own.length ? contextLimit(own.at(-1).provider, own.at(-1).model) : null,
@@ -455,7 +487,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
       .slice(0, TOP)
       .map(({ p, runMs, running }) => ({ at: startOf(p), tool: p.tool, text: show(describe(p), 200), runMs, status: p.status, running, ...where(p.session_id) })),
     tools: [...perTool.values()].sort((a, b) => b.count - a.count).slice(0, 15),
-    explore: { graft, other: explore },
+    explore,
     rereads: [...reads]
       .filter(([, n]) => n >= 3)
       .sort((a, b) => b[1] - a[1])
