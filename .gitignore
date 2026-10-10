@@ -11,3 +11,7 @@ node_modules/
 *.log
 .remember/
 .playwright-mcp/
+
+# Written by npm run sonar
+coverage/
+.scannerwork/
