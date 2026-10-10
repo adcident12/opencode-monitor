@@ -171,6 +171,15 @@ export function openDb(dataDir) {
       from part where time_created >= ? and json_extract(data,'$.type') in ('step-start','tool','text','reasoning')
       group by message_id`),
   };
+  // For a replay: one session and every session under it, with the same fields as for Stats.
+  const IN_TREE = "session_id in (select value from json_each(?))";
+  const narrowed = name => db.prepare(statsStmt[name].sourceSQL.replace('time_created >= ?', IN_TREE));
+  const replayStmt = {
+    tree: db.prepare(`with recursive tree(id) as (select ? union all select s.id from session s join tree on s.parent_id = tree.id)
+      select id, parent_id, directory, title, time_created, time_updated from session where id in (select id from tree)`),
+    ...Object.fromEntries(['tools', 'messages', 'compactions', 'spans', 'steps', 'todoWrites'].map(name => [name, narrowed(name)])),
+  };
+
   // Update times of each tool call, from OpenCode's event log. Indexed by session, so only
   // the sessions that had prompts are read. Absent in versions without the event table.
   const hasEvents = ['aggregate_id', 'type', 'data'].every(c => db.prepare('pragma table_info(event)').all().some(col => col.name === c));
@@ -194,6 +203,11 @@ export function openDb(dataDir) {
       todoWrites: since => statsStmt.todoWrites.all(since),
       todoWriters: () => new Set(statsStmt.todoWriters.all().map(r => r.session_id)),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
+    },
+    replay: {
+      /** The session and every session under it, the session itself first. */
+      tree: sessionId => replayStmt.tree.all(sessionId),
+      ...Object.fromEntries(['tools', 'messages', 'compactions', 'spans', 'steps', 'todoWrites'].map(name => [name, ids => replayStmt[name].all(JSON.stringify(ids))])),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),
     recentSessions: (since, limit) => stmt.sessions.all(since, limit),

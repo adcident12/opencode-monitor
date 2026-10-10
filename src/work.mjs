@@ -48,7 +48,7 @@ export function timeSplit(ctx, { spans, calls, messages, steps }) {
  * How a prompt's last reply ended. A prompt that you followed with another before a final
  * answer is "continued": you steered it, the work went on in the next one.
  */
-function endingOf(last, now, followed) {
+export function endingOf(last, now, followed) {
   if (!last) return followed ? 'continued' : 'open';
   if (last.error_name === 'MessageAbortedError') return 'aborted';
   if (last.error_name) return 'error';
@@ -67,7 +67,7 @@ const pushTo = (map, key, value) => {
 const isCompaction = m => m?.role === 'assistant' && m.agent === 'compaction';
 
 /** One session's messages cut into turns: a prompt of yours and the replies up to the next. */
-function turnsOfSession(list) {
+export function turnsOfSession(list) {
   list.sort((a, b) => a.time_created - b.time_created || (a.role === 'user' ? -1 : 1));
   const turns = [];
   let turn = null;

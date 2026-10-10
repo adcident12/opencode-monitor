@@ -30,7 +30,7 @@ function compareAround(split, whole, input) {
 }
 
 /** The value kept under `key` while it is fresh; otherwise computed, kept, and the oldest dropped. */
-function remembered(cache, key, now, compute) {
+export function remembered(cache, key, now, compute) {
   const hit = cache.get(key);
   if (hit && now - hit.at < CACHE_MS) return hit.value;
   const value = compute();
@@ -44,7 +44,7 @@ function remembered(cache, key, now, compute) {
  * calls that had a prompt need it, so only their sessions are read.
  * @returns {Map<string, number[]>} part id -> times
  */
-function updateTimes(db, tools, asks) {
+export function updateTimes(db, tools, asks) {
   // A prompt is logged within two seconds of the call it is for.
   const prompted = p => asks.some(ask => Math.abs((p.started ?? p.time_created) - ask.t) <= 2000);
   const sessionsWithPrompts = new Set(tools.filter(prompted).map(p => p.session_id));
@@ -60,24 +60,31 @@ function updateTimes(db, tools, asks) {
 }
 
 /**
+ * A model's context window, and where OpenCode compacts a session of it in a directory: its
+ * own rule, with the project's config over the global one. The window in the same order the
+ * live page uses: config.json first, then OpenCode's own config.
+ */
+export function limitsFor({ cfg, projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null }) {
+  const compactAt = (provider, model, directory) => {
+    const key = `${provider}/${model}`;
+    const project = projectMcp?.settingsFor(directory);
+    return compactionPoint(project?.limits.get(key) ?? modelLimits.get(key) ?? null, project?.reserves.get(key) ?? modelReserves.get(key), { ...compactionSettings, ...project?.compaction, outputTokenMax });
+  };
+  const contextLimit = (provider, model) => {
+    const key = `${provider}/${model}`;
+    return cfg.contextLimit?.models?.[key] ?? cfg.contextLimit?.models?.[model] ?? modelLimits.get(key) ?? cfg.contextLimit?.default ?? null;
+  };
+  return { compactAt, contextLimit };
+}
+
+/**
  * @param {object} deps
  * @param {object[]} [deps.mcpServers]  MCP servers from the global config
  * @param {object} [deps.projectMcp]    from createProjectMcp
  * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
  */
 export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null }) {
-  // Where OpenCode compacts a session of this model in this directory: its own rule, with
-  // the project's config over the global one.
-  const compactAt = (provider, model, directory) => {
-    const key = `${provider}/${model}`;
-    const project = projectMcp?.settingsFor(directory);
-    return compactionPoint(project?.limits.get(key) ?? modelLimits.get(key) ?? null, project?.reserves.get(key) ?? modelReserves.get(key), { ...compactionSettings, ...project?.compaction, outputTokenMax });
-  };
-  // The same order the live page uses: config.json first, then OpenCode's own config.
-  const contextLimit = (provider, model) => {
-    const key = `${provider}/${model}`;
-    return cfg.contextLimit?.models?.[key] ?? cfg.contextLimit?.models?.[model] ?? modelLimits.get(key) ?? cfg.contextLimit?.default ?? null;
-  };
+  const { compactAt, contextLimit } = limitsFor({ cfg, projectMcp, modelLimits, modelReserves, compactionSettings, outputTokenMax });
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
 

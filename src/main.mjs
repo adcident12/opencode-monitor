@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
+import { createReplaySource } from './replay-source.mjs';
 import { createStatic } from './static.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createHistory } from './history.mjs';
@@ -170,6 +171,7 @@ export async function main(argv) {
   });
 
   const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+  const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   // Not for --sample: a summary of fake sessions has no business in a real channel.
   const digest = args.sample ? null : createDigest({ cfg: cfg.notify, stats, send: notify.send, t: loadTranslator(cfg.lang), stateFile: kept('weekly.json') });
   const historyCount = () => (cfg.history.enabled ? history.count : null);
@@ -220,6 +222,16 @@ export async function main(argv) {
       })),
     },
     '/api/history/sessions': { body: () => JSON.stringify(history.sessions()) },
+    // One session to play back; null for an id that is not one.
+    '/api/replay': {
+      body: query => JSON.stringify(replay(query.get('session'))),
+      unavailable: ['Replay failed', 'The replay is not available right now.'],
+    },
+    // The sessions there is something to play back: the last 30 days, as Stats lists them.
+    '/api/replay/sessions': {
+      body: () => JSON.stringify(stats(30).sessions),
+      unavailable: ['Replay list failed', 'The list of sessions is not available right now.'],
+    },
     '/api/config-changes': {
       body: query => {
         const days = Math.min(30, Math.max(1, Number(query.get('days')) || 30));
