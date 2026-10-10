@@ -47,35 +47,41 @@ function toEvent(session, previous, now) {
 }
 
 /**
+ * The entries of the file that are within retention, oldest first. What is past it, and any
+ * broken line, is dropped from the file itself.
+ */
+function readKept(file, cutoff) {
+  const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  const events = [];
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line);
+      if (event.t >= cutoff && event.id && event.to) events.push(event);
+    } catch {
+      // A half-written line from a crash; skip it.
+    }
+  }
+  if (events.length !== lines.length) writeFileSync(file, events.map(e => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
+  return events;
+}
+
+/**
  * @param {object} options
  * @param {string|null} options.file  JSON Lines file; null keeps history in memory only
  * @param {number} options.retentionDays
  * @param {boolean} [options.enabled]
  */
 export function createHistory({ file, retentionDays, enabled = true, now = Date.now() }) {
-  let events = [];
+  let events = enabled && file && existsSync(file) ? readKept(file, now - retentionDays * DAY_MS) : [];
   let dropped = 0; // entries still in the file that memory no longer holds
-  const last = new Map(); // session id -> its latest event
-
-  if (enabled && file && existsSync(file)) {
-    const cutoff = now - retentionDays * 86_400_000;
-    const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
-    for (const line of lines) {
-      try {
-        const event = JSON.parse(line);
-        if (event.t >= cutoff && event.id && event.to) events.push(event);
-      } catch {
-        // A half-written line from a crash; skip it.
-      }
-    }
-    // Drop what is past retention (and any broken lines) from the file itself.
-    if (events.length !== lines.length) writeFileSync(file, events.map(e => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
-    for (const event of events) last.set(event.id, event);
-    if (events.length > MAX_IN_MEMORY) {
-      dropped += events.length - MAX_IN_MEMORY;
-      events = events.slice(-MAX_IN_MEMORY);
-    }
-  }
+  const last = new Map(events.map(event => [event.id, event])); // session id -> its latest event
+  // The cap only guards against a runaway; what goes past it stays in the file.
+  const capToMemory = () => {
+    if (events.length <= MAX_IN_MEMORY) return;
+    dropped += events.length - MAX_IN_MEMORY;
+    events = events.slice(-MAX_IN_MEMORY);
+  };
+  capToMemory();
 
   function record(sessions, at) {
     if (!enabled) return;
@@ -95,10 +101,7 @@ export function createHistory({ file, retentionDays, enabled = true, now = Date.
     // A monitor left running for weeks drops what passes retention, as a restart would.
     const cutoff = at - retentionDays * DAY_MS;
     if (events[0]?.t < cutoff) events = events.filter(e => e.t >= cutoff);
-    if (events.length > MAX_IN_MEMORY) {
-      dropped += events.length - MAX_IN_MEMORY;
-      events = events.slice(-MAX_IN_MEMORY);
-    }
+    capToMemory();
     if (file) {
       try {
         mkdirSync(dirname(file), { recursive: true });

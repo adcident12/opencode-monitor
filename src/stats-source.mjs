@@ -28,6 +28,28 @@ function compareAround(split, whole, input) {
 }
 
 /**
+ * When each tool call was updated, oldest first: how a permission's answer is told. Only
+ * calls that had a prompt need it, so only their sessions are read.
+ * @returns {Map<string, number[]>} part id -> times
+ */
+function updateTimes(db, tools, asks) {
+  const sessionsWithPrompts = new Set();
+  for (const ask of asks) {
+    for (const p of tools) if (Math.abs((p.started ?? p.time_created) - ask.t) <= 2000) sessionsWithPrompts.add(p.session_id);
+  }
+  const eventTimes = new Map();
+  for (const sessionId of sessionsWithPrompts) {
+    for (const { part_id: id, t } of db.stats.toolEvents(sessionId)) {
+      if (!id || t == null) continue;
+      if (!eventTimes.has(id)) eventTimes.set(id, []);
+      eventTimes.get(id).push(t);
+    }
+  }
+  for (const times of eventTimes.values()) times.sort((a, b) => a - b);
+  return eventTimes;
+}
+
+/**
  * @param {object} deps
  * @param {object[]} [deps.mcpServers]  MCP servers from the global config
  * @param {object} [deps.projectMcp]    from createProjectMcp
@@ -66,20 +88,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const tools = db.stats.tools(since);
     const asks = log.asks().filter(a => a.t >= since);
 
-    // Update times are only needed for calls that had a prompt, so only their sessions are read.
-    const sessionsWithPrompts = new Set();
-    for (const ask of asks) {
-      for (const p of tools) if (Math.abs((p.started ?? p.time_created) - ask.t) <= 2000) sessionsWithPrompts.add(p.session_id);
-    }
-    const eventTimes = new Map();
-    for (const sessionId of sessionsWithPrompts) {
-      for (const { part_id: id, t } of db.stats.toolEvents(sessionId)) {
-        if (!id || t == null) continue;
-        if (!eventTimes.has(id)) eventTimes.set(id, []);
-        eventTimes.get(id).push(t);
-      }
-    }
-    for (const times of eventTimes.values()) times.sort((a, b) => a - b);
+    const eventTimes = updateTimes(db, tools, asks);
 
     const sessions = db.stats.sessions(since);
     // Servers a project config adds count only for the projects in the range.

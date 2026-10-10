@@ -69,6 +69,28 @@ export function Todos({ todos }: { todos: Session["progress"]["todos"] }) {
   )
 }
 
+/** How full the context is, and how much room is left before OpenCode compacts it. */
+function ContextValue({ session, high }: { session: Session; high: boolean }) {
+  const { t } = useI18n()
+  const h = session.health
+  if (h.contextTokens == null) return null
+  if (h.contextPct == null) return <>{t("health.contextUnknown", { n: kilo(h.contextTokens) })}</>
+  const room = (c: NonNullable<typeof h.compaction>) => {
+    if (c.room === 0) return t("health.compactNow")
+    return t(c.requestsLeft == null ? "health.compactRoom" : "health.compactRoomRequests", { room: kilo(c.room), n: c.requestsLeft ?? 0 })
+  }
+  return (
+    <span className="block space-y-0.5">
+      <span className="inline-flex items-center gap-2">
+        <ContextBar session={session} high={high} />
+        {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
+      </span>
+      {!h.autoCompact && <span className="block text-xs font-normal text-muted-foreground">{t("health.compactOff")}</span>}
+      {h.compaction && <span className={cn("block text-xs", high ? "text-stuck" : "font-normal text-muted-foreground")}>{room(h.compaction)}</span>}
+    </span>
+  )
+}
+
 /** Context, compactions, age, errors: one quiet line, with the numbers that are bad in colour. */
 export function Health({ session, now, showActivity }: { session: Session; now: number; showActivity: boolean }) {
   const { t } = useI18n()
@@ -82,30 +104,7 @@ export function Health({ session, now, showActivity }: { session: Session; now: 
   if (h.compacting) {
     items.push({ key: "context", label: t("health.context"), value: <span className="text-muted-foreground">{t("health.compacting")}</span> })
   } else if (h.contextTokens != null) {
-    items.push({
-      key: "context",
-      label: t("health.context"),
-      bad: warn("context_high"),
-      value:
-        h.contextPct != null ? (
-          <span className="block space-y-0.5">
-            <span className="inline-flex items-center gap-2">
-              <ContextBar session={session} high={warn("context_high")} />
-              {kilo(h.contextTokens)} / {kilo(h.contextLimit ?? 0)} · {h.contextPct}%
-            </span>
-            {!h.autoCompact && <span className="block text-xs font-normal text-muted-foreground">{t("health.compactOff")}</span>}
-            {h.compaction && (
-              <span className={cn("block text-xs", warn("context_high") ? "text-stuck" : "font-normal text-muted-foreground")}>
-                {h.compaction.room === 0
-                  ? t("health.compactNow")
-                  : t(h.compaction.requestsLeft == null ? "health.compactRoom" : "health.compactRoomRequests", { room: kilo(h.compaction.room), n: h.compaction.requestsLeft ?? 0 })}
-              </span>
-            )}
-          </span>
-        ) : (
-          t("health.contextUnknown", { n: kilo(h.contextTokens) })
-        ),
-    })
+    items.push({ key: "context", label: t("health.context"), bad: warn("context_high"), value: <ContextValue session={session} high={warn("context_high")} /> })
   }
   if (h.compactions) items.push({ key: "compactions", label: t("health.compactions"), value: h.compactions, bad: warn("many_compactions") })
   items.push({ key: "age", label: t("health.age"), value: rough(now - session.createdAt), bad: warn("old_session") })
