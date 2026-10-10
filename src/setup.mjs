@@ -32,7 +32,7 @@ const fileInfo = path => {
  * @param {number|null} [input.historyCount]
  * @returns the report, in data only: the page and --doctor put the words to it
  */
-export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, running = null, historyCount = null, env = process.env, now = Date.now() }) {
+export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, running = null, historyCount = null, notifications = [], env = process.env, now = Date.now() }) {
   const database = fileInfo(join(cfg.dataDir, 'opencode.db'));
   const log = fileInfo(join(cfg.dataDir, 'log', 'opencode.log'));
   const configFiles = ['opencode.json', 'opencode.jsonc'].filter(name => existsSync(join(cfg.opencodeConfigDir, name)));
@@ -94,6 +94,8 @@ export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, ru
       discord: Boolean(cfg.notify.discord.webhookUrl),
       on: [...cfg.notify.on],
       repeatMinutes: cfg.notify.repeatMinutes,
+      // What was sent since this monitor started, newest first, and how each channel answered.
+      recent: notifications.slice(0, 20),
     },
     history: { enabled: Boolean(cfg.history.enabled), file: cfg.history.file, retentionDays: cfg.history.retentionDays, count: historyCount },
     problems,

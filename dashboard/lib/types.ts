@@ -214,7 +214,14 @@ export interface SetupReport {
   compaction: { auto: boolean; reserved: number | null; outputTokenMax: number | null }
   models: { id: string; requests: number; lastAt: number; context: number | null; output: number | null; input: number | null; source: "opencode" | "monitor" | null; compactAt: number | null }[]
   mcp: { name: string; type: "local" | "remote"; enabled: boolean }[]
-  notify: { desktop: boolean; discord: boolean; on: string[]; repeatMinutes: number }
+  notify: {
+    desktop: boolean
+    discord: boolean
+    on: string[]
+    repeatMinutes: number
+    /** What was sent since the monitor started, newest first. Each channel: "sent", "off", "sending" or "failed (...)". */
+    recent: { t: number; kind: string; title: string; subject: string; desktop: string; discord: string }[]
+  }
   history: { enabled: boolean; file: string; retentionDays: number; count: number | null }
   problems: { code: string; subject: string | null }[]
 }

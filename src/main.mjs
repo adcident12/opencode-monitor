@@ -139,7 +139,7 @@ export async function main(argv) {
       }
     } else if (path === '/api/setup') {
       try {
-        const report = buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: cfg.history.enabled ? history.count : null });
+        const report = buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: cfg.history.enabled ? history.count : null, notifications: notify.recent() });
         res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(report));
       } catch (err) {
         console.warn(`Setup report failed: ${err.code ?? err.message}`);

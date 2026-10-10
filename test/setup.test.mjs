@@ -54,7 +54,7 @@ test('a machine with nothing on it: every missing piece is named, and no secret 
   cfg.notify.discord.webhookUrl = 'https://discord.com/api/webhooks/123/secret-token';
   const report = buildSetupReport({ cfg, opencode: opencode({ limits: new Map(), reserves: new Map(), mcp: [] }), db: null, now: NOW });
   assert.deepEqual(report.problems.map(p => p.code), ['no_database', 'no_log', 'no_opencode_config']);
-  assert.deepEqual([report.notify.discord, report.models], [true, []]);
+  assert.deepEqual([report.notify.discord, report.models, report.notify.recent], [true, [], []]);
   assert.ok(!JSON.stringify(report).includes('secret-token'));
 
   const text = formatSetupReport(report, (key, vars = {}) => `${key}${vars.subject ? ' ' + vars.subject : ''}`);

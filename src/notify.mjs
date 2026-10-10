@@ -3,6 +3,9 @@
 import { execFile } from 'node:child_process';
 import { formatDuration } from './format.mjs';
 
+// How many sent notifications are remembered, for the "This machine" tab.
+const RECENT_MAX = 50;
+
 // Runs under Windows PowerShell 5.1 (ships with Windows). Text arrives through environment
 // variables so nothing from a session title is ever parsed as script.
 const TOAST_SCRIPT = `
@@ -55,22 +58,41 @@ export async function discordNotify(webhookUrl, content, mention = '') {
   }
 }
 
-/** Sends one test message through every configured channel and reports each outcome. */
-export async function testNotify(cfg, t) {
-  const title = t('notify.test.title');
-  const body = t('notify.test.body');
+/**
+ * Sends one sample of every kind of notification that is switched on (notify.on), through
+ * the same code that sends the real ones, and reports how each channel answered. So what is
+ * tested is the message you would get for "stuck" or "about to be compacted", not only that
+ * the channel is reachable.
+ * @returns {Promise<[string, string][]>} [what, outcome] pairs
+ */
+export async function testNotify(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, waitMs = 25_000) {
   const results = [];
-  if (cfg.desktop) {
-    const err = await new Promise(resolve => desktopNotify(title, body, resolve));
-    results.push(['desktop', err ? `failed (${err.code ?? err.message})` : 'sent']);
-  } else {
-    results.push(['desktop', 'off in config']);
+  if (!cfg.desktop) results.push(['desktop', 'off in config']);
+  if (!cfg.discord.webhookUrl) results.push(['Discord', 'no webhookUrl in config']);
+  if (!cfg.desktop && !cfg.discord.webhookUrl) return results;
+
+  const notifier = createNotifier(cfg, t, send, { quiet: true });
+  const now = Date.now();
+  const sample = (id, state, health = {}) => ({
+    id, parentId: null, state, since: now - 65_000, project: 'opencode-monitor', title: t('notify.test.body'),
+    health: { hints: [], compactions: 0, compaction: null, compacting: false, ...health },
+  });
+  notifier([], now); // what is there at startup is never announced; start with nothing
+  const kinds = cfg.on.length ? cfg.on : ['waiting'];
+  for (const kind of kinds) {
+    const session = kind === 'compact_soon'
+      ? sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } })
+      : sample(`test-${kind}`, kind);
+    notifier([session], now);
   }
-  if (cfg.discord.webhookUrl) {
-    const err = await discordNotify(cfg.discord.webhookUrl, [cfg.discord.mention, `**${title}**`, body].filter(Boolean).join('\n'), cfg.discord.mention);
-    results.push(['Discord', err ? `failed (${err})` : 'sent']);
-  } else {
-    results.push(['Discord', 'no webhookUrl in config']);
+
+  // Each channel reports back in its own time.
+  const deadline = Date.now() + waitMs;
+  const pending = () => notifier.recent().some(e => e.desktop === 'sending' || e.discord === 'sending');
+  while (pending() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 200));
+  for (const entry of notifier.recent().reverse()) {
+    if (cfg.desktop) results.push([`${entry.kind} / desktop`, entry.desktop === 'sending' ? 'no answer' : entry.desktop]);
+    if (cfg.discord.webhookUrl) results.push([`${entry.kind} / Discord`, entry.discord === 'sending' ? 'no answer' : entry.discord]);
   }
   return results;
 }
@@ -79,45 +101,61 @@ export async function testNotify(cfg, t) {
  * @param {object} cfg  the `notify` section of the config
  * @param {(key: string, vars?: object) => string} t
  * @param {object} [send] replaceable senders, for tests
+ * @param {{quiet?: boolean}} [options] quiet: do not print a line per notification
  */
-export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }) {
+export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, { quiet = false } = {}) {
   const seen = new Map(); // session id -> { state, notifiedAt }
-  const closeToCompaction = new Set(); // session ids already told about, until they compact
+  // session id -> how many times it had been compacted when it was last close to the next
+  // one. Told once per compaction: the estimate of "requests left" wobbles, the count does not.
+  const closeToCompaction = new Map();
   let baseline = true;
+  const recent = []; // what was sent, oldest first, with how each channel answered
 
-  function compose(session, now) {
-    const title = t(`notify.${session.state}`);
-    const lines = [`${session.project} — ${session.title}`, t('notify.for', { t: formatDuration(now - session.since) })];
-    const detail = session.prompt?.detail || session.current?.summary;
-    return { title, lines, detail };
+  /**
+   * Sends one notification on every channel that is on, and keeps the outcome: a message
+   * that Discord refused or Windows did not show must not vanish without a trace.
+   * @param {string} kind    'waiting', 'stuck', 'compact_soon', 'environment', ...
+   * @param {string[]} lines first line says which session or thing it is about
+   * @param {string} [extra] appended to the Discord message only
+   */
+  function deliver(kind, title, lines, now, extra = '') {
+    const hook = cfg.discord.webhookUrl;
+    const entry = { t: now, kind, title, subject: lines[0] ?? '', desktop: cfg.desktop ? 'sending' : 'off', discord: hook ? 'sending' : 'off' };
+    recent.push(entry);
+    if (recent.length > RECENT_MAX) recent.shift();
+    const settle = (channel, problem) => {
+      entry[channel] = problem ? `failed (${problem})` : 'sent';
+      if (problem) console.warn(`Notification "${kind}" was not delivered to ${channel}: ${problem}`);
+    };
+    if (cfg.desktop) send.desktop(title, lines.join(' · '), err => settle('desktop', err ? (err.code ?? err.message) : null));
+    if (hook) {
+      const text = [cfg.discord.mention, `**${title}**`, ...lines, extra].filter(Boolean).join('\n');
+      // discordNotify answers with null, or with what went wrong as text.
+      Promise.resolve(send.discord(hook, text, cfg.discord.mention)).then(problem => settle('discord', typeof problem === 'string' ? problem : null), err => settle('discord', err?.name ?? 'error'));
+    }
+    if (!quiet) console.log(`notified: ${kind} — ${entry.subject}`);
   }
 
   function dispatch(session, now) {
-    const { title, lines, detail } = compose(session, now);
-    if (cfg.desktop) send.desktop(title, lines.join(' · '));
-    if (cfg.discord.webhookUrl) {
-      const parts = [cfg.discord.mention, `**${title}**`, ...lines].filter(Boolean);
-      if (cfg.discord.includeDetail && detail) parts.push('`' + detail.replaceAll('`', "'") + '`');
-      send.discord(cfg.discord.webhookUrl, parts.join('\n'), cfg.discord.mention);
-    }
+    const lines = [`${session.project} — ${session.title}`, t('notify.for', { t: formatDuration(now - session.since) })];
+    const detail = session.prompt?.detail || session.current?.summary;
+    deliver(session.state, t(`notify.${session.state}`), lines, now, cfg.discord.includeDetail && detail ? '`' + detail.replaceAll('`', "'") + '`' : '');
   }
 
   // Once per compaction: the session is close to the point where OpenCode compacts it.
-  function compactSoon(session) {
+  function compactSoon(session, now) {
     const c = session.health?.compaction;
-    const title = t('notify.compact_soon');
     const lines = [
       `${session.project} — ${session.title}`,
       c ? t(c.requestsLeft == null ? 'notify.compact_room' : 'notify.compact_room_requests', { room: `${Math.round(c.room / 1000)}k`, n: c.requestsLeft ?? 0 }) : '',
     ].filter(Boolean);
-    if (cfg.desktop) send.desktop(title, lines.join(' · '));
-    if (cfg.discord.webhookUrl) send.discord(cfg.discord.webhookUrl, [cfg.discord.mention, `**${title}**`, ...lines].filter(Boolean).join('\n'), cfg.discord.mention);
+    deliver('compact_soon', t('notify.compact_soon'), lines, now);
   }
 
   // Environment: tell once when something that was fine (or not yet seen) goes down.
   const down = new Map(); // "mcp:graft" -> true while down
   let envBaseline = true;
-  function onEnvironment(environment) {
+  function onEnvironment(environment, now = Date.now()) {
     const items = [
       ...environment.mcp.map(m => ({ key: `mcp:${m.name}`, group: 'mcp', name: m.name, bad: m.status === 'failed' })),
       ...environment.models.map(m => ({ key: `model:${m.name}`, group: 'model', name: m.name, bad: m.ok === false })),
@@ -125,9 +163,7 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
     ];
     for (const item of items) {
       if (item.bad && !down.get(item.key) && !envBaseline) {
-        const title = t(`notify.env.${item.group}`, { name: item.name });
-        if (cfg.desktop) send.desktop(title, t('notify.env.body'));
-        if (cfg.discord.webhookUrl) send.discord(cfg.discord.webhookUrl, [cfg.discord.mention, `**${title}**`].filter(Boolean).join('\n'), cfg.discord.mention);
+        deliver('environment', t(`notify.env.${item.group}`, { name: item.name }), [t('notify.env.body')], now);
       }
       down.set(item.key, item.bad);
     }
@@ -135,6 +171,8 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   }
 
   onSnapshot.environment = onEnvironment;
+  /** What was sent since the monitor started, newest first, with each channel's outcome. */
+  onSnapshot.recent = () => recent.map(entry => ({ ...entry })).reverse();
   return onSnapshot;
 
   function onSnapshot(sessions, now) {
@@ -159,14 +197,13 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
 
       // Not a state of its own: a warning that can come while the session works.
       const close = Boolean(session.health?.compaction) && session.health.hints?.includes('context_high');
-      if (close && !closeToCompaction.has(session.id)) {
-        if (cfg.on.includes('compact_soon') && !baseline) compactSoon(session);
-        closeToCompaction.add(session.id);
-      } else if (!close && !session.health?.compacting) {
-        closeToCompaction.delete(session.id);
+      const compactions = session.health?.compactions ?? 0;
+      if (close && !(closeToCompaction.get(session.id) >= compactions)) {
+        if (cfg.on.includes('compact_soon') && !baseline) compactSoon(session, now);
+        closeToCompaction.set(session.id, compactions);
       }
     }
-    for (const id of closeToCompaction) if (!ids.has(id)) closeToCompaction.delete(id);
+    for (const id of closeToCompaction.keys()) if (!ids.has(id)) closeToCompaction.delete(id);
     for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
     baseline = false;
   }

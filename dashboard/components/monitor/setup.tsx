@@ -83,6 +83,7 @@ export function Setup({ active }: { active: boolean }) {
         <Row label={t("setup.desktop")} ok={report.notify.desktop} value={t(report.notify.desktop ? "setup.yes" : "setup.no")} />
         <Row label={t("setup.discord")} ok={report.notify.discord} value={t(report.notify.discord ? "setup.discordSet" : "setup.no")} />
         <Row label={t("setup.notifyOn")} value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")} />
+        <Sent report={report} />
       </Section>
 
       <Section title={t("setup.monitor")}>
@@ -95,6 +96,58 @@ export function Setup({ active }: { active: boolean }) {
         />
         <Row label={t("setup.mcp")} value={report.mcp.length ? report.mcp.map(s => `${s.name}${s.enabled ? "" : ` (${t("stats.mcpOff")})`}`).join(", ") : t("setup.none")} />
       </Section>
+    </div>
+  )
+}
+
+/**
+ * What was actually sent, and whether each channel took it. Without this there is no way to
+ * tell "nothing happened that needed a notification" from "it was sent and got lost".
+ */
+function Sent({ report }: { report: SetupReport }) {
+  const { t, lang } = useI18n()
+  const when = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+  const outcome = (text: string) => {
+    if (text === "sent") return <span className="text-finished">{t("setup.sent")}</span>
+    if (text === "off") return <span className="text-muted-foreground">{t("setup.no")}</span>
+    if (text === "sending") return <span className="text-muted-foreground">{t("setup.sending")}</span>
+    return <span className="font-medium text-error">{text}</span>
+  }
+  return (
+    <div className="space-y-2 py-3">
+      <div>
+        <h3 className="text-base font-semibold">{t("setup.recent")}</h3>
+        <p className="text-xs text-muted-foreground">{t("setup.recentNote")}</p>
+      </div>
+      {report.notify.recent.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("setup.recentNone")}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-muted-foreground">
+                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.recentWhen")}</th>
+                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.recentWhat")}</th>
+                <th scope="col" className="py-1.5 pr-3 font-normal">{t("setup.desktop")}</th>
+                <th scope="col" className="py-1.5 font-normal">{t("setup.discord")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {report.notify.recent.map((n, i) => (
+                <tr key={`${n.t}-${i}`}>
+                  <td className="py-2 pr-3 text-xs tabular-nums whitespace-nowrap text-muted-foreground">{when.format(n.t)}</td>
+                  <th scope="row" className="py-2 pr-3 text-left font-normal">
+                    {n.title}
+                    <span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">{n.subject}</span>
+                  </th>
+                  <td className="py-2 pr-3 whitespace-nowrap">{outcome(n.desktop)}</td>
+                  <td className="py-2 whitespace-nowrap">{outcome(n.discord)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

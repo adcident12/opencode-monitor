@@ -161,17 +161,20 @@ test('a session about to be compacted is announced once per compaction, only whe
     (key, vars = {}) => `${key}${vars.n != null ? ` ${vars.n}` : ''}`,
     { desktop: (title, body) => sent.push(`${title} | ${body}`), discord: () => {} },
   );
-  const session = (hints, compacting = false) => ({
+  const session = (hints, compactions = 0, compacting = false) => ({
     id: 's1', parentId: null, state: 'working', since: 0, project: 'shop', title: 'Checkout',
-    health: { hints, compacting, compaction: compacting ? null : { at: 99_072, room: 9000, growth: 4000, requestsLeft: 2 } },
+    health: { hints, compactions, compacting, compaction: compacting ? null : { at: 99_072, room: 9000, growth: 4000, requestsLeft: 2 } },
   });
   const notify = make(['waiting', 'compact_soon']);
   notify([session([])], 0); // startup
   notify([session(['context_high'])], 1000);
   notify([session(['context_high'])], 2000);
-  notify([session([], true)], 3000); // compacting: the next approach is news again
-  notify([session([])], 4000);
-  notify([session(['context_high'])], 5000);
+  // The estimate wobbles out of the warning and back in, with no compaction between: not news.
+  notify([session([])], 2500);
+  notify([session(['context_high'])], 2800);
+  notify([session([], 1, true)], 3000); // compacted: the next approach is news again
+  notify([session([], 1)], 4000);
+  notify([session(['context_high'], 1)], 5000);
   assert.deepEqual(sent, ['notify.compact_soon | shop — Checkout · notify.compact_room_requests 2', 'notify.compact_soon | shop — Checkout · notify.compact_room_requests 2']);
 
   sent.length = 0;
@@ -179,4 +182,43 @@ test('a session about to be compacted is announced once per compaction, only whe
   off([session([])], 0);
   off([session(['context_high'])], 1000);
   assert.deepEqual(sent, [], 'off unless "compact_soon" is in notify.on');
+});
+
+test('what was sent is kept with how each channel answered, so a refused message leaves a trace', async () => {
+  const cfg = { on: ['stuck'], repeatMinutes: 0, desktop: true, discord: { webhookUrl: 'https://discord.com/api/webhooks/1/x', mention: '', includeDetail: false } };
+  const notify = createNotifier(cfg, key => key, {
+    desktop: (title, body, done) => done(null),
+    discord: async () => 'HTTP 404',
+  }, { quiet: true });
+  const session = state => ({ id: 's1', parentId: null, state, since: 0, project: 'shop', title: 'Checkout', health: { hints: [] } });
+  notify([session('working')], 0);
+  notify([session('stuck')], 1000);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(notify.recent().map(e => [e.kind, e.subject, e.desktop, e.discord]), [['stuck', 'shop — Checkout', 'sent', 'failed (HTTP 404)']]);
+  // The webhook itself is never part of the record.
+  assert.ok(!JSON.stringify(notify.recent()).includes('webhooks'));
+});
+
+test('--test-notify sends one of each kind that is switched on, through the real path', async () => {
+  const { testNotify } = await import('../src/notify.mjs');
+  const got = [];
+  const cfg = { on: ['waiting', 'stuck', 'compact_soon'], repeatMinutes: 30, desktop: true, discord: { webhookUrl: 'https://discord.com/api/webhooks/1/x', mention: '<@1>', includeDetail: false } };
+  const results = await testNotify(cfg, (key, vars = {}) => `${key}${vars.n != null ? ` ${vars.n}` : ''}`, {
+    desktop: (title, body, done) => {
+      got.push(`desktop ${title}`);
+      done(null);
+    },
+    discord: async (url, text) => {
+      got.push(`discord ${text.split('\n')[1]}`);
+      return text.includes('notify.stuck') ? 'HTTP 429' : null;
+    },
+  }, 2000);
+  assert.deepEqual(got.filter(g => g.startsWith('desktop')), ['desktop notify.waiting', 'desktop notify.stuck', 'desktop notify.compact_soon']);
+  assert.deepEqual(got.filter(g => g.startsWith('discord')), ['discord **notify.waiting**', 'discord **notify.stuck**', 'discord **notify.compact_soon**']);
+  assert.deepEqual(results, [
+    ['waiting / desktop', 'sent'], ['waiting / Discord', 'sent'],
+    ['stuck / desktop', 'sent'], ['stuck / Discord', 'failed (HTTP 429)'],
+    ['compact_soon / desktop', 'sent'], ['compact_soon / Discord', 'sent'],
+  ]);
+  assert.deepEqual(await testNotify({ ...cfg, desktop: false, discord: { webhookUrl: '' } }, k => k), [['desktop', 'off in config'], ['Discord', 'no webhookUrl in config']]);
 });

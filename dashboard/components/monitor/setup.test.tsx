@@ -20,7 +20,12 @@ const report = (extra: Partial<SetupReport> = {}): SetupReport => ({
     { id: "ollama/mystery", requests: 3, lastAt: 0, context: null, output: null, input: null, source: null, compactAt: null },
   ],
   mcp: [{ name: "context7", type: "remote", enabled: true }],
-  notify: { desktop: true, discord: false, on: ["waiting", "compact_soon"], repeatMinutes: 30 },
+  notify: {
+    desktop: true, discord: true, on: ["waiting", "compact_soon"], repeatMinutes: 30,
+    recent: [
+      { t: 1_800_000_000_000, kind: "stuck", title: "Probably stuck", subject: "shop — Checkout", desktop: "sent", discord: "failed (HTTP 404)" },
+    ],
+  },
   history: { enabled: true, file: "data/history.jsonl", retentionDays: 30, count: 12 },
   problems: [{ code: "no_log", subject: "/home/ana/.local/share/opencode/log/opencode.log" }, { code: "model_limit_unknown", subject: "ollama/mystery" }],
   ...extra,
@@ -60,6 +65,14 @@ describe("This machine", () => {
     expect(screen.getByText(/Give the model a "limit"/)).toBeInTheDocument()
     expect(screen.getByText(/OpenCode's log was not found at/)).toBeInTheDocument()
     expect(screen.getByText("waiting for you, about to be compacted")).toBeInTheDocument()
+  })
+
+  it("shows what was sent and which channel refused it", async () => {
+    renderSetup()
+    const row = (await screen.findByText("Probably stuck")).closest("tr")!
+    expect(within(row).getByText("shop — Checkout")).toBeInTheDocument()
+    expect(within(row).getByText("sent")).toBeInTheDocument()
+    expect(within(row).getByText("failed (HTTP 404)")).toBeInTheDocument()
   })
 
   it("says so when nothing is missing", async () => {
