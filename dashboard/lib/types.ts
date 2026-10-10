@@ -143,6 +143,22 @@ export interface SessionChoice {
   project: string
 }
 
+/** One side of a before/after comparison: rates and typical values only. */
+export interface PeriodSummary {
+  days: number
+  sessions: number
+  startTokens: number | null
+  compactionsPerSession: number | null
+  rereadsPerSession: number | null
+  toolCallsPerSession: number | null
+  toolErrorPct: number | null
+  mcpNoAnswerPct: number | null
+  cachedPct: number | null
+  writeTps: number | null
+  firstTokenMs: number | null
+  medianAnswerMs: number | null
+}
+
 /** One MCP server over the stats period. */
 export interface McpStat {
   name: string
@@ -186,6 +202,8 @@ export interface Stats {
   mcp: McpStat[]
   /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
   mcpLogFrom: number | null
+  /** Present when a day to split the period on was asked for and both sides have days. */
+  compare: { split: string; model: string | null; before: PeriodSummary; after: PeriodSummary } | null
   /** How fast each model answered, most used first. Rates are tokens per second. */
   speed: {
     models: { model: string; requests: number; writeTps: number | null; readTps: number | null; firstTokenMs: number | null; daily: (number | null)[] }[]

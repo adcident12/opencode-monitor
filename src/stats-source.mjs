@@ -1,6 +1,6 @@
 // Gathers the rows the stats page needs and caches the result. node:sqlite is synchronous,
 // so each computation blocks the server briefly; caching keeps that to once a minute at most.
-import { computeStats } from './stats.mjs';
+import { computeStats, dayKey, summarize } from './stats.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
 
@@ -9,20 +9,40 @@ const CACHE_MS = 60_000;
 const MAX_CACHED = 24;
 // Session ids are used as cache keys and compared with database rows, nothing else.
 const SESSION_ID = /^[A-Za-z0-9_-]{1,80}$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * @param {object} deps
  * @param {object[]} [deps.mcpServers]  MCP servers from the global config
  * @param {object} [deps.projectMcp]    from createProjectMcp
  */
+/**
+ * The same rows counted twice: up to the end of the day before `split`, and from `split` on.
+ * null when the day is not inside the range or leaves one side empty.
+ */
+function compareAround(split, whole, input) {
+  const at = whole.daily.findIndex(d => d.date === split);
+  if (at < 1) return null;
+  const model = whole.speed.models[0]?.model ?? null;
+  const midnight = new Date(`${split}T00:00:00`).getTime();
+  const before = computeStats({ ...input, now: midnight - 1, days: at });
+  const after = computeStats({ ...input, days: whole.daily.length - at });
+  return { split, model, before: summarize(before, model), after: summarize(after, model) };
+}
+
 export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null }) {
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
 
-  return function stats(days, sessionId = null, now = Date.now()) {
+  /**
+   * @param {string|null} [split] a day (YYYY-MM-DD) inside the range: also summarise the days
+   *   before it and the days from it on, to see what a change made on that day did
+   */
+  return function stats(days, sessionId = null, split = null, now = Date.now()) {
     if (!STATS_DAYS.includes(days)) days = 14;
     if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) sessionId = null;
-    const key = `${days}|${sessionId ?? ''}`;
+    if (typeof split !== 'string' || !DAY.test(split)) split = null;
+    const key = `${days}|${sessionId ?? ''}|${split ?? ''}`;
     const hit = cache.get(key);
     if (hit && now - hit.at < CACHE_MS) return hit.value;
 
@@ -49,7 +69,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const sessions = db.stats.sessions(since);
     // Servers a project config adds count only for the projects in the range.
     const projectServers = projectMcp?.forDirs(sessions.map(s => s.directory)) ?? [];
-    const value = computeStats({
+    const input = {
       sessions,
       sessionId,
       mcp: { servers: mergeServers(mcpServers, projectServers), events: log.mcpEvents(), logFrom: log.firstAt() },
@@ -66,7 +86,9 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       days,
       stuckMs: cfg.thresholds.stuckToolMinutes * 60_000,
       show,
-    });
+    };
+    const value = computeStats(input);
+    value.compare = compareAround(split, value, input);
     if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
     cache.set(key, { at: now, value });
     return value;

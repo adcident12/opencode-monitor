@@ -212,3 +212,38 @@ test('model speed: tokens per second while writing, and while reading a new prom
   assert.equal(qwen.daily.filter(v => v != null).length, 1);
   assert.deepEqual(run({}).speed.models, []);
 });
+
+test('before and after a day: rates and typical values, so halves of different length compare', async () => {
+  const { summarize } = await import('../src/stats.mjs');
+  const DAY_MS = 24 * HOUR;
+  const session = (id, daysAgo) => ({ id, parent_id: null, directory: '/work/shop', title: id, time_created: NOW - daysAgo * DAY_MS });
+  const first = (id, daysAgo, tokens) => ({
+    id: `m-${id}`, session_id: id, role: 'assistant', provider_id: 'local', model_id: 'qwen', time_created: NOW - daysAgo * DAY_MS + MIN, completed: NOW - daysAgo * DAY_MS + 2 * MIN,
+    tokens_input: tokens, tokens_cache_read: 0, tokens_cache_write: 0, tokens_output: 100, tokens_reasoning: 0, cost: 0,
+  });
+  const input = {
+    sessions: [session('a', 5), session('b', 4), session('c', 1)],
+    messages: [first('a', 5, 40_000), first('b', 4, 44_000), first('c', 1, 30_000)],
+    compactions: [{ session_id: 'a', time_created: NOW - 5 * DAY_MS + HOUR }, { session_id: 'a', time_created: NOW - 5 * DAY_MS + 2 * HOUR }, { session_id: 'b', time_created: NOW - 4 * DAY_MS + HOUR }],
+    tools: [
+      tool('t1', 'a', 'read', NOW - 5 * DAY_MS + HOUR, NOW - 5 * DAY_MS + HOUR + 1000, { file: '/x' }),
+      tool('t2', 'a', 'read', NOW - 5 * DAY_MS + HOUR + 2000, NOW - 5 * DAY_MS + HOUR + 3000, { file: '/x' }),
+      tool('t3', 'a', 'read', NOW - 5 * DAY_MS + HOUR + 4000, NOW - 5 * DAY_MS + HOUR + 5000, { file: '/x', status: 'error' }),
+      tool('t4', 'c', 'bash', NOW - DAY_MS + HOUR, NOW - DAY_MS + HOUR + 1000),
+    ],
+  };
+  // Split two days ago: sessions a and b fall before it, c after.
+  const before = summarize(run({ ...input, now: new Date(dayKey(NOW - 2 * DAY_MS) + 'T00:00:00').getTime() - 1, days: 4 }), 'local/qwen');
+  const after = summarize(run({ ...input, days: 3 }), 'local/qwen');
+  assert.deepEqual(
+    [before.days, before.sessions, before.startTokens, before.compactionsPerSession, before.rereadsPerSession, before.toolErrorPct],
+    [4, 2, 42_000, 1.5, 0.5, 33.3],
+  );
+  assert.deepEqual(
+    [after.days, after.sessions, after.startTokens, after.compactionsPerSession, after.rereadsPerSession, after.toolErrorPct],
+    [3, 1, 30_000, 0, 0, 0],
+  );
+  // Nothing to divide by is "unknown", never zero.
+  const empty = summarize(run({ sessions: [] }));
+  assert.deepEqual([empty.compactionsPerSession, empty.toolErrorPct, empty.writeTps, empty.startTokens], [null, null, null, null]);
+});

@@ -142,6 +142,35 @@ function computeSpeed({ requests, keys, show }) {
   };
 }
 
+/**
+ * The few figures worth holding side by side when a setting was changed part-way through a
+ * period. Everything is a rate or a typical value, never a total: the two halves are rarely
+ * the same length.
+ * @param {object} stats  a result of computeStats
+ * @param {string|null} model  compare the speed of this model, so a switch of model does not
+ *   pass for the server getting faster
+ */
+export function summarize(stats, model = null) {
+  const { totals, usage } = stats;
+  const per = n => (totals.sessions ? Math.round((n / totals.sessions) * 10) / 10 : null);
+  const speed = stats.speed.models.find(m => m.model === model) ?? null;
+  const mcpCalls = stats.mcp.reduce((n, m) => n + m.calls, 0);
+  return {
+    days: stats.range.days,
+    sessions: totals.sessions,
+    startTokens: usage.start?.median ?? null,
+    compactionsPerSession: per(totals.compactions),
+    rereadsPerSession: per(totals.rereads),
+    toolCallsPerSession: per(totals.toolCalls),
+    toolErrorPct: totals.toolCalls ? Math.round((totals.toolErrors / totals.toolCalls) * 1000) / 10 : null,
+    mcpNoAnswerPct: mcpCalls ? Math.round((stats.mcp.reduce((n, m) => n + m.faults, 0) / mcpCalls) * 1000) / 10 : null,
+    cachedPct: usage.cachedPct,
+    writeTps: speed?.writeTps ?? null,
+    firstTokenMs: speed?.firstTokenMs ?? null,
+    medianAnswerMs: totals.medianAnswerMs,
+  };
+}
+
 /** The session itself and every subagent session under it. */
 function withDescendants(sessions, sessionId) {
   const scope = new Set([sessionId]);
@@ -324,6 +353,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     toolCalls: [...daily.values()].reduce((n, d) => n + d.toolCalls, 0),
     toolErrors: [...daily.values()].reduce((n, d) => n + d.toolErrors, 0),
     compactions: [...daily.values()].reduce((n, d) => n + d.compactions, 0),
+    // Files read three or more times within one session.
+    rereads: [...reads.values()].filter(n => n >= 3).length,
   };
   const sentTotal = usage.input + usage.cacheRead + usage.cacheWrite;
 

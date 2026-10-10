@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "@/lib/i18n"
-import type { McpStat, Stats as StatsData } from "@/lib/types"
+import type { McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { Stats } from "./stats"
 
 const NOW = 1_800_000_000_000
@@ -26,6 +26,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
     server("github", { enabled: false, type: "remote" }),
   ],
   mcpLogFrom: NOW - 2 * 86_400_000,
+  compare: null,
   speed: { models: [{ model: "local-llama/qwen3.8-27b-v3", requests: 118, writeTps: 31.6, readTps: 540, firstTokenMs: 1200, daily: [] }] },
   usage: { requests: 120, input: 45_500, cacheRead: 1_222_000, cacheWrite: 0, output: 9_400, reasoning: 0, cost: 0, cachedPct: 96, start: { median: 32_400, min: 30_100, max: 41_000, sessions: 5 } },
   stuckMs: 600_000,
@@ -35,6 +36,11 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
   ...extra,
 })
 
+const summary = (extra: Partial<PeriodSummary> = {}): PeriodSummary => ({
+  days: 10, sessions: 12, startTokens: 43_500, compactionsPerSession: 2.4, rereadsPerSession: 1.5, toolCallsPerSession: 90, toolErrorPct: 4,
+  mcpNoAnswerPct: 0.5, cachedPct: 93, writeTps: 14.4, firstTokenMs: 2100, medianAnswerMs: 23_000, ...extra,
+})
+
 let requested: string[] = []
 
 beforeEach(() => {
@@ -42,6 +48,11 @@ beforeEach(() => {
   vi.stubGlobal("fetch", async (url: string) => {
     requested.push(url)
     if (url.startsWith("/api/stats")) {
+      if (url.includes("split=")) {
+        const split = /split=([\d-]+)/.exec(url)![1]
+        const after = summary({ days: 4, sessions: 2, startTokens: 32_400, writeTps: 27.2, toolErrorPct: 6 })
+        return Response.json(figures({ compare: { split, model: "local-llama/qwen3.8-27b-v3", before: summary(), after } }))
+      }
       const one = url.includes("session=ses_shop")
       return Response.json(figures(one ? { session: { id: "ses_shop", title: "Checkout flow", project: "shop" }, mcp: [server("memory", { unused: true, disconnects: null, startFailures: null })] } : {}))
     }
@@ -73,6 +84,27 @@ describe("Tokens in Stats", () => {
     expect(screen.getByText("30.1k to 41.0k over 5 sessions")).toBeInTheDocument()
     // No cost was recorded (a local model), so no cost is shown.
     expect(screen.queryByText("Cost")).not.toBeInTheDocument()
+  })
+})
+
+describe("Before and after in Stats", () => {
+  it("puts the two sides of a chosen day next to each other and says which way is better", async () => {
+    renderStats()
+    await userEvent.click(await screen.findByRole("combobox", { name: "Compare before and after a day" }))
+    await userEvent.click((await screen.findAllByRole("option"))[2])
+
+    const table = within(await screen.findByRole("region", { name: "Before and after" }))
+    const row = (name: string) => within(table.getByRole("rowheader", { name: new RegExp(name) }).closest("tr")!)
+    // Fewer tokens at the start is an improvement; a higher failure rate is not.
+    expect(row("Tokens a session starts at").getByText("43.5k")).toBeInTheDocument()
+    expect(row("Tokens a session starts at").getByText("32.4k")).toBeInTheDocument()
+    expect(row("Tokens a session starts at").getByText("better")).toBeInTheDocument()
+    expect(row("Writing speed").getByText("better")).toBeInTheDocument()
+    expect(row("Tool calls that failed").getByText("worse")).toBeInTheDocument()
+    expect(row("Compactions per session").getByText("no change")).toBeInTheDocument()
+    expect(table.getByText("Before (10 d, 12 sessions)")).toBeInTheDocument()
+    // Two sessions on one side is not enough to conclude anything, and the page says so.
+    expect(table.getByText(/fewer than 3 sessions/)).toBeInTheDocument()
   })
 })
 

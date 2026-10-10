@@ -108,7 +108,7 @@ export async function main(argv) {
       req.on('close', () => clients.delete(res));
     } else if (path === '/api/stats') {
       try {
-        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(Number(query.get('days')), query.get('session'))));
+        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(stats(Number(query.get('days')), query.get('session'), query.get('split'))));
       } catch (err) {
         console.warn(`Stats failed: ${err.code ?? err.message}`);
         res.writeHead(503, headers).end('Stats are not available right now.');

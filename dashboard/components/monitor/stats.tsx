@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { compact, duration, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useStats } from "@/lib/live"
-import type { DayStats, McpStat, Stats as StatsData } from "@/lib/types"
+import type { DayStats, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
 import { SessionFilter } from "./session-filter"
@@ -21,7 +21,9 @@ const hours = (ms: number) => Math.round((ms / 3_600_000) * 10) / 10
 export function Stats({ session, onSession }: { session: string | null; onSession: (id: string | null) => void }) {
   const { t } = useI18n()
   const [days, setDays] = useState<number>(14)
-  const { stats, failed } = useStats(days, session, true)
+  // A day inside the period: what was changed that day is judged by the days on either side.
+  const [split, setSplit] = useState<string | null>(null)
+  const { stats, failed } = useStats(days, session, split, true)
   // The list comes with the figures; keep the last one so the filter does not empty while loading.
   const [choices, setChoices] = useState<StatsData["sessions"]>([])
   if (stats && stats.sessions !== choices) setChoices(stats.sessions)
@@ -42,13 +44,136 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
           </SelectContent>
         </Select>
         <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
+        <SplitPicker value={split} onChange={setSplit} days={days} />
         <p className="text-sm text-muted-foreground">{t(session ? "stats.sourceSession" : "stats.source")}</p>
       </div>
 
       {failed && !stats && <p className="text-sm text-error">{t("stats.failed")}</p>}
       {!stats && !failed && <Loading />}
+      {stats?.compare && <Compare compare={stats.compare} />}
+      {stats && split && !stats.compare && <p className="text-sm text-muted-foreground">{t("compare.none")}</p>}
       {stats && <Figures stats={stats} />}
     </div>
+  )
+}
+
+const NO_SPLIT = "none"
+
+/** Local calendar day, as the server names its day buckets. */
+const dayOf = (t: number) => {
+  const d = new Date(t)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+/** Picks the day a setting was changed. The first day of the period would leave nothing before it. */
+function SplitPicker({ value, onChange, days }: { value: string | null; onChange: (day: string | null) => void; days: number }) {
+  const { t, lang } = useI18n()
+  const label = new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short" })
+  // Lazy initial state: the list of days is fixed when the picker appears, and reading the clock during render is not pure.
+  const [today] = useState(() => new Date().setHours(12, 0, 0, 0))
+  const choices = Array.from({ length: days - 1 }, (_, i) => today - i * 86_400_000).map(at => ({ value: dayOf(at), label: t("compare.from", { day: label.format(at) }) }))
+  const items = [{ value: NO_SPLIT, label: t("compare.off") }, ...choices]
+
+  return (
+    <Select value={value ?? NO_SPLIT} onValueChange={next => onChange(!next || next === NO_SPLIT ? null : String(next))} items={items}>
+      <SelectTrigger size="sm" aria-label={t("compare.label")} className="min-w-40">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map(item => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+type Metric = { key: keyof PeriodSummary; better: "lower" | "higher" | null; show: (n: number) => string }
+
+/**
+ * The days before a chosen day beside the days from it on. Rates and typical values only,
+ * and each change is said in words as well as coloured, because "up" is good for some rows
+ * and bad for others.
+ */
+function Compare({ compare }: { compare: NonNullable<StatsData["compare"]> }) {
+  const { t, lang } = useI18n()
+  const { before, after } = compare
+  const day = new Intl.DateTimeFormat(lang, { day: "numeric", month: "long" }).format(new Date(`${compare.split}T12:00:00`))
+  const pct = (n: number) => `${n}%`
+  const each = (n: number) => String(n)
+  const metrics: Metric[] = [
+    { key: "startTokens", better: "lower", show: compact },
+    { key: "compactionsPerSession", better: "lower", show: each },
+    { key: "rereadsPerSession", better: "lower", show: each },
+    { key: "toolErrorPct", better: "lower", show: pct },
+    { key: "mcpNoAnswerPct", better: "lower", show: pct },
+    { key: "cachedPct", better: "higher", show: pct },
+    { key: "writeTps", better: "higher", show: n => t("stats.speedTps", { n: n < 100 ? n.toFixed(1) : Math.round(n) }) },
+    { key: "firstTokenMs", better: "lower", show: quick },
+    { key: "toolCallsPerSession", better: null, show: each },
+    { key: "medianAnswerMs", better: null, show: duration },
+  ]
+  const thin = Math.min(before.sessions, after.sessions) < 3
+
+  return (
+    <section aria-label={t("compare.title")} className="space-y-3 rounded-xl border bg-card px-4 py-4 sm:px-5">
+      <div>
+        <h3 className="font-medium">{t("compare.heading", { day })}</h3>
+        <p className="text-xs text-muted-foreground">{t("compare.note")}</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[0.82rem]">
+          <thead>
+            <tr className="border-b text-left text-xs text-muted-foreground">
+              <th scope="col" className="py-1.5 pr-3 font-normal" />
+              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("compare.before", { days: before.days, sessions: before.sessions })}</th>
+              <th scope="col" className="py-1.5 pr-3 text-right font-normal">{t("compare.after", { days: after.days, sessions: after.sessions })}</th>
+              <th scope="col" className="py-1.5 text-right font-normal">{t("compare.change")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {metrics.map(m => {
+              const a = before[m.key]
+              const b = after[m.key]
+              if (a == null && b == null) return null
+              return (
+                <tr key={m.key}>
+                  <th scope="row" className="py-2 pr-3 text-left font-normal">
+                    {t(`compare.metric.${m.key}`)}
+                    {(m.key === "writeTps" || m.key === "firstTokenMs") && compare.model && <span className="block font-mono text-[0.72rem] text-muted-foreground">{compare.model}</span>}
+                  </th>
+                  <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{a == null ? "–" : m.show(a)}</td>
+                  <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{b == null ? "–" : m.show(b)}</td>
+                  <td className="py-2 text-right whitespace-nowrap">
+                    <Change before={a} after={b} better={m.better} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {thin && <p className="text-xs text-waiting">{t("compare.thin")}</p>}
+    </section>
+  )
+}
+
+function Change({ before, after, better }: { before: number | null; after: number | null; better: Metric["better"] }) {
+  const { t } = useI18n()
+  if (before == null || after == null) return <span className="text-muted-foreground">–</span>
+  if (before === after) return <span className="text-muted-foreground">{t("compare.same")}</span>
+  const up = after > before
+  // From zero there is no percentage to give.
+  const size = before === 0 ? "" : ` ${Math.round((Math.abs(after - before) / Math.abs(before)) * 100)}%`
+  const verdict = better == null ? null : (better === "higher") === up ? "better" : "worse"
+  return (
+    <span className={cn("tabular-nums", verdict === "better" && "text-working", verdict === "worse" && "text-error", !verdict && "text-muted-foreground")}>
+      {up ? "↑" : "↓"}
+      {size}
+      {verdict && <span className="ml-1.5 text-xs">{t(`compare.${verdict}`)}</span>}
+    </span>
   )
 }
 

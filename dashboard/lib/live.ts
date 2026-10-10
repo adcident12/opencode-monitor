@@ -88,14 +88,14 @@ export function useHash(): [string, (hash: string) => void] {
 }
 
 /** Figures for the stats tab; refreshed every minute while the tab is open. */
-export function useStats(days: number, session: string | null, enabled: boolean) {
-  const key = `${days}|${session ?? ""}`
+export function useStats(days: number, session: string | null, split: string | null, enabled: boolean) {
+  const key = `${days}|${session ?? ""}|${split ?? ""}`
   const [state, setState] = useState<{ key: string; stats: Stats | null; failed: boolean }>({ key, stats: null, failed: false })
   useEffect(() => {
     if (!enabled) return
     let live = true
     const load = () =>
-      fetch(`/api/stats?days=${days}&${sessionQuery(session)}`)
+      fetch(`/api/stats?days=${days}&${sessionQuery(session)}${split ? `&split=${split}` : ""}`)
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
         .then(stats => live && setState({ key, stats, failed: false }))
         .catch(() => live && setState(s => ({ ...s, failed: true })))
@@ -105,7 +105,7 @@ export function useStats(days: number, session: string | null, enabled: boolean)
       live = false
       clearInterval(timer)
     }
-  }, [days, session, key, enabled])
+  }, [days, session, split, key, enabled])
   // Figures for another range or session are not shown as if they were for this one.
   return { stats: state.key === key ? state.stats : null, failed: state.failed }
 }
