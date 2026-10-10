@@ -1,6 +1,6 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, RadioIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, RadioIcon, SettingsIcon } from "lucide-react"
 import { useEffect } from "react"
 import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
@@ -9,6 +9,7 @@ import { useTabIcon } from "@/components/monitor/logo"
 import type { MarkTone } from "@/lib/logo"
 import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
+import { Setup } from "@/components/monitor/setup"
 import { Stats } from "@/components/monitor/stats"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,7 +18,7 @@ import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useHash, useNow, useSnapshot } from "@/lib/live"
 
-type Tab = "now" | "history" | "stats"
+type Tab = "now" | "history" | "stats" | "setup"
 
 const TAB = "flex-none gap-2 px-3.5 text-sm text-foreground/75 data-active:text-foreground"
 
@@ -27,7 +28,7 @@ export default function Page() {
   const now = useNow(skew)
   const [hash, setHash] = useHash()
   // #stats or #history, optionally narrowed to one session: #stats/<session id>.
-  const [, hashTab, hashSession] = /^#(history|stats)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
+  const [, hashTab, hashSession] = /^#(history|stats|setup)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
   const tab: Tab = (hashTab as Tab | undefined) ?? "now"
   const session = hashSession ?? null
   const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
@@ -75,6 +76,12 @@ export default function Page() {
           <TabsTrigger value="stats" className={TAB}>
             <ChartColumnIcon aria-hidden />
             {t("tab.stats")}
+          </TabsTrigger>
+          <TabsTrigger value="setup" className={TAB}>
+            <SettingsIcon aria-hidden />
+            {t("tab.setup")}
+            {/* Something on this machine is missing: say so from any tab. */}
+            {tab !== "setup" && snapshot?.opencodeUntested && <span className="size-1.5 rounded-full bg-waiting" aria-hidden />}
           </TabsTrigger>
         </TabsList>
 
@@ -131,6 +138,8 @@ export default function Page() {
             <History count={snapshot?.historyCount ?? null} active={tab === "history"} session={session} onSession={changeSession} />
           </TabsContent>
         )}
+
+        <TabsContent value="setup">{tab === "setup" && <Setup active />}</TabsContent>
 
         <TabsContent value="stats">{tab === "stats" && <Stats session={session} onSession={changeSession} />}</TabsContent>
       </Tabs>

@@ -198,6 +198,27 @@ export interface McpStat {
   moreTools: number
 }
 
+/** What the monitor found on this machine (src/setup.mjs). No secret is ever in it. */
+export interface SetupReport {
+  monitor: { version: string | null; port: number; lang: string; configFile: { path: string; found: boolean } | null; platform: string }
+  opencode: {
+    dataDir: string
+    database: { path: string; found: boolean; bytes: number | null }
+    log: { path: string; found: boolean; bytes: number | null }
+    configDir: string
+    configFiles: string[]
+    version: string | null
+    tested: string
+    running: boolean | null
+  }
+  compaction: { auto: boolean; reserved: number | null; outputTokenMax: number | null }
+  models: { id: string; requests: number; lastAt: number; context: number | null; output: number | null; input: number | null; source: "opencode" | "monitor" | null; compactAt: number | null }[]
+  mcp: { name: string; type: "local" | "remote"; enabled: boolean }[]
+  notify: { desktop: boolean; discord: boolean; on: string[]; repeatMinutes: number }
+  history: { enabled: boolean; file: string; retentionDays: number; count: number | null }
+  problems: { code: string; subject: string | null }[]
+}
+
 /** A page of history, newest first; more: matching entries older than it. */
 export interface HistoryPage {
   events: HistoryEvent[]

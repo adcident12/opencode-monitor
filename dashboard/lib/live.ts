@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import type { HistoryEvent, HistoryPage, SessionChoice, Snapshot, Stats } from "./types"
+import type { HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -122,6 +122,23 @@ export function useHistorySessions(count: number | null, enabled: boolean) {
     }
   }, [count, enabled])
   return sessions
+}
+
+/** What the monitor found on this machine; fetched when the tab opens. */
+export function useSetup(enabled: boolean) {
+  const [state, setState] = useState<{ report: SetupReport | null; failed: boolean }>({ report: null, failed: false })
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    fetch("/api/setup")
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then(report => live && setState({ report, failed: false }))
+      .catch(() => live && setState(s => ({ ...s, failed: true })))
+    return () => {
+      live = false
+    }
+  }, [enabled])
+  return state
 }
 
 const onHashChange = (notify: () => void) => {

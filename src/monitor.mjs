@@ -340,6 +340,8 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     }
   }
 
+  /** Version of the OpenCode that wrote the newest session seen. */
+  snapshot.opencodeVersion = () => previous.opencodeVersion;
   /** Project directories of the sessions on screen, for the git probe. */
   snapshot.directories = () => directories;
   /** Background-flagged calls of the sessions on screen, for the leftover-process probe. */

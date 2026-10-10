@@ -16,6 +16,8 @@ import { createProcessProbe } from './process.mjs';
 import { createMonitor } from './monitor.mjs';
 import { createNotifier, testNotify } from './notify.mjs';
 import { loadTranslator } from './format.mjs';
+import { existsSync } from 'node:fs';
+import { buildSetupReport, formatSetupReport } from './setup.mjs';
 
 const HOST = '127.0.0.1'; // Not configurable on purpose: the page shows what your agent is doing.
 
@@ -54,6 +56,16 @@ export async function main(argv) {
     // The sample directory carries its own fake OpenCode config; never mix in the real one.
     cfg.opencodeConfigDir = cfg.dataDir;
     cfg.services = [];
+  }
+  if (args.doctor) {
+    // Works without a database too: saying that it is missing is the point.
+    const found = existsSync(join(cfg.dataDir, 'opencode.db'));
+    const doctorDb = found ? openDb(cfg.dataDir) : null;
+    const oc = loadOpencodeConfig(cfg.opencodeConfigDir);
+    const opencodeVersion = doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
+    console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang)));
+    doctorDb?.close();
+    return;
   }
   const db = openDb(cfg.dataDir);
   const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
@@ -124,6 +136,14 @@ export async function main(argv) {
       } catch (err) {
         console.warn(`Stats failed: ${err.code ?? err.message}`);
         res.writeHead(503, headers).end('Stats are not available right now.');
+      }
+    } else if (path === '/api/setup') {
+      try {
+        const report = buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: cfg.history.enabled ? history.count : null });
+        res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(report));
+      } catch (err) {
+        console.warn(`Setup report failed: ${err.code ?? err.message}`);
+        res.writeHead(503, headers).end('The setup report is not available right now.');
       }
     } else if (path === '/api/history') {
       res.writeHead(200, { ...headers, 'content-type': 'application/json; charset=utf-8' }).end(JSON.stringify(history.page({

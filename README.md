@@ -37,8 +37,20 @@ node server.mjs --sample
 | `--no-notify` | No desktop or Discord notifications |
 | `--assume-running` | Skip the check for a live OpenCode process |
 | `--version` | Print the version, then exit |
+| `--doctor` | Print what the monitor finds on this machine, and what is missing, then exit |
 | `--test-notify` | Send one test notification on each configured channel, then exit |
 | `--autostart on` / `off` | Start the monitor each time you log in, or stop doing so, then exit |
+
+### What it found on your machine
+
+Nothing in the monitor is set for one particular machine: paths, model limits, the point where a session is compacted, MCP servers and notification channels are all read from where it runs. The **This machine** tab says what was read and from where, and `node server.mjs --doctor` prints the same in a terminal, without needing the page:
+
+- where OpenCode's database, log and config were looked for, and whether they are there;
+- the models used in the last 30 days, each with its context window, output limit and the size at which OpenCode compacts a session of that model, or "limit unknown" when no limit is set for it anywhere;
+- which notification channels are on (a Discord webhook is reported as set, never shown);
+- **To look at**: each thing that is missing, what it costs you, and what to change.
+
+Start here when a figure is not shown that you expected to see.
 
 ### Keep it running
 
@@ -235,6 +247,7 @@ src/history.mjs         record of state changes (data/history.jsonl)
 src/redact.mjs          secret patterns
 src/notify.mjs          desktop and Discord notifications
 src/process.mjs         is OpenCode running
+src/setup.mjs           what was found on this machine, for the This machine tab and --doctor
 src/autostart.mjs       --autostart: the scheduled task that starts the monitor at login (Windows)
 src/opencode-config.mjs model limits, MCP names, model server addresses
 public/                 the page, built from dashboard/ (do not edit by hand)

@@ -106,6 +106,7 @@ export function parseArgs(argv) {
     else if (arg === '--test-notify') args.testNotify = true;
     else if (arg === '--autostart') args.autostart = value();
     else if (arg === '--version' || arg === '-v') args.version = true;
+    else if (arg === '--doctor') args.doctor = true;
     else if (arg === '--help' || arg === '-h') args.help = true;
     else throw new UserError(`Unknown option ${arg}. Try --help.`);
   }
@@ -123,6 +124,7 @@ export const HELP = `Usage: node server.mjs [options]
   --assume-running   Skip the "is OpenCode running" process check.
   --test-notify      Send one test notification on each configured channel, then exit.
   --version          Print the version, then exit.
+  --doctor           Print what the monitor finds on this machine, and what is missing, then exit.
   --autostart on|off Start the monitor each time you log in, with the options given here
                      (Windows: a scheduled task for your user). Then exit.
 `;
@@ -165,6 +167,8 @@ export function loadConfig(args = {}, env = process.env) {
     throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
   }
 
+  // Where the settings came from, for --doctor and the setup page.
+  cfg.configFile = { path, found: existsSync(path) };
   cfg.dataDir = resolve(cfg.dataDir ?? defaultDataDir(env));
   cfg.opencodeConfigDir = resolve(cfg.opencodeConfigDir ?? defaultOpencodeConfigDir(env));
   return cfg;

@@ -129,6 +129,9 @@ export function openDb(dataDir) {
       from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'`),
     // Per model request: when the first token arrived, and when the model stopped writing
     // (the end of its last text, or the moment its last tool call was complete and could run).
+    // Which models were used, for the setup page: only ids and counts.
+    models: db.prepare(`select json_extract(data,'$.providerID') provider, json_extract(data,'$.modelID') model, count(*) requests, max(time_created) last
+      from message where time_created >= ? and json_extract(data,'$.role') = 'assistant' and json_extract(data,'$.modelID') is not null group by 1, 2`),
     steps: db.prepare(`select message_id,
         min(case when json_extract(data,'$.type') = 'step-start' then time_created end) first_token,
         max(case json_extract(data,'$.type')
@@ -154,6 +157,7 @@ export function openDb(dataDir) {
       messages: since => statsStmt.messages.all(since),
       compactions: since => statsStmt.compactions.all(since),
       steps: since => statsStmt.steps.all(since),
+      models: since => statsStmt.models.all(since),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),
