@@ -66,6 +66,39 @@ function externalHost(text) {
   return null;
 }
 
+/** What a shell command does that is worth a second look, in the order it is shown. */
+function classifyCommand(cmd, add) {
+  const plain = unquote(cmd);
+  const matches = pattern => pattern.test(cmd) || pattern.test(plain);
+  let pipedToShell = false;
+  for (const [rule, pattern] of RISKY) {
+    if (!matches(pattern)) continue;
+    add('risky', rule);
+    pipedToShell ||= rule === 'pipe_to_shell';
+  }
+  // Already said, and more exactly, when it is a download piped into a shell.
+  if (!pipedToShell && (HIDDEN.test(cmd) || VARIABLE_COMMAND.test(cmd))) add('risky', 'hidden_command');
+  if (BACKGROUND.test(cmd)) add('background', 'background');
+  for (const [rule, pattern] of OUTBOUND) if (matches(pattern)) add('outbound', rule);
+  const host = HTTP_CLIENT.test(cmd) ? externalHost(cmd) : null;
+  if (host) add('outbound', 'http_request', { host });
+  if (SECRET_FILE.test(cmd)) add('secret_file', 'secret_file');
+}
+
+// What each tool is looked at for. A tool not listed here is only searched for secrets.
+const BY_TOOL = {
+  bash: (part, add) => {
+    if (part.cmd) classifyCommand(part.cmd, add);
+  },
+  read: (part, add) => {
+    if (part.file && SECRET_FILE.test(part.file)) add('secret_file', 'secret_file');
+  },
+  webfetch: (part, add) => {
+    const host = externalHost(part.url ?? part.input);
+    if (host) add('outbound', 'http_request', { host });
+  },
+};
+
 /**
  * @param {object} part  a tool part row (cmd, file, url, tool, scan_out)
  * @param {(text: string) => boolean} hasSecret
@@ -74,25 +107,7 @@ function externalHost(text) {
 export function classifyPart(part, hasSecret = () => false) {
   const flags = [];
   const add = (kind, rule, extra) => flags.push({ kind, rule, ...extra });
-
-  if (part.tool === 'bash' && part.cmd) {
-    const cmd = part.cmd;
-    const plain = unquote(cmd);
-    const matches = pattern => pattern.test(cmd) || pattern.test(plain);
-    for (const [rule, pattern] of RISKY) if (matches(pattern)) add('risky', rule);
-    if ((HIDDEN.test(cmd) || VARIABLE_COMMAND.test(cmd)) && !flags.some(f => f.rule === 'pipe_to_shell')) add('risky', 'hidden_command');
-    if (BACKGROUND.test(cmd)) add('background', 'background');
-    for (const [rule, pattern] of OUTBOUND) if (matches(pattern)) add('outbound', rule);
-    const host = HTTP_CLIENT.test(cmd) ? externalHost(cmd) : null;
-    if (host) add('outbound', 'http_request', { host });
-    if (SECRET_FILE.test(cmd)) add('secret_file', 'secret_file');
-  } else if (part.tool === 'read' && part.file && SECRET_FILE.test(part.file)) {
-    add('secret_file', 'secret_file');
-  } else if (part.tool === 'webfetch') {
-    const host = externalHost(part.url ?? part.input);
-    if (host) add('outbound', 'http_request', { host });
-  }
-
+  if (Object.hasOwn(BY_TOOL, part.tool)) BY_TOOL[part.tool](part, add);
   if (hasSecret(part.cmd ?? part.input ?? '')) add('secret_value', 'in_command');
   if (part.scan_out && hasSecret(part.scan_out)) add('secret_value', 'in_output');
   return flags;

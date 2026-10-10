@@ -59,6 +59,17 @@ export async function discordNotify(webhookUrl, content, mention = '') {
   }
 }
 
+/** A made-up session in the state that sets off one kind of notification. */
+function sampleSession(kind, title, now) {
+  const sample = (id, state, health = {}) => ({
+    id, parentId: null, state, since: now - 65_000, project: 'opencode-monitor', title,
+    health: { hints: [], compactions: 0, compaction: null, compacting: false, ...health },
+  });
+  return kind === 'compact_soon'
+    ? sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } })
+    : sample(`test-${kind}`, kind);
+}
+
 /**
  * Sends one sample of every kind of notification that is switched on (notify.on), through
  * the same code that sends the real ones, and reports how each channel answered. So what is
@@ -74,26 +85,17 @@ export async function testNotify(cfg, t, send = { desktop: desktopNotify, discor
 
   const notifier = createNotifier(cfg, t, send, { quiet: true });
   const now = Date.now();
-  const sample = (id, state, health = {}) => ({
-    id, parentId: null, state, since: now - 65_000, project: 'opencode-monitor', title: t('notify.test.body'),
-    health: { hints: [], compactions: 0, compaction: null, compacting: false, ...health },
-  });
   notifier([], now); // what is there at startup is never announced; start with nothing
-  const kinds = cfg.on.length ? cfg.on : ['waiting'];
-  for (const kind of kinds) {
-    const session = kind === 'compact_soon'
-      ? sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } })
-      : sample(`test-${kind}`, kind);
-    notifier([session], now);
-  }
+  for (const kind of cfg.on.length ? cfg.on : ['waiting']) notifier([sampleSession(kind, t('notify.test.body'), now)], now);
 
   // Each channel reports back in its own time.
   const deadline = Date.now() + waitMs;
   const pending = () => notifier.recent().some(e => e.desktop === 'sending' || e.discord === 'sending');
   while (pending() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 200));
+  const outcome = answer => (answer === 'sending' ? 'no answer' : answer);
   for (const entry of notifier.recent().reverse()) {
-    if (cfg.desktop) results.push([`${entry.kind} / desktop`, entry.desktop === 'sending' ? 'no answer' : entry.desktop]);
-    if (cfg.discord.webhookUrl) results.push([`${entry.kind} / Discord`, entry.discord === 'sending' ? 'no answer' : entry.discord]);
+    if (cfg.desktop) results.push([`${entry.kind} / desktop`, outcome(entry.desktop)]);
+    if (cfg.discord.webhookUrl) results.push([`${entry.kind} / Discord`, outcome(entry.discord)]);
   }
   return results;
 }
@@ -180,33 +182,36 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   onSnapshot.recent = () => recent.map(entry => ({ ...entry })).reverse();
   return onSnapshot;
 
+  /** Tells about a session's state when it is one you asked for and it is new, or due again. */
+  function onState(session, now) {
+    const before = seen.get(session.id);
+    const entry = { state: session.state, notifiedAt: before?.notifiedAt ?? 0 };
+    const wanted = cfg.on.includes(session.state);
+    const changed = before?.state !== session.state;
+    const due = cfg.repeatMinutes > 0 && now - entry.notifiedAt >= cfg.repeatMinutes * 60_000;
+    if (changed) entry.notifiedAt = 0;
+    // What was already on screen when the monitor started is not news.
+    if (wanted && !baseline && (changed || due)) dispatch(session, now);
+    if (wanted && (baseline || changed || due)) entry.notifiedAt = now;
+    seen.set(session.id, entry);
+  }
+
+  /** Not a state of its own: a warning that can come while the session works. */
+  function onCloseToCompaction(session, now) {
+    const close = Boolean(session.health?.compaction) && session.health.hints?.includes('context_high');
+    const compactions = session.health?.compactions ?? 0;
+    if (!close || closeToCompaction.get(session.id) >= compactions) return;
+    if (cfg.on.includes('compact_soon') && !baseline) compactSoon(session, now);
+    closeToCompaction.set(session.id, compactions);
+  }
+
   function onSnapshot(sessions, now) {
     const ids = new Set(sessions.map(s => s.id));
     for (const session of sessions) {
       // A subagent's prompt is reported once, through its parent.
       if (session.parentId && ids.has(session.parentId)) continue;
-      const before = seen.get(session.id);
-      const entry = { state: session.state, notifiedAt: before?.notifiedAt ?? 0 };
-      const wanted = cfg.on.includes(session.state);
-      const changed = before?.state !== session.state;
-      const due = cfg.repeatMinutes > 0 && now - entry.notifiedAt >= cfg.repeatMinutes * 60_000;
-      if (changed) entry.notifiedAt = 0;
-      // What was already on screen when the monitor started is not news.
-      if (wanted && !baseline && (changed || due)) {
-        dispatch(session, now);
-        entry.notifiedAt = now;
-      } else if (wanted && baseline) {
-        entry.notifiedAt = now;
-      }
-      seen.set(session.id, entry);
-
-      // Not a state of its own: a warning that can come while the session works.
-      const close = Boolean(session.health?.compaction) && session.health.hints?.includes('context_high');
-      const compactions = session.health?.compactions ?? 0;
-      if (close && !(closeToCompaction.get(session.id) >= compactions)) {
-        if (cfg.on.includes('compact_soon') && !baseline) compactSoon(session, now);
-        closeToCompaction.set(session.id, compactions);
-      }
+      onState(session, now);
+      onCloseToCompaction(session, now);
     }
     for (const id of closeToCompaction.keys()) if (!ids.has(id)) closeToCompaction.delete(id);
     for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
