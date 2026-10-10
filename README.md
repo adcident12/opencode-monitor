@@ -43,6 +43,14 @@ node server.mjs --sample
 | `--test-notify` | Send one sample of every kind of notification that is on (`notify.on`), on each channel, and print how each was received |
 | `--autostart on` / `off` | Start the monitor each time you log in, or stop doing so, then exit |
 
+### Check the figures on your machine
+
+```sh
+npm run verify
+```
+
+recomputes the figures the page shows straight from your OpenCode data, with its own SQL and log parsing that share no counting code with the monitor, and compares each one: Stats over 7, 14 and 30 days and for single sessions, MCP rows, model speed, the session cards, and the models on This machine. It starts a monitor of its own on a free port with notifications and history off, so the one you use is not touched and nothing is sent or written; the database is opened read-only. A figure that differs is printed with both values, and the exit code is 1. The output holds counts only, no content, so it can be attached to a bug report.
+
 ### What it found on your machine
 
 Nothing in the monitor is set for one particular machine: paths, model limits, the point where a session is compacted, MCP servers and notification channels are all read from where it runs. The **This machine** tab says what was read and from where, and `node server.mjs --doctor` prints the same in a terminal, without needing the page:
@@ -266,6 +274,7 @@ src/static.mjs          serves public/ with a strict Content-Security-Policy
 i18n/                   UI and notification strings (en, th)
 scripts/make-sample.mjs fake data for --sample and the tests
 scripts/ci-autostart.mjs turns autostart on and off for real; run by CI on each system
+scripts/verify.mjs      npm run verify: the page's figures against an independent count of your data
 ```
 
 To add a language, copy `i18n/en.json` to `i18n/<code>.json`, translate the values, add the code to `LANGUAGES` in `dashboard/lib/i18n.tsx`, and rebuild the page (`npm run build` in `dashboard/`).

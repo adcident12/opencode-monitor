@@ -3,6 +3,27 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 9.0.0 - 2026-10-10
+
+The whole of the agent's work, not only its tool calls, and figures you can check.
+
+- **Where the time went**: the agent's time split into reading the prompt, thinking, writing,
+  and tools running, with which of them takes most and what would shorten it.
+- **Your prompts**: steps and time per prompt, and how each ended: answered, continued by your
+  next prompt, cut off at the output limit, stopped by you, failed, or left without an answer.
+- **What interrupted you**: the permission prompts asked most often, with an example rule.
+- **What got done**, a new chapter: the files changed most often, and the agent's plans followed
+  through every list it wrote. OpenCode keeps only a session's latest list, so a replaced plan
+  used to vanish; items that left a plan without being marked done are now counted.
+- **Agents**: time, replies, tokens and cost per agent, and which ran only as subagents.
+- **`npm run verify`**: recomputes the page's figures from your own data, independently, and
+  reports any that differ. On the author's machine, 143 of 143 agree.
+- Fixed before release: a new string had replaced the "files touched" line on session cards;
+  plans for a short period counted a list written before it. A test now fails when a string
+  key is defined twice.
+- Sections and labelled figures share one spacing, and figures stay on one line when a label
+  wraps; the title of a finished session is no longer squeezed on a phone.
+
 ## 8.1.0 - 2026-10-10
 
 Notifications you can check, and one rhythm for every tab.

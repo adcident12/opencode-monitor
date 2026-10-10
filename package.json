@@ -1,6 +1,6 @@
 {
   "name": "opencode-monitor",
-  "version": "8.1.0",
+  "version": "9.0.0",
   "description": "Local, read-only status page for OpenCode: is the agent working, waiting for you, stuck, finished, or failed?",
   "license": "MIT",
   "repository": "github:adcident12/opencode-monitor",
@@ -12,6 +12,7 @@
   "scripts": {
     "start": "node server.mjs",
     "sample": "node server.mjs --sample",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "verify": "node scripts/verify.mjs"
   }
 }
