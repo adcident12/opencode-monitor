@@ -8,16 +8,20 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenu
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { LANGUAGES, useI18n, type Lang } from "@/lib/i18n"
 import type { Snapshot } from "@/lib/types"
+import type { MarkTone } from "@/lib/logo"
+import { Logo } from "./logo"
 import { Dot } from "./state"
 
-export function Header({ snapshot, connected }: { snapshot: Snapshot | null; connected: boolean }) {
+/** @param tone  what the sessions are doing, shown as the dot of the mark */
+export function Header({ snapshot, connected, tone }: { snapshot: Snapshot | null; connected: boolean; tone: MarkTone }) {
   const { t, lang, setLang } = useI18n()
   const live = connected && !snapshot?.stale
   const running = snapshot?.opencodeRunning
 
   return (
     <header className="flex flex-wrap items-center gap-x-6 gap-y-3">
-      <div className="mr-auto flex items-baseline gap-2">
+      <div className="mr-auto flex items-center gap-2.5">
+        <Logo tone={tone} />
         <h1 className="text-lg font-semibold">{t("app.title")}</h1>
         {/* Which version is running, so "is this the new one?" needs no terminal. */}
         {snapshot?.version && (

@@ -256,6 +256,10 @@ The version is the one in `package.json`. It is printed when the monitor starts,
 
 Work on a version happens on a branch named after it (`v6`), and `main` is moved to it when it is done. The released commit is tagged `v6.0.0`.
 
+## Not affiliated with OpenCode
+
+This is an independent project. It is not made, endorsed or supported by the makers of OpenCode. "OpenCode" appears in the name only to say what the tool watches. The OpenCode name and logo belong to their owners; this project does not use that logo. Its own mark, an open ring with a dot, is drawn in `dashboard/lib/logo.ts` and shares no shape with it.
+
 ## License
 
 [MIT](LICENSE)

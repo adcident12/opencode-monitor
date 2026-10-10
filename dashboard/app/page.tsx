@@ -5,6 +5,8 @@ import { useEffect } from "react"
 import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
 import { Header } from "@/components/monitor/header"
+import { useTabIcon } from "@/components/monitor/logo"
+import type { MarkTone } from "@/lib/logo"
 import { History } from "@/components/monitor/history"
 import { AttentionCard, QuietRow, WorkingCard } from "@/components/monitor/sessions"
 import { Stats } from "@/components/monitor/stats"
@@ -35,6 +37,10 @@ export default function Page() {
   const sessions = snapshot?.sessions ?? []
   const { attention, working, rest } = groupByUrgency(sessions)
 
+  // One word for everything on screen: the most urgent state there is.
+  const tone: MarkTone = attention.length ? (attention[0].state as MarkTone) : working.length ? "working" : "quiet"
+  useTabIcon(tone)
+
   // The tab title carries the count, so it can be read from another tab or the taskbar.
   useEffect(() => {
     document.title = `${attention.length ? `(${attention.length}) ` : ""}${t("app.title")}`
@@ -43,7 +49,7 @@ export default function Page() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 pt-6 pb-16 sm:px-6 sm:pt-8">
       <UpdateBanner served={snapshot?.build ?? null} />
-      <Header snapshot={snapshot} connected={connected} />
+      <Header snapshot={snapshot} connected={connected} tone={tone} />
       <Environment environment={snapshot?.environment ?? null} />
 
       <Tabs value={tab} onValueChange={value => changeTab(value as Tab)} className="gap-6">
