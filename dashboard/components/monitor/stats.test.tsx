@@ -36,7 +36,7 @@ const figures = (extra: Partial<StatsData> = {}): StatsData => ({
     permissions: { asked: 9, top: [{ permission: "external_directory", pattern: "C:\\temp\\*", count: 7, waitMs: 60_000, lastAt: NOW }] },
     files: { edits: 0, files: 0, top: [] },
     agents: [{ agent: "build", requests: 100, activeMs: 3_600_000, tokens: 1_000_000, cost: 0, subagent: false }],
-    plans: { sessions: 0, total: 0, completed: 0, inProgress: 0, pending: 0, cancelled: 0, unfinished: [] },
+    plans: { sessions: 0, total: 0, completed: 0, inProgress: 0, pending: 0, cancelled: 0, dropped: 0, rewrites: 0, unfinished: [] },
   },
   context: null,
   speed: { models: [{ model: "local-llama/qwen3.8-27b-v3", requests: 118, writeTps: 31.6, readTps: 540, firstTokenMs: 1200, daily: [] }] },

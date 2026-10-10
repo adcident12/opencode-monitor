@@ -291,6 +291,7 @@ export interface Stats {
     permissions: { asked: number; top: { permission: string; pattern: string; count: number; waitMs: number; lastAt: number }[] }
     files: { edits: number; files: number; top: { file: string; count: number; project: string; title: string }[] }
     agents: { agent: string; requests: number; activeMs: number; tokens: number; cost: number; subagent: boolean }[]
+    /** Rebuilt from every task list the agent wrote; "dropped" left a list without being done. */
     plans: {
       sessions: number
       total: number
@@ -298,7 +299,9 @@ export interface Stats {
       inProgress: number
       pending: number
       cancelled: number
-      unfinished: { id: string; total: number; completed: number; inProgress: number; pending: number; cancelled: number; project: string; title: string }[]
+      dropped: number
+      rewrites: number
+      unfinished: { id: string; total: number; completed: number; inProgress: number; pending: number; cancelled: number; dropped: number; rewrites: number; project: string; title: string }[]
     }
   }
   /** How fast each model answered, most used first. Rates are tokens per second. */

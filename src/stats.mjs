@@ -421,7 +421,7 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [] }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set() }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0, readingMs: 0, thinkingMs: 0, writingMs: 0, toolMs: 0, files: 0 }]));
@@ -481,7 +481,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     permissions: permissionsOf(prompts, show),
     files: filesOf(ctx, { patches, where, show, relative }),
     agents: agentsOf(ctx, messages),
-    plans: plansOf(ctx, { todos, where }),
+    plans: plansOf(ctx, { todos, todoWrites, todoWriters, where }),
   };
 
   const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';

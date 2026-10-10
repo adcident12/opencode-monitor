@@ -126,9 +126,16 @@ export function permissionsOf(prompts, show) {
   return { asked: all.reduce((n, g) => n + g.count, 0), top: all.slice(0, TOP) };
 }
 
+/**
+ * One key per file: on Windows the same file arrives with either slash and in any letter case.
+ * The session cards count files the same way, so the two never disagree.
+ */
+export const fileKey = (path, platform = process.platform) => (platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path);
+
 /** Files the agent changed, from the patches OpenCode records after each edit. */
-export function filesOf(ctx, { patches, where, show, relative }) {
-  const times = new Map(); // session|file -> how many patches touched it
+export function filesOf(ctx, { patches, where, show, relative, platform = process.platform }) {
+  const times = new Map(); // session|file key -> how many patches touched it
+  const firstSeen = new Map(); // file key -> the path as first written, for display
   const distinct = new Set();
   let edits = 0;
   for (const p of patches) {
@@ -144,8 +151,10 @@ export function filesOf(ctx, { patches, where, show, relative }) {
     const b = ctx.bucket(p.time_created);
     if (b) b.files += files.length;
     for (const file of files) {
-      distinct.add(file);
-      add(times, `${ctx.rootOf(p.session_id)}|${file}`);
+      const key = fileKey(file, platform);
+      distinct.add(key);
+      if (!firstSeen.has(key)) firstSeen.set(key, file);
+      add(times, `${ctx.rootOf(p.session_id)}|${key}`);
     }
   }
   const top = [...times]
@@ -154,7 +163,7 @@ export function filesOf(ctx, { patches, where, show, relative }) {
     .map(([key, count]) => {
       const cut = key.indexOf('|');
       const session = key.slice(0, cut);
-      const file = key.slice(cut + 1);
+      const file = firstSeen.get(key.slice(cut + 1));
       return { file: show(relative(file, ctx.sessionById.get(session)?.directory), 200), count, ...where(session) };
     });
   return { edits, files: distinct.size, top };
@@ -181,37 +190,125 @@ export function agentsOf(ctx, messages) {
     .sort((a, b) => b.activeMs - a.activeMs);
 }
 
+const DONE = new Set(['completed', 'cancelled']);
+
+// An item written again in other words is the same item, not one dropped and one new. Two
+// texts are taken as the same when most of the words of the shorter one are in the other.
+const SAME_ITEM = 0.6;
+const wordsOf = text => new Set(text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ').filter(w => w.length > 2));
+export function sameItem(a, b) {
+  const A = wordsOf(a);
+  const B = wordsOf(b);
+  if (!A.size || !B.size) return false;
+  let shared = 0;
+  for (const w of A) if (B.has(w)) shared++;
+  return shared / Math.min(A.size, B.size) >= SAME_ITEM;
+}
+
 /**
- * The agent's own task lists, per session in the period. A finished session with items still
- * pending is a plan that was left, not one that is in progress.
- * @param {object[]} todos  { session_id, status }
+ * One session's plan, followed through every list the agent wrote. Each todowrite replaces
+ * the whole list, so an item can leave it in three ways: marked done, marked cancelled, or
+ * simply not written again. The last is "dropped": the plan changed under it.
+ * Items are told apart by their text, which is used here and never kept or shown.
+ * @param {string[][]} lists  each list, oldest first, as [text, status] pairs
  */
-export function plansOf(ctx, { todos, where }) {
-  const per = new Map();
+export function followPlan(lists) {
+  const items = new Map(); // text -> status
+  let dropped = 0;
+  let rewrites = 0;
+  for (const list of lists) {
+    const now = new Map(list);
+    const added = [...now.keys()].filter(text => !items.has(text));
+    let replaced = false;
+    for (const [text, status] of [...items]) {
+      if (now.has(text) || DONE.has(status) || status === 'dropped') continue;
+      // Reworded in this list: carry the item over under its new words.
+      const renamed = added.findIndex(other => sameItem(text, other));
+      if (renamed !== -1) {
+        added.splice(renamed, 1);
+        items.delete(text);
+        continue;
+      }
+      items.set(text, 'dropped');
+      dropped++;
+      replaced = true;
+    }
+    if (replaced) rewrites++;
+    for (const [text, status] of now) items.set(text, status);
+  }
+  const statuses = [...items.values()];
+  const count = s => statuses.filter(x => x === s).length;
+  return {
+    total: items.size,
+    completed: count('completed'),
+    cancelled: count('cancelled'),
+    dropped,
+    inProgress: count('in_progress'),
+    pending: count('pending'),
+    rewrites,
+  };
+}
+
+/**
+ * The agent's own task lists, per session in the period, rebuilt from every list it wrote.
+ * The todo table is only a fallback, for sessions with no todowrite call at all (an OpenCode
+ * that records plans differently). It holds a session's latest list, whenever that was
+ * written, so for a session with todowrite calls it would put a list from before the period
+ * into it.
+ * @param {object[]} todos       { session_id, status } from the todo table
+ * @param {object[]} todoWrites  { session_id, time_created, todos: JSON } from todowrite calls
+ * @param {Set<string>} todoWriters  sessions with a todowrite call at any time
+ */
+export function plansOf(ctx, { todos, todoWrites = [], todoWriters = new Set(), where }) {
+  const listsBySession = new Map();
+  for (const call of [...todoWrites].sort((x, y) => x.time_created - y.time_created)) {
+    if (!ctx.inScope(call.session_id) || call.time_created < ctx.from) continue;
+    let list;
+    try {
+      list = JSON.parse(call.todos ?? '[]');
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(list)) continue;
+    const pairs = list.filter(i => i && typeof i.content === 'string').map(i => [i.content, String(i.status ?? 'pending')]);
+    if (!listsBySession.has(call.session_id)) listsBySession.set(call.session_id, []);
+    listsBySession.get(call.session_id).push(pairs);
+  }
+
+  const per = new Map(); // top-level session -> totals
+  const merge = (session, plan) => {
+    const root = ctx.rootOf(session);
+    const p = per.get(root) ?? { id: root, total: 0, completed: 0, cancelled: 0, dropped: 0, inProgress: 0, pending: 0, rewrites: 0 };
+    for (const key of ['total', 'completed', 'cancelled', 'dropped', 'inProgress', 'pending', 'rewrites']) p[key] += plan[key];
+    per.set(root, p);
+  };
+  for (const [session, lists] of listsBySession) merge(session, followPlan(lists));
+
+  // Sessions that never wrote a list through todowrite: what the todo table holds.
+  const fromTable = new Map();
   for (const item of todos) {
     const s = ctx.sessionById.get(item.session_id);
-    if (!s || !ctx.inScope(item.session_id) || (s.time_updated ?? s.time_created) < ctx.from) continue;
-    const root = ctx.rootOf(item.session_id);
-    const p = per.get(root) ?? { id: root, total: 0, completed: 0, inProgress: 0, pending: 0, cancelled: 0 };
-    p.total++;
-    if (item.status === 'completed') p.completed++;
-    else if (item.status === 'in_progress') p.inProgress++;
-    else if (item.status === 'cancelled') p.cancelled++;
-    else p.pending++;
-    per.set(root, p);
+    if (!s || todoWriters.has(item.session_id) || listsBySession.has(item.session_id) || !ctx.inScope(item.session_id) || (s.time_updated ?? s.time_created) < ctx.from) continue;
+    if (!fromTable.has(item.session_id)) fromTable.set(item.session_id, []);
+    fromTable.get(item.session_id).push([String(fromTable.get(item.session_id).length), item.status]);
   }
+  for (const [session, pairs] of fromTable) merge(session, followPlan([pairs]));
+
   const sessions = [...per.values()];
   const sum = key => sessions.reduce((n, p) => n + p[key], 0);
+  const open = p => p.pending + p.inProgress + p.dropped;
   return {
     sessions: sessions.length,
     total: sum('total'),
     completed: sum('completed'),
+    cancelled: sum('cancelled'),
+    dropped: sum('dropped'),
     inProgress: sum('inProgress'),
     pending: sum('pending'),
-    cancelled: sum('cancelled'),
+    rewrites: sum('rewrites'),
     unfinished: sessions
-      .filter(p => p.pending + p.inProgress > 0)
-      .sort((a, b) => b.pending + b.inProgress - (a.pending + a.inProgress))
+      .filter(p => open(p) > 0)
+      .sort((x, y) => open(y) - open(x))
       .slice(0, TOP)
       .map(p => ({ ...p, ...where(p.id) })),
   };

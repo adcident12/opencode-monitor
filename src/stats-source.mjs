@@ -95,6 +95,8 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       spans: db.stats.spans(since),
       patches: db.stats.patches(since),
       todos: db.stats.todoStatus(),
+      todoWrites: db.stats.todoWrites(since),
+      todoWriters: db.stats.todoWriters(),
       compactions: db.stats.compactions(since),
       asks,
       replies: log.replies(),

@@ -140,6 +140,12 @@ export function openDb(dataDir) {
     // The files each edit changed.
     patches: db.prepare(`select session_id, time_created, json_extract(data,'$.files') files
       from part where time_created >= ? and json_extract(data,'$.type') = 'patch'`),
+    // Every task list the agent wrote. OpenCode's todo table keeps only the latest list of a
+    // session, so plans that were replaced are only found here.
+    todoWrites: db.prepare(`select session_id, time_created, json_extract(data,'$.state.input.todos') todos
+      from part where time_created >= ? and json_extract(data,'$.tool') = 'todowrite' and json_extract(data,'$.state.status') = 'completed'`),
+    // Sessions whose plans are in todowrite calls at all, whenever they were written.
+    todoWriters: db.prepare(`select distinct session_id from part where json_extract(data,'$.tool') = 'todowrite'`),
     // Which models were used, for the setup page: only ids and counts.
     models: db.prepare(`select json_extract(data,'$.providerID') provider, json_extract(data,'$.modelID') model, count(*) requests, max(time_created) last
       from message where time_created >= ? and json_extract(data,'$.role') = 'assistant' and json_extract(data,'$.modelID') is not null group by 1, 2`),
@@ -172,6 +178,8 @@ export function openDb(dataDir) {
       spans: since => statsStmt.spans.all(since),
       patches: since => statsStmt.patches.all(since),
       todoStatus: () => (todoStatus ? todoStatus.all() : []),
+      todoWrites: since => statsStmt.todoWrites.all(since),
+      todoWriters: () => new Set(statsStmt.todoWriters.all().map(r => r.session_id)),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),

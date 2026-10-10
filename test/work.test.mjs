@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { agentsOf, filesOf, permissionsOf, plansOf, timeSplit, turnsOf } from '../src/work.mjs';
+import { agentsOf, filesOf, followPlan, permissionsOf, plansOf, sameItem, timeSplit, turnsOf } from '../src/work.mjs';
 
 const MIN = 60_000;
 const NOW = new Date(2026, 9, 8, 12, 0, 0).getTime();
@@ -116,7 +116,8 @@ test('plans: what the agent set out to do, and which sessions left items undone'
     { session_id: 's2', status: 'in_progress' }, { session_id: 's2', status: 'pending' }, { session_id: 's2', status: 'cancelled' },
     { session_id: 'gone', status: 'pending' },
   ] });
-  assert.deepEqual([p.sessions, p.total, p.completed, p.inProgress, p.pending, p.cancelled], [2, 6, 2, 1, 2, 1]);
+  // No list was written in the period here: the todo table is all there is.
+  assert.deepEqual([p.sessions, p.total, p.completed, p.inProgress, p.pending, p.cancelled, p.dropped], [2, 6, 2, 1, 2, 1, 0]);
   assert.deepEqual(p.unfinished.map(u => [u.id, u.pending + u.inProgress]), [['s2', 2], ['s1', 1]]);
 });
 
@@ -124,4 +125,69 @@ test('one session: only its own work is counted', () => {
   const { ctx } = context(sessions, new Set(['s2']));
   assert.equal(agentsOf(ctx, [reply('s1', 100, 'stop'), reply('s2', 90, 'stop')]).reduce((n, a) => n + a.requests, 0), 1);
   assert.equal(plansOf(ctx, { where, todos: [{ session_id: 's1', status: 'pending' }] }).total, 0);
+});
+
+test('a plan followed through every list written: items done, dropped when the plan changed, still open', () => {
+  const list = (...items) => items.map(([text, status]) => [text, status]);
+  const plan = followPlan([
+    list(['schema', 'pending'], ['api', 'pending'], ['ui', 'pending'], ['tests', 'pending']),
+    list(['schema', 'completed'], ['api', 'in_progress'], ['ui', 'pending'], ['tests', 'pending']),
+    // A new plan: api is carried over, ui and tests are not written again.
+    list(['api', 'completed'], ['deploy', 'pending'], ['docs', 'cancelled']),
+    list(['api', 'completed'], ['deploy', 'in_progress']),
+  ]);
+  assert.deepEqual(plan, { total: 6, completed: 2, cancelled: 1, dropped: 2, inProgress: 1, pending: 0, rewrites: 1 });
+});
+
+test('plans come from every list written, not only from the one the todo table still holds', () => {
+  const { ctx } = context(sessions);
+  const write = (session, ago, items) => ({ session_id: session, time_created: at(ago), todos: JSON.stringify(items.map(([content, status]) => ({ content, status, priority: 'high' }))) });
+  const p = plansOf(ctx, {
+    where,
+    // The table: the last list only, three items done. It would read as 100% done.
+    todos: [{ session_id: 's1', status: 'completed' }, { session_id: 's1', status: 'completed' }, { session_id: 's1', status: 'completed' }],
+    todoWrites: [
+      write('s1', 300, [['a', 'pending'], ['b', 'pending'], ['c', 'pending'], ['d', 'pending']]),
+      write('s1', 200, [['a', 'completed'], ['b', 'in_progress'], ['c', 'pending'], ['d', 'pending']]),
+      write('s1', 100, [['e', 'completed'], ['f', 'completed'], ['g', 'completed']]),
+      { session_id: 's1', time_created: at(50), todos: 'not json' },
+    ],
+  });
+  assert.deepEqual([p.sessions, p.total, p.completed, p.dropped, p.rewrites], [1, 7, 4, 3, 1]);
+  assert.deepEqual(p.unfinished.map(u => [u.id, u.dropped]), [['s1', 3]]);
+});
+
+test('an item written again in other words is the same item, not one dropped and one new', () => {
+  assert.equal(sameItem('Task 2: Prisma schema, DB singleton, migrations', 'Task 2 - Prisma schema and DB singleton'), true);
+  assert.equal(sameItem('ทดสอบระบบคิว แบบ end-to-end', 'ทดสอบระบบคิว end-to-end ทั้งหมด'), true);
+  assert.equal(sameItem('Write the API routes', 'Deploy to staging'), false);
+  const plan = followPlan([
+    [['Task 2: Prisma schema, DB singleton, migrations', 'in_progress'], ['Write the API routes', 'pending']],
+    [['Task 2 - Prisma schema and DB singleton', 'completed'], ['Deploy to staging', 'pending']],
+  ]);
+  // The schema task was reworded and done; the API routes left the list without being done.
+  assert.deepEqual([plan.total, plan.completed, plan.dropped, plan.pending], [3, 1, 1, 1]);
+});
+
+test('files: the same file written with other slashes or letter case is one file on Windows', () => {
+  const { ctx } = context(sessions);
+  const patch = (ago, files) => ({ session_id: 's1', time_created: at(ago), files: JSON.stringify(files) });
+  const relative = (file, root) => file;
+  const patches = [patch(100, ['E:\\shop\\src\\App.tsx']), patch(90, ['e:/shop/src/app.tsx']), patch(80, ['E:\\shop\\README.md'])];
+  const win = filesOf(ctx, { where, show, relative, patches, platform: 'win32' });
+  assert.deepEqual([win.files, win.top[0].count, win.top[0].file], [2, 2, 'E:\\shop\\src\\App.tsx']);
+  // Elsewhere case matters, so they are two files.
+  assert.equal(filesOf(ctx, { where, show, relative, patches, platform: 'linux' }).files, 3);
+});
+
+test('plans: a list written before the period is not counted in it, even though the todo table still holds it', () => {
+  const { ctx } = context(sessions);
+  const p = plansOf(ctx, {
+    where,
+    // s1 wrote its plan long before the period; the table still holds that list.
+    todos: [{ session_id: 's1', status: 'completed' }, { session_id: 's1', status: 'pending' }],
+    todoWrites: [],
+    todoWriters: new Set(['s1']),
+  });
+  assert.deepEqual([p.sessions, p.total], [0, 0]);
 });

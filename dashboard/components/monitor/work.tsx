@@ -227,16 +227,21 @@ export function Plans({ work }: { work: Work }) {
         </div>
         <p className="text-sm tabular-nums">
           {t("work.plansDone", { done: plans.completed, total: plans.total, pct })}
+          {plans.dropped > 0 && <span className="text-waiting"> · {t("work.plansDropped", { n: plans.dropped })}</span>}
           {plans.inProgress + plans.pending > 0 && <span className="text-muted-foreground"> · {t("work.plansOpen", { n: plans.inProgress + plans.pending })}</span>}
         </p>
+        {plans.rewrites > 0 && <p className="max-w-prose text-xs text-muted-foreground">{t("work.plansRewrites", { n: plans.rewrites })}</p>}
       </div>
       {plans.unfinished.length > 0 && (
         <ol className="divide-y border-y">
           {plans.unfinished.map(p => (
             <li key={p.id} className="grid grid-cols-[3.75rem_minmax(0,1fr)_auto] items-baseline gap-x-3 py-2 text-sm">
-              <span className="font-medium tabular-nums text-waiting">{p.pending + p.inProgress}</span>
+              <span className="font-medium tabular-nums text-waiting">{p.pending + p.inProgress + p.dropped}</span>
               <span className="min-w-0 truncate">{p.title || p.id}</span>
-              <span className="text-xs tabular-nums text-muted-foreground">{t("work.plansOf", { done: p.completed, total: p.total })}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {t("work.plansOf", { done: p.completed, total: p.total })}
+                {p.dropped > 0 && <> · {t("work.plansDroppedShort", { n: p.dropped })}</>}
+              </span>
             </li>
           ))}
         </ol>
