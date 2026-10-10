@@ -2,6 +2,7 @@
 // calls hung, how the agent spends its tool calls. Pure: rows in, figures out.
 import { promptFits } from './audit.mjs';
 import { computeMcpStats } from './mcp.mjs';
+import { agentsOf, filesOf, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
 const ASK_MATCH_MS = 2000;
 // An update to a tool call this soon after its prompt is the prompt being drawn, not answered.
@@ -420,10 +421,10 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [] }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
-  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0 }]));
+  const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0, readingMs: 0, thinkingMs: 0, writingMs: 0, toolMs: 0, files: 0 }]));
   const bucket = t => daily.get(dayKey(t));
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const scope = sessionId ? withDescendants(sessions, sessionId) : null;
@@ -472,6 +473,16 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const sentTotal = usage.input + usage.cacheRead + usage.cacheWrite;
 
   const effort = effortPerSession(ctx, { messages, compactions, prompts: allPrompts });
+  // A path inside the session's own project is shown from the project root.
+  const relative = (file, root) => (root && file.startsWith(root) ? file.slice(root.length).replace(/^[\\/]+/, '') : file).replaceAll('\\', '/');
+  const work = {
+    time: timeSplit(ctx, { spans, calls, messages, steps }),
+    turns: turnsOf(ctx, { messages, where, show }),
+    permissions: permissionsOf(prompts, show),
+    files: filesOf(ctx, { patches, where, show, relative }),
+    agents: agentsOf(ctx, messages),
+    plans: plansOf(ctx, { todos, where }),
+  };
 
   const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
   return {
@@ -499,6 +510,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
           compactAt: own.length ? compactAt(own.at(-1).provider, own.at(-1).model, sessionById.get(sessionId)?.directory) : null,
         })
       : null,
+    work,
     speed: computeSpeed({ requests: timed, keys, show }),
     usage: {
       ...usage,

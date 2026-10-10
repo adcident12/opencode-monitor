@@ -98,6 +98,8 @@ export function openDb(dataDir) {
   const hasTodos = ['session_id', 'content', 'status', 'position']
     .every(c => db.prepare('pragma table_info(todo)').all().some(col => col.name === c));
   const todos = hasTodos ? db.prepare('select content, status from todo where session_id = ? order by position') : null;
+  // For the stats page: only which session and which status, never the text of an item.
+  const todoStatus = hasTodos ? db.prepare('select session_id, status from todo') : null;
 
   // For the stats page: everything in a time range, with only the fields it counts.
   const statsStmt = {
@@ -116,6 +118,9 @@ export function openDb(dataDir) {
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
     messages: db.prepare(`select id, session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
         json_extract(data,'$.summary') summary,
+        json_extract(data,'$.finish') finish,
+        json_extract(data,'$.error.name') error_name,
+        json_extract(data,'$.agent') agent,
         json_extract(data,'$.providerID') provider_id,
         json_extract(data,'$.modelID') model_id,
         json_extract(data,'$.tokens.input') tokens_input,
@@ -129,6 +134,12 @@ export function openDb(dataDir) {
       from part where time_created >= ? and json_extract(data,'$.type') = 'compaction'`),
     // Per model request: when the first token arrived, and when the model stopped writing
     // (the end of its last text, or the moment its last tool call was complete and could run).
+    // Thinking and writing, timed: the stretches of a reply that are not tool calls.
+    spans: db.prepare(`select session_id, json_extract(data,'$.type') type, json_extract(data,'$.time.start') s, json_extract(data,'$.time.end') e
+      from part where time_created >= ? and json_extract(data,'$.type') in ('reasoning','text')`),
+    // The files each edit changed.
+    patches: db.prepare(`select session_id, time_created, json_extract(data,'$.files') files
+      from part where time_created >= ? and json_extract(data,'$.type') = 'patch'`),
     // Which models were used, for the setup page: only ids and counts.
     models: db.prepare(`select json_extract(data,'$.providerID') provider, json_extract(data,'$.modelID') model, count(*) requests, max(time_created) last
       from message where time_created >= ? and json_extract(data,'$.role') = 'assistant' and json_extract(data,'$.modelID') is not null group by 1, 2`),
@@ -158,6 +169,9 @@ export function openDb(dataDir) {
       compactions: since => statsStmt.compactions.all(since),
       steps: since => statsStmt.steps.all(since),
       models: since => statsStmt.models.all(since),
+      spans: since => statsStmt.spans.all(since),
+      patches: since => statsStmt.patches.all(since),
+      todoStatus: () => (todoStatus ? todoStatus.all() : []),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),
