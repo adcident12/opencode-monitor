@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
 import { createReplaySource } from './replay-source.mjs';
+import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
 import { ASK_CSP, askPage, createAccess, lanAddresses, loadAccessKey } from './access.mjs';
 import { createStatsSource } from './stats-source.mjs';
@@ -192,6 +193,7 @@ export async function main(argv) {
 
   const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+  const bridge = createBridgeSource({ db, replay });
   // Not for --sample: a summary of fake sessions has no business in a real channel.
   const digest = args.sample ? null : createDigest({ cfg: cfg.notify, stats, send: notify.send, t: loadTranslator(cfg.lang), stateFile: kept('weekly.json') });
   const historyCount = () => (cfg.history.enabled ? history.count : null);
@@ -251,6 +253,15 @@ export async function main(argv) {
     '/api/replay/sessions': {
       body: () => JSON.stringify(stats(30).sessions),
       unavailable: ['Replay list failed', 'The list of sessions is not available right now.'],
+    },
+    // The days with something to play back, and every session of one day, each as its own replay.
+    '/api/replay/days': {
+      body: () => JSON.stringify(bridge.days()),
+      unavailable: ['Replay days failed', 'The list of days is not available right now.'],
+    },
+    '/api/replay/bridge': {
+      body: query => JSON.stringify(bridge.bridge(query.get('day'))),
+      unavailable: ['Bridge replay failed', 'The replay is not available right now.'],
     },
     '/api/config-changes': {
       body: query => {

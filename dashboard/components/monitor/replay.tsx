@@ -1,28 +1,22 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, PauseIcon, PlayIcon, RotateCcwIcon, SkipBackIcon, SkipForwardIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, RocketIcon, UserIcon } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
-import { duration, kilo, stopwatch } from "@/lib/format"
+import { duration, kilo } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useReplay, useReplaySessions } from "@/lib/live"
-import { clockOf, eventsOf, figuresAt, screenAt, segAt, stateAt, toolOf, type Replay as ReplayData, type ReplayEvent, type ReplayState, type Seg } from "@/lib/replay"
+import { eventsOf, figuresAt, screenAt, segAt, stateAt, type Replay as ReplayData, type ReplayEvent, type ReplayState, type Seg } from "@/lib/replay"
 import { drawScene, toolInUse, toolsOf, type SceneInput } from "@/lib/replay-scene"
 import { layout, lookOf } from "@/lib/ship"
 import { drawShip } from "@/lib/ship-draw"
 import { cn } from "@/lib/utils"
 import { Hint } from "./hint"
+import { BridgeReplay } from "./replay-bridge"
+import { BUBBLE, BUBBLE_BG, doingAt, Loading, ReplayBadge, Timeline, Transport, useAt, useFrame, usePlayer, type Clock } from "./replay-player"
 import { Facts, H3, SUB, TAB } from "./section"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
-/** Times real time: 1 plays a session as it happened. */
-const SPEEDS = [1, 1.5, 2.5, 3, 30, 60, 180] as const
-type Speed = (typeof SPEEDS)[number]
-const SPEED_ITEMS = SPEEDS.map(s => ({ value: String(s), label: `${s}×` }))
 /** The tools given a place of their own in the picture; the rest share one. */
 const TOOLS_SHOWN = 6
 /** How long the dot takes from the agent to a tool, and how long a line stays after its call, in ms on screen. */
@@ -30,25 +24,67 @@ const TRAVEL_MS = 1500
 const GLOW_MS = 700
 /** The events kept in view; the list keeps room for this many, so it never grows while playing. */
 const EVENTS_SHOWN = 7
-const FRAME_MS = 125
 /** Pixels of sky cut off the top of the one station. */
 const SKY_CUT = 30
-const BUBBLE: Partial<Record<ReplayState, string>> = { waiting: "ship.bubble.waiting", stuck: "ship.bubble.stuck", error: "ship.bubble.error", finished: "ship.bubble.finished" }
-const BUBBLE_BG: Partial<Record<ReplayState, string>> = { waiting: "bg-[#ffc04d]", stuck: "bg-[#ff9f68]", error: "bg-[#ff7a8a]", finished: "bg-[#9be7c4]" }
-
 /**
  * One session played back: the bridge, the panel of that moment, the agent and its tools,
  * and a timeline, all at the same playhead. Labelled as a replay everywhere, so a raised
  * hand here is never taken for someone waiting now.
  */
 export function Replay({ session, onSession }: Readonly<{ session: string | null; onSession: (id: string | null) => void }>) {
+  // The whole bridge is remembered against the session it was turned on over: following a
+  // link to another session's replay shows that session, not the bridge.
+  const [bridgeOver, setBridgeOver] = useState<string | false>(false)
+  const whole = bridgeOver !== false && bridgeOver === (session ?? "")
+  const open = (id: string) => {
+    setBridgeOver(false)
+    onSession(id)
+  }
+  return (
+    <div className={TAB}>
+      <ModeSwitch whole={whole} onChange={on => setBridgeOver(on ? (session ?? "") : false)} />
+      {whole ? <BridgeReplay onOpen={open} /> : <OneSession session={session} onSession={onSession} />}
+    </div>
+  )
+}
+
+/** One session played back, or every session of a day at once. */
+function ModeSwitch({ whole, onChange }: Readonly<{ whole: boolean; onChange: (whole: boolean) => void }>) {
+  const { t } = useI18n()
+  const options = [
+    { value: false, label: t("replay.mode.session"), Icon: UserIcon },
+    { value: true, label: t("replay.mode.bridge"), Icon: RocketIcon },
+  ]
+  return (
+    <fieldset className="inline-flex self-start rounded-lg border bg-card p-0.5">
+      <legend className="sr-only">{t("replay.mode")}</legend>
+      {options.map(({ value, label, Icon }) => (
+        <button
+          key={label}
+          type="button"
+          aria-pressed={whole === value}
+          onClick={() => onChange(value)}
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            whole === value ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon aria-hidden className="size-4" />
+          {label}
+        </button>
+      ))}
+    </fieldset>
+  )
+}
+
+function OneSession({ session, onSession }: Readonly<{ session: string | null; onSession: (id: string | null) => void }>) {
   const { t } = useI18n()
   const sessions = useReplaySessions(true)
   const id = session ?? sessions?.[0]?.id ?? null
   const { replay, failed } = useReplay(id)
 
   return (
-    <div className={TAB}>
+    <>
       <div className="space-y-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
           {sessions && sessions.length > 0 && <SessionFilter value={id} onChange={next => next && onSession(next)} sessions={sessions} current={replay?.session} allowAll={false} />}
@@ -60,7 +96,7 @@ export function Replay({ session, onSession }: Readonly<{ session: string | null
       {failed && !replay && <p className="text-sm text-error">{t("replay.failed")}</p>}
       {id && !replay && !failed && <Loading />}
       {replay && <Player key={replay.session.id} replay={replay} />}
-    </div>
+    </>
   )
 }
 
@@ -83,59 +119,13 @@ function CrossLinks({ id }: Readonly<{ id: string }>) {
 }
 
 function Player({ replay }: Readonly<{ replay: ReplayData }>) {
-  const { t, lang } = useI18n()
-  const [skip, setSkip] = useState(true)
-  const clock = useMemo(() => clockOf(replay, skip), [replay, skip])
-  const [play, setPlay] = useState(0) // ms of playback
-  const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState<Speed>(60)
+  const player = usePlayer(replay)
+  const { clock, play, now, goTo } = player
+  const at = useAt()
   const frame = useFrame()
-
-  // Playing: playback time moves at `speed` times real time, until the end.
-  useEffect(() => {
-    if (!playing) return
-    let last = performance.now()
-    let id = 0
-    const step = (now: number) => {
-      const dt = now - last
-      last = now
-      setPlay(p => {
-        const next = Math.min(clock.length, p + dt * speed)
-        if (next >= clock.length) setPlaying(false)
-        return next
-      })
-      id = requestAnimationFrame(step)
-    }
-    id = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(id)
-  }, [playing, speed, clock.length])
-
-  const now = clock.toReal(Math.min(play, clock.length))
   const { state, seg } = stateAt(replay, now)
   const figures = figuresAt(replay, now)
   const events = useMemo(() => eventsOf(replay), [replay])
-  // A moment within a millisecond of the playhead is the playhead: going back twice goes back twice.
-  const before = events.findLast(e => e.at < now - 2)
-  const after = events.find(e => e.at > now + 1)
-  const at = (ms: number) => new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(ms)
-  const toggleSkip = (on: boolean) => {
-    // Stay at the same moment of the session when the clock changes.
-    const real = clock.toReal(play)
-    setSkip(on)
-    setPlay(clockOf(replay, on).toPlay(real))
-  }
-  // To a moment of the session, from any part of the page: a millisecond past it, so that
-  // what happened then has happened, in the list as in the picture.
-  const goTo = (real: number) => setPlay(Math.min(clock.length, clock.toPlay(real) + 1))
-  const ended = play >= clock.length
-  const togglePlay = () => {
-    // At the end, playing again starts over.
-    if (ended) setPlay(0)
-    setPlaying(ended || !playing)
-  }
-  let playLabel = "replay.play"
-  if (playing) playLabel = "replay.pause"
-  else if (ended) playLabel = "replay.again"
 
   return (
     <>
@@ -144,67 +134,10 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
           <h2 className="text-2xl font-semibold break-words">{replay.session.title || replay.session.id}</h2>
           <p className="font-mono text-code text-muted-foreground [overflow-wrap:anywhere]">{replay.session.project}</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-          <RotateCcwIcon aria-hidden className="size-3.5" />
-          {t("replay.badge")}
-        </span>
+        <ReplayBadge />
       </div>
 
-      {/* The player stays in reach while the page scrolls. */}
-      <fieldset className="z-10 -mx-1 flex min-w-0 lg:sticky lg:top-[env(safe-area-inset-top,0px)] flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border bg-card/95 px-3 py-2.5 backdrop-blur">
-        <legend className="sr-only">{t("replay.player")}</legend>
-        <Button size="sm" className="w-28" onClick={togglePlay}>
-          {playing ? <PauseIcon aria-hidden /> : <PlayIcon aria-hidden />}
-          {t(playLabel)}
-        </Button>
-        <div className="flex items-center gap-0.5">
-          <Hint label={t("replay.previous")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.previous")} disabled={!before} onClick={() => before && goTo(before.at)} />}>
-            <SkipBackIcon aria-hidden />
-          </Hint>
-          <Hint label={t("replay.next")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.next")} disabled={!after} onClick={() => after && goTo(after.at)} />}>
-            <SkipForwardIcon aria-hidden />
-          </Hint>
-        </div>
-        {/* A fixed width and a fixed shape of text: the running time moves nothing beside it. */}
-        <div className="grid w-52 shrink-0 leading-tight">
-          <span className="font-mono text-sm whitespace-nowrap tabular-nums">
-            {stopwatch(play, clock.length)} / {stopwatch(clock.length)}
-          </span>
-          <span className="truncate text-xs text-muted-foreground tabular-nums">{t("replay.at", { t: at(now) })}</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={clock.length}
-          step={1000}
-          value={Math.round(play)}
-          onChange={e => setPlay(Number(e.target.value))}
-          aria-label={t("replay.position")}
-          className="h-2 min-w-40 flex-1 cursor-pointer accent-[var(--color-working)]"
-        />
-        <label className="inline-flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">{t("replay.speed")}</span>
-          <Select value={String(speed)} onValueChange={next => setSpeed(SPEEDS.find(s => String(s) === next) ?? speed)} items={SPEED_ITEMS}>
-            <SelectTrigger size="sm" aria-label={t("replay.speed")} className="w-22 tabular-nums">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SPEED_ITEMS.map(item => (
-                <SelectItem key={item.value} value={item.value} className="tabular-nums">
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <Switch checked={skip} onCheckedChange={toggleSkip} aria-describedby="replay-skip-note" />
-          {t("replay.skip")}
-        </label>
-      </fieldset>
-      <p id="replay-skip-note" className="-mt-5 text-xs text-muted-foreground">
-        {skip && clock.gaps.length ? t("replay.skipNote", { n: clock.gaps.length, t: duration(clock.gaps.reduce((n, g) => n + g[1] - g[0], 0)) }) : t("replay.realNote")}
-      </p>
+      <Transport player={player} moments={events} at={at} />
 
       {/* Two columns of about the same height on a wide screen; on a phone, the picture and then what it means. */}
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start">
@@ -226,23 +159,10 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
         </div>
       </div>
 
-      <Timeline replay={replay} clock={clock} play={play} onSeek={setPlay} at={at} />
+      <Timeline rows={replay.rows} compactions={replay.compactions} clock={clock} play={play} onSeek={player.setPlay} at={at} />
     </>
   )
 }
-
-/** A frame count that moves eight times a second, for the pixels; still for anyone who asks for less motion. */
-function useFrame() {
-  const [frame, setFrame] = useState(0)
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
-    const timer = setInterval(() => setFrame(f => f + 1), FRAME_MS)
-    return () => clearInterval(timer)
-  }, [])
-  return frame
-}
-
-type Clock = ReturnType<typeof clockOf>
 
 /** The session's station on the bridge, at that moment: the same drawing as the live Ship. */
 function Station({ replay, now, play, state, seg, busy, frame, clock }: Readonly<{ replay: ReplayData; now: number; play: number; state: ReplayState; seg: Seg | null; busy: number; frame: number; clock: Clock }>) {
@@ -283,19 +203,6 @@ function Station({ replay, now, play, state, seg, busy, frame, clock }: Readonly
       )}
     </div>
   )
-}
-
-type Translate = ReturnType<typeof useI18n>["t"]
-
-/** What the session was doing, in words: its state when it was not at work, else the step, or its subagent's. */
-function doingAt(t: Translate, state: ReplayState, seg: Seg | null, sub: ReplayData["rows"][number] | null, now: number) {
-  if (state === "finished" || state === "error" || state === "idle") return t(`replay.doing.${state}`)
-  if (!seg) return t("replay.doing.between")
-  const subSeg = sub ? segAt(sub, now) : null
-  // Waiting on a task means waiting on the subagent: say what that one is doing.
-  if (sub && subSeg && toolOf(seg) === "task") return t("replay.doing.sub", { name: sub.name, what: subSeg[3] || t(`replay.kind.${subSeg[2]}`) })
-  const what = t(`replay.kind.${seg[2]}`)
-  return seg[3] ? t("replay.doing.with", { what, detail: seg[3] }) : what
 }
 
 /** What the session was doing at that moment, and its figures: the card of the Now tab, then. */
@@ -493,156 +400,3 @@ const BOX: Record<string, string> = {
   in_progress: "border-working ring-2 ring-working/25",
   pending: "border-muted-foreground/60",
 }
-
-const KIND_FILL: Record<string, string> = {
-  reading: "var(--color-part-1)",
-  thinking: "var(--color-part-2)",
-  writing: "var(--color-part-3)",
-  tool: "var(--color-part-4)",
-  compact: "var(--color-idle)",
-  waiting: "url(#replay-hatch)",
-}
-const ORDER = ["reading", "thinking", "writing", "tool", "compact", "waiting"] as const
-
-/** The first label starts at its tick, the last ends at it, the rest are centred on it. */
-function anchorOf(p: number, length: number) {
-  if (p === 0) return "start"
-  return p === length ? "end" : "middle"
-}
-
-/** Every row of the session over time, at playback scale, with the skipped silences marked. Click to go there. */
-function Timeline({ replay, clock, play, onSeek, at }: Readonly<{ replay: ReplayData; clock: Clock; play: number; onSeek: (ms: number) => void; at: (ms: number) => string }>) {
-  const { t } = useI18n()
-  const [hover, setHover] = useState<string | null>(null)
-  const svg = useRef<SVGSVGElement>(null)
-  const L = 120
-  const R = 990
-  const TOP = 22
-  const ROW = 34
-  const BAR = 18
-  const bottom = TOP + ROW * replay.rows.length
-  const x = (real: number) => L + (clock.toPlay(real) / clock.length) * (R - L)
-  const ticks = Array.from({ length: 6 }, (_, i) => (clock.length * i) / 5)
-  const short = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false })
-  const playAt = (clientX: number) => {
-    const box = svg.current?.getBoundingClientRect()
-    if (!box) return null
-    const vx = ((clientX - box.left) / box.width) * 1000
-    return Math.max(0, Math.min(clock.length, ((vx - L) / (R - L)) * clock.length))
-  }
-  const describeAt = (p: number, y: number) => {
-    const real = clock.toReal(p)
-    const row = replay.rows[Math.floor(((y - TOP) / ROW))]
-    const s = row ? segAt(row, real) : null
-    const gap = clock.gaps.find(([a, b]) => real >= a && real < b)
-    let what = t("replay.goTo")
-    if (s) {
-      const kind = t(`replay.kind.${s[2]}`)
-      const doing = s[3] ? `${kind}: ${s[3]}` : kind
-      what = `${row?.name} · ${doing} · ${duration(s[1] - s[0])}`
-    } else if (gap) {
-      what = t("replay.skipped", { t: duration(gap[1] - gap[0]) })
-    }
-    return `${at(real)} · ${what}`
-  }
-
-  return (
-    <section className={cn(SUB, "rounded-xl border bg-card p-5")}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className={H3}>{t("replay.timeline")}</h3>
-        <p className="text-xs text-muted-foreground">{t("replay.timelineNote")}</p>
-      </div>
-      <div className="overflow-x-auto">
-        <svg
-          ref={svg}
-          viewBox={`0 0 1000 ${bottom + 22}`}
-          className="block h-auto w-full min-w-[40rem] cursor-pointer"
-          role="img"
-          aria-label={t("replay.timeline")}
-          onClick={e => {
-            const p = playAt(e.clientX)
-            if (p != null) onSeek(p)
-          }}
-          onMouseMove={e => {
-            const p = playAt(e.clientX)
-            const box = svg.current?.getBoundingClientRect()
-            if (p == null || !box) return
-            setHover(describeAt(p, ((e.clientY - box.top) / box.height) * (bottom + 22)))
-          }}
-          onMouseLeave={() => setHover(null)}
-        >
-          <defs>
-            <pattern id="replay-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-              <rect width="6" height="6" fill="var(--color-waiting)" opacity="0.35" />
-              <rect width="3" height="6" fill="var(--color-waiting)" />
-            </pattern>
-          </defs>
-          {ticks.map(p => (
-            <g key={p}>
-              <line x1={L + (p / clock.length) * (R - L)} x2={L + (p / clock.length) * (R - L)} y1={TOP - 4} y2={bottom} stroke="var(--color-border)" />
-              <text x={L + (p / clock.length) * (R - L)} y={bottom + 15} textAnchor={anchorOf(p, clock.length)} className="fill-muted-foreground font-mono text-[11px]">
-                {short.format(clock.toReal(p))}
-              </text>
-            </g>
-          ))}
-          {clock.gaps.map(([a, b]) => (
-            <g key={a}>
-              <rect x={x(a)} y={TOP - 8} width={Math.max(2, x(b) - x(a))} height={bottom - TOP + 10} fill="var(--color-muted)" stroke="var(--color-border)" strokeDasharray="3 3" />
-              {x(b) - x(a) >= 64 && (
-                <text x={(x(a) + x(b)) / 2} y={TOP - 11} textAnchor="middle" className="fill-muted-foreground text-[10px]">
-                  {t("replay.skipped", { t: duration(b - a) })}
-                </text>
-              )}
-            </g>
-          ))}
-          {replay.rows.map((row, i) => {
-            const y = TOP + i * ROW + (ROW - BAR) / 2
-            return (
-              <g key={row.id}>
-                <text x={0} y={y + 8} className="fill-foreground text-[12px]">{row.name.length > 14 ? `${row.name.slice(0, 13)}…` : row.name}</text>
-                <text x={0} y={y + 21} className="fill-muted-foreground text-[10px]">{t(row.sub ? "replay.subagent" : "replay.main")}</text>
-                {ORDER.flatMap(kind => row.segs.filter(s => s[2] === kind).map((s, j) => (
-                  <rect key={`${kind}-${j}`} x={x(s[0])} y={kind === "waiting" ? y - 2 : y} width={Math.max(1, x(s[1]) - x(s[0]))} height={kind === "waiting" ? BAR + 4 : BAR} rx={2} fill={KIND_FILL[kind]} />
-                )))}
-              </g>
-            )
-          })}
-          {replay.compactions.map(c => (
-            <line key={c} x1={x(c)} x2={x(c)} y1={TOP - 2} y2={bottom} stroke="var(--color-foreground)" strokeWidth={1.2} strokeDasharray="3 3" />
-          ))}
-          <line x1={L + (play / clock.length) * (R - L)} x2={L + (play / clock.length) * (R - L)} y1={TOP - 12} y2={bottom + 2} stroke="var(--color-foreground)" strokeWidth={2} />
-        </svg>
-      </div>
-      <p className="min-h-[1.5em] text-xs text-muted-foreground" aria-live="off">{hover ?? t("replay.hoverHint")}</p>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label={t("replay.legend")}>
-        {ORDER.map(kind => (
-          <li key={kind} className="inline-flex items-center gap-1.5">
-            <svg width="10" height="10" aria-hidden className="shrink-0 rounded-[2px]">
-              <rect width="10" height="10" fill={KIND_FILL[kind]} />
-            </svg>
-            {t(`replay.kind.${kind}`)}
-          </li>
-        ))}
-        <li className="inline-flex items-center gap-1.5">
-          <svg width="10" height="10" aria-hidden className="shrink-0">
-            <line x1="5" x2="5" y1="0" y2="10" stroke="currentColor" strokeDasharray="2 2" />
-          </svg>
-          {t("replay.compactLine")}
-        </li>
-      </ul>
-    </section>
-  )
-}
-
-function Loading() {
-  return (
-    <div className="space-y-6" aria-hidden>
-      <Skeleton className="h-10 w-full rounded-xl" />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
-      </div>
-    </div>
-  )
-}
-

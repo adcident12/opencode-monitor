@@ -129,7 +129,7 @@ function PickedCard({ session, subagents, now, history }: Readonly<{ session: Se
 }
 
 /** Two columns on a narrow screen, three otherwise; follows the window as it is resized. */
-function useColumns() {
+export function useColumns() {
   const [columns, setColumns] = useState(COLUMNS)
   useEffect(() => {
     const narrow = window.matchMedia(`(max-width: ${NARROW_BELOW - 1}px)`)

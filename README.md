@@ -240,6 +240,14 @@ The **Replay** tab plays one session back: pick it from the list, or follow **Re
 
 It is read from OpenCode's own records with the rules of the Now tab, so it works for a session the monitor never saw, and a session still going grows at the end. What the model wrote is not played back: OpenCode records only when a reply starts and ends, and nothing is made up to fill it. A permission's answer time is inferred, as in Stats, and the plan items, commands and paths shown pass through the same redaction as the rest of the page.
 
+### The whole bridge
+
+**The whole bridge**, at the top of the Replay tab, plays back every session of one day at once: the bridge as it stood at each moment, a station a session, with how many were waiting, stuck, failed, working or finished, a line for each saying what it was doing, and a timeline with a row a session. A day is this machine's own, midnight to midnight; the list offers the last 30 days that had something, with how many sessions each.
+
+- Each session is its own replay, read by the same rules, so a station here and that session played on its own never disagree; a session not begun yet is idle. Click a station, or **Replay** on its line, to play that session on its own.
+- A silence is skipped only when no session at all, subagents included, was doing anything. The step buttons go between the turns of the day (prompts, waits and their answers, compactions, the end of a turn), not every tool call.
+- Twelve stations at most, as on the live bridge, in the order the sessions began; the rest of the day is counted under the picture. Today grows at its end while the page is open.
+
 ## Ask Claude about it
 
 The page shows figures; deciding what to do about them is a conversation. `mcp.mjs` gives the same figures to [Claude Code](https://claude.com/claude-code), or any other MCP client, so you can ask "why did last week take so long" or "what should I change in my OpenCode setup" and get an answer from your own numbers:

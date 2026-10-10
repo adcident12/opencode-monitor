@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
+import type { Bridge } from "./bridge"
 import type { Replay } from "./replay"
 import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
 
@@ -164,6 +165,52 @@ export function useReplay(id: string | null) {
     }
   }, [id])
   return { replay: state.id === id ? state.replay : null, failed: state.id === id && state.failed }
+}
+
+/** The days there is something to play back, newest first; fetched when the tab opens. */
+export function useReplayDays(enabled: boolean) {
+  const [days, setDays] = useState<{ day: string; sessions: number }[] | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    fetch("/api/replay/days")
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then(list => live && Array.isArray(list) && setDays(list))
+      .catch(() => live && setDays([]))
+    return () => {
+      live = false
+    }
+  }, [enabled])
+  return days
+}
+
+/**
+ * Every session of one day, to play back together. A day that is over does not change, so
+ * it is fetched once; today is fetched again every minute and grows at its end.
+ */
+export function useBridge(day: string | null) {
+  const [state, setState] = useState<{ day: string | null; bridge: Bridge | null; failed: boolean }>({ day, bridge: null, failed: false })
+  useEffect(() => {
+    if (!day) return
+    let live = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const load = () =>
+      fetch(`/api/replay/bridge?day=${encodeURIComponent(day)}`)
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then((bridge: Bridge | null) => {
+          if (!live) return
+          setState({ day, bridge, failed: !bridge })
+          // Still today: its end is the moment it was read.
+          if (bridge && bridge.end >= bridge.now) timer = setTimeout(load, 60_000)
+        })
+        .catch(() => live && setState(s => ({ ...s, day, failed: true })))
+    load()
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [day])
+  return { bridge: state.day === day ? state.bridge : null, failed: state.day === day && state.failed }
 }
 
 /** What the monitor found on this machine; fetched when the tab opens. */

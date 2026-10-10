@@ -83,6 +83,13 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     const page = await get('/');
     assert.equal(page.status, 200);
     assert.match(page.type, /text\/html/);
+    // The whole bridge: the day of the sample's replay session, with that session on it.
+    const days = JSON.parse((await get('/api/replay/days')).body);
+    assert.ok(days.length >= 1 && days.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d.day) && d.sessions >= 1));
+    const whole = JSON.parse((await get(`/api/replay/bridge?day=${days[0].day}`)).body);
+    assert.equal(whole.sessions.length, days[0].sessions);
+    assert.ok(whole.sessions.every(r => r.rows.length >= 1 && r.session.id));
+    assert.equal(JSON.parse((await get('/api/replay/bridge?day=nonsense')).body), null);
     for (const path of ['/i18n/en.json', '/i18n/th.json']) assert.equal((await get(path)).status, 200, path);
     // Every script and stylesheet the page refers to is served.
     const assets = [...page.body.matchAll(/(?:src|href)="(\/_next\/[^"?]+)/g)].map(m => m[1]);
