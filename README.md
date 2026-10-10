@@ -15,6 +15,10 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 
 ## What it looks like
 
+<img src="docs/screenshots/en/replay.gif" alt="A session played back in the Replay tab: the agent works, waits for you, compacts, and finishes" width="860">
+
+**Replay** · a session played back from OpenCode's own records: the agent works, waits for you, runs out of room and compacts, and finishes.
+
 | | |
 | --- | --- |
 | <img src="docs/screenshots/en/now.png" alt="Now" width="420"><br>**Now** · what needs you first, with how long it has waited | <img src="docs/screenshots/en/ship.png" alt="Ship" width="420"><br>**Ship** · the same sessions as a live pixel-art bridge |

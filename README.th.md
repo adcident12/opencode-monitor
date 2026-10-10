@@ -15,6 +15,10 @@
 
 ## หน้าตาเป็นอย่างไร
 
+<img src="docs/screenshots/th/replay.gif" alt="session หนึ่งที่เล่นย้อนในแท็บเล่นย้อน: agent ทำงาน รอคุณ compact และเสร็จ" width="860">
+
+**เล่นย้อน** · session หนึ่งที่เล่นย้อนจากบันทึกของ OpenCode เอง: agent ทำงาน รอคุณ ใช้ context จนต้อง compact แล้วทำจนเสร็จ
+
 | | |
 | --- | --- |
 | <img src="docs/screenshots/th/now.png" alt="ตอนนี้" width="420"><br>**ตอนนี้** · สิ่งที่ต้องการคุณมาก่อน พร้อมบอกว่ารอมานานแค่ไหน | <img src="docs/screenshots/th/ship.png" alt="ยาน" width="420"><br>**ยาน** · session ชุดเดียวกันในรูปห้องบังคับการแบบ pixel art ที่ขยับตามจริง |
