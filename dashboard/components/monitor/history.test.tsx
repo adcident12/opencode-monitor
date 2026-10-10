@@ -22,6 +22,10 @@ beforeEach(() => {
   vi.stubGlobal("fetch", async (url: string) => {
     requested.push(url)
     if (url.startsWith("/api/history/sessions")) return Response.json([])
+    if (url.startsWith("/api/stats")) {
+      const row = (id: string, title: string, activeMs: number, compactions: number) => ({ id, title, project: "shop", toolCalls: 10, lastAt: NOW, activeMs, waitMs: 60_000, compactions, tokens: 120_000 })
+      return Response.json({ sessions: [row("ses_small", "Small fix", 600_000, 0), row("ses_big", "Big refactor", 7_200_000, 4)] })
+    }
     if (url.startsWith("/api/history")) {
       const q = new URL(url, "http://x").searchParams
       const before = q.get("before")
@@ -44,6 +48,21 @@ const renderHistory = () =>
       <History count={all.length} active session={null} onSession={() => {}} />
     </I18nProvider>,
   )
+
+describe("What each session took", () => {
+  it("lists the costliest session first, and picks it for the list when clicked", async () => {
+    const picked: (string | null)[] = []
+    render(
+      <I18nProvider>
+        <History count={all.length} active session={null} onSession={id => picked.push(id)} />
+      </I18nProvider>,
+    )
+    const rows = await screen.findAllByRole("button", { name: /Big refactor|Small fix/ })
+    expect(rows.map(r => r.textContent)).toEqual(["Big refactor", "Small fix"])
+    await userEvent.click(rows[0])
+    expect(picked).toEqual(["ses_big"])
+  })
+})
 
 describe("History pages", () => {
   it("shows a page, then the page below it when asked, without repeating any entry", async () => {

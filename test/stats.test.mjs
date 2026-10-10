@@ -275,3 +275,26 @@ test('one session: how its context filled, where it was compacted, and what was 
   // A context window belongs to a session: without one selected there is nothing to draw.
   assert.equal(run(input).context, null);
 });
+
+test('the session list says what each session cost, subagents counted for their parent', () => {
+  const at = NOW - 3 * HOUR;
+  const s = run({
+    sessions: [
+      { id: 's1', parent_id: null, directory: '/work/shop', title: 'Shop', time_created: at },
+      { id: 's1-sub', parent_id: 's1', directory: '/work/shop', title: 'Explore', time_created: at },
+      { id: 's2', parent_id: null, directory: '/work/blog', title: 'Blog', time_created: at },
+    ],
+    tools: [tool('a', 's1', 'bash', at, at + MIN), tool('b', 's2', 'bash', at, at + MIN, { id: 'b' })],
+    messages: [
+      { id: 'm1', session_id: 's1', role: 'assistant', time_created: at, completed: at + 10 * MIN, tokens_input: 1000, tokens_cache_read: 9000, tokens_output: 500 },
+      { id: 'm2', session_id: 's1-sub', role: 'assistant', time_created: at, completed: at + 5 * MIN, tokens_input: 2000, tokens_cache_read: 0, tokens_output: 100 },
+      { id: 'm3', session_id: 's2', role: 'assistant', time_created: at, completed: at + MIN, tokens_input: 10, tokens_cache_read: 0, tokens_output: 10 },
+    ],
+    compactions: [{ session_id: 's1-sub', time_created: at + MIN }],
+    // Even with another session selected, the list keeps every session's own figures.
+    sessionId: 's2',
+  });
+  const shop = s.sessions.find(x => x.id === 's1');
+  assert.deepEqual([shop.activeMs, shop.tokens, shop.compactions, shop.waitMs], [15 * MIN, 12_600, 1, 0]);
+  assert.deepEqual([s.sessions.find(x => x.id === 's2').activeMs, s.totals.activeMs], [MIN, MIN]);
+});

@@ -301,8 +301,8 @@ function tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns
   const inRange = asks.filter(a => a.t >= ctx.from && a.t <= ctx.now);
   // Matched against every session's calls first, so a prompt is never pinned on this session
   // just because the call it really belonged to was left out.
-  const prompts = matchPrompts({ asks: inRange, replies, tools, eventTimes, now: ctx.now, movedOn, liveRuns, runEnds })
-    .filter(p => !scope || (p.part && scope.has(p.part.session_id)));
+  const all = matchPrompts({ asks: inRange, replies, tools, eventTimes, now: ctx.now, movedOn, liveRuns, runEnds });
+  const prompts = all.filter(p => !scope || (p.part && scope.has(p.part.session_id)));
   const waitByPart = new Map();
   const deadAt = new Map(); // tool part id -> when the process that prompted for it went away
   for (const p of prompts) {
@@ -314,7 +314,7 @@ function tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns
     }
     if (p.part) waitByPart.set(p.part.id, (waitByPart.get(p.part.id) ?? 0) + (p.answeredAt ? p.waitMs : 0));
   }
-  return { prompts, waitByPart, deadAt };
+  return { prompts, all, waitByPart, deadAt };
 }
 
 /**
@@ -339,11 +339,7 @@ function tallyTools(ctx, tools, timing, stuckMs) {
   const explore = { graft: 0, other: 0 };
   const calls = []; // every call counted below, for the per-server figures
   const perRoot = new Map(); // top-level session id -> { toolCalls, lastAt }, whatever the filter
-  const rootOf = id => {
-    let s = ctx.sessionById.get(id);
-    for (let depth = 0; s?.parent_id && ctx.sessionById.has(s.parent_id) && depth < 20; depth++) s = ctx.sessionById.get(s.parent_id);
-    return s?.id ?? id;
-  };
+  const { rootOf } = ctx;
   for (const p of tools) {
     const t = startOf(p);
     const b = ctx.bucket(t);
@@ -379,6 +375,32 @@ function tallyTools(ctx, tools, timing, stuckMs) {
   return { perTool, slow, reads, skills, explore, calls, perRoot };
 }
 
+const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tokens: 0 });
+
+/**
+ * What each top-level session cost in the range, subagents included, whatever the filter:
+ * the list is for choosing which session to look at.
+ */
+function effortPerSession(ctx, { messages, compactions, prompts }) {
+  const effort = new Map();
+  const bump = (id, key, n) => {
+    const root = ctx.rootOf(id);
+    const e = effort.get(root) ?? { ...EMPTY_EFFORT };
+    e[key] += n;
+    effort.set(root, e);
+  };
+  for (const m of messages) {
+    if (m.role !== 'assistant' || m.time_created < ctx.from || m.time_created > ctx.now) continue;
+    const end = Math.min(m.completed ?? m.time_created, ctx.now);
+    if (end > m.time_created) bump(m.session_id, 'activeMs', end - m.time_created);
+    const tokens = tokensSent(m) + (m.tokens_output ?? 0);
+    if (tokens > 0) bump(m.session_id, 'tokens', tokens);
+  }
+  for (const c of compactions) if (c.time_created >= ctx.from) bump(c.session_id, 'compactions', 1);
+  for (const p of prompts) if (p.part) bump(p.part.session_id, 'waitMs', p.waitMs);
+  return effort;
+}
+
 /**
  * @param {object} input
  * @param {object[]} input.sessions   id, title, directory, parent_id, time_created, time_updated
@@ -404,7 +426,13 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const sessionById = new Map(sessions.map(s => [s.id, s]));
   const scope = sessionId ? withDescendants(sessions, sessionId) : null;
   const inScope = id => !scope || scope.has(id);
-  const ctx = { from, now, bucket, inScope, sessionById, sessionId };
+  // The top-level session a session belongs to: subagent work counts for its parent.
+  const rootOf = id => {
+    let s = sessionById.get(id);
+    for (let depth = 0; s?.parent_id && sessionById.has(s.parent_id) && depth < 20; depth++) s = sessionById.get(s.parent_id);
+    return s?.id ?? id;
+  };
+  const ctx = { from, now, bucket, inScope, sessionById, sessionId, rootOf };
   const where = id => {
     const s = sessionById.get(id);
     const directory = s?.directory ?? '';
@@ -416,7 +444,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
 
   const { usage, startSizes, timed, own } = tallyRequests(ctx, messages, steps);
   const movedOn = nextMessageFinder(messages);
-  const { prompts, waitByPart, deadAt } = tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope });
+  const { prompts, all: allPrompts, waitByPart, deadAt } = tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope });
   const { perTool, slow, reads, skills, explore, calls, perRoot } = tallyTools(ctx, tools, { movedOn, deadAt, waitByPart }, stuckMs);
 
   const sum = key => [...daily.values()].reduce((n, d) => n + d[key], 0);
@@ -439,6 +467,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   };
   const sentTotal = usage.input + usage.cacheRead + usage.cacheWrite;
 
+  const effort = effortPerSession(ctx, { messages, compactions, prompts: allPrompts });
+
   const describe = p => p.cmd ?? p.file ?? p.question ?? p.descr ?? '';
   return {
     range: { from, to: now, days },
@@ -447,7 +477,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     sessions: [...perRoot]
       .sort((a, b) => b[1].lastAt - a[1].lastAt)
       .slice(0, MAX_SESSIONS_LISTED)
-      .map(([id, use]) => ({ id, ...where(id), toolCalls: use.toolCalls, lastAt: use.lastAt })),
+      .map(([id, use]) => ({ id, ...where(id), toolCalls: use.toolCalls, lastAt: use.lastAt, ...(effort.get(id) ?? EMPTY_EFFORT) })),
     // The log does not say which session a server failed in, so with a session filter the
     // failure counts are left out rather than shown for the wrong session.
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],

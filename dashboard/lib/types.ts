@@ -212,7 +212,8 @@ export interface DayStats {
 export interface Stats {
   range: { from: number; to: number; days: number }
   session: SessionChoice | null
-  sessions: (SessionChoice & { toolCalls: number; lastAt: number })[]
+  /** Top-level sessions in the range with what each cost, whatever session is selected. */
+  sessions: (SessionChoice & { toolCalls: number; lastAt: number; activeMs: number; waitMs: number; compactions: number; tokens: number })[]
   mcp: McpStat[]
   /** Oldest line of OpenCode's log that was read; failures before it are unknown. */
   mcpLogFrom: number | null
