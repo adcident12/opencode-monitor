@@ -306,6 +306,8 @@
   "replay.again": "Play again",
   "replay.at": "At the time: {t}",
   "replay.position": "Where in the session",
+  "replay.previous": "Back to what happened before",
+  "replay.next": "On to what happens next",
   "replay.speed": "Speed",
   "replay.skip": "Skip silences",
   "replay.skipNote": "Silences skipped: {n}, {t} in all, 20 seconds each.",

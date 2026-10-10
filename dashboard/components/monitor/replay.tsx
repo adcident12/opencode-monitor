@@ -1,14 +1,14 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, PauseIcon, PlayIcon, RotateCcwIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, PauseIcon, PlayIcon, RotateCcwIcon, SkipBackIcon, SkipForwardIcon } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { duration, kilo } from "@/lib/format"
+import { duration, kilo, stopwatch } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useReplay, useReplaySessions } from "@/lib/live"
-import { clockOf, eventsOf, figuresAt, screenAt, segAt, stateAt, toolOf, type Replay as ReplayData, type ReplayState, type Seg } from "@/lib/replay"
+import { clockOf, eventsOf, figuresAt, screenAt, segAt, stateAt, toolOf, type Replay as ReplayData, type ReplayEvent, type ReplayState, type Seg } from "@/lib/replay"
 import { drawScene, toolsOf } from "@/lib/replay-scene"
 import { layout, lookOf } from "@/lib/ship"
 import { drawShip } from "@/lib/ship-draw"
@@ -18,7 +18,10 @@ import { Facts, H3, SUB, TAB } from "./section"
 import { SessionFilter } from "./session-filter"
 import { StateBadge } from "./state"
 
-const SPEEDS = [30, 60, 180] as const
+/** Times real time: 1 plays a session as it happened. */
+const SPEEDS = [1, 30, 60, 180] as const
+/** The events kept in view; the list keeps room for this many, so it never grows while playing. */
+const EVENTS_SHOWN = 7
 const FRAME_MS = 125
 /** Pixels of sky cut off the top of the one station. */
 const SKY_CUT = 30
@@ -102,6 +105,10 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
   const now = clock.toReal(Math.min(play, clock.length))
   const { state, seg } = stateAt(replay, now)
   const figures = figuresAt(replay, now)
+  const events = useMemo(() => eventsOf(replay), [replay])
+  // A moment within a millisecond of the playhead is the playhead: going back twice goes back twice.
+  const before = events.findLast(e => e.at < now - 1)
+  const after = events.find(e => e.at > now + 1)
   const at = (ms: number) => new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(ms)
   const toggleSkip = (on: boolean) => {
     // Stay at the same moment of the session when the clock changes.
@@ -135,15 +142,24 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
       {/* The player stays in reach while the page scrolls. */}
       <fieldset className="z-10 -mx-1 flex min-w-0 lg:sticky lg:top-[env(safe-area-inset-top,0px)] flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border bg-card/95 px-3 py-2.5 backdrop-blur">
         <legend className="sr-only">{t("replay.player")}</legend>
-        <Button size="sm" className="min-w-24" onClick={togglePlay}>
+        <Button size="sm" className="w-28" onClick={togglePlay}>
           {playing ? <PauseIcon aria-hidden /> : <PlayIcon aria-hidden />}
           {t(playLabel)}
         </Button>
-        <div className="grid min-w-36 leading-tight">
-          <span className="font-mono text-sm tabular-nums">
-            {duration(play)} / {duration(clock.length)}
+        <div className="flex items-center gap-0.5">
+          <Hint label={t("replay.previous")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.previous")} disabled={!before} onClick={() => before && setPlay(clock.toPlay(before.at))} />}>
+            <SkipBackIcon aria-hidden />
+          </Hint>
+          <Hint label={t("replay.next")} render={<Button size="icon-sm" variant="ghost" aria-label={t("replay.next")} disabled={!after} onClick={() => after && setPlay(clock.toPlay(after.at))} />}>
+            <SkipForwardIcon aria-hidden />
+          </Hint>
+        </div>
+        {/* A fixed width and a fixed shape of text: the running time moves nothing beside it. */}
+        <div className="grid w-52 shrink-0 leading-tight">
+          <span className="font-mono text-sm whitespace-nowrap tabular-nums">
+            {stopwatch(play, clock.length)} / {stopwatch(clock.length)}
           </span>
-          <span className="text-xs text-muted-foreground tabular-nums">{t("replay.at", { t: at(now) })}</span>
+          <span className="truncate text-xs text-muted-foreground tabular-nums">{t("replay.at", { t: at(now) })}</span>
         </div>
         <input
           type="range"
@@ -187,7 +203,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
             <Moment replay={replay} now={now} state={state} seg={seg} figures={figures} />
           </div>
           <div className="order-4">
-            <Story replay={replay} now={now} figures={figures} at={at} />
+            <Story replay={replay} events={events} now={now} figures={figures} at={at} />
           </div>
         </div>
       </div>
@@ -355,10 +371,13 @@ function Scene({ replay, now, state, seg, frame }: Readonly<{ replay: ReplayData
 }
 
 /** The agent's plan at that moment, and what had happened up to it. */
-function Story({ replay, now, figures, at }: Readonly<{ replay: ReplayData; now: number; figures: ReturnType<typeof figuresAt>; at: (ms: number) => string }>) {
+function Story({ replay, events, now, figures, at }: Readonly<{ replay: ReplayData; events: ReplayEvent[]; now: number; figures: ReturnType<typeof figuresAt>; at: (ms: number) => string }>) {
   const { t, lang } = useI18n()
-  const events = useMemo(() => eventsOf(replay), [replay])
-  const shown = events.filter(e => e.at <= now).slice(-7).reverse()
+  const shown = events.filter(e => e.at <= now).slice(-EVENTS_SHOWN).reverse()
+  // Room for the longest plan of the session and for a full list, from the start: what is
+  // below stays where it is while the plan and the list fill up.
+  const planRows = Math.max(1, ...replay.plans.map(p => p[1].length))
+  const eventRows = Math.min(EVENTS_SHOWN, Math.max(1, events.length))
   const time = new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
   const plan = figures.plan ?? []
   return (
@@ -366,7 +385,7 @@ function Story({ replay, now, figures, at }: Readonly<{ replay: ReplayData; now:
       <div className={SUB}>
         <h3 className={H3}>{t("replay.plan")}</h3>
         {plan.length ? (
-          <ul className="space-y-1.5 text-sm">
+          <ul className="space-y-1.5 text-sm" style={{ minHeight: rowsHeight(planRows, 0.375) }}>
             {plan.map(([text, status], i) => (
               <li key={`${i}-${text}`} className="grid grid-cols-[1.125rem_minmax(0,1fr)] items-start gap-2.5">
                 <span aria-hidden className={cn("mt-1 grid size-4 place-items-center rounded-[4px] border text-[10px] leading-none", BOX[status] ?? BOX.pending)}>
@@ -377,12 +396,12 @@ function Story({ replay, now, figures, at }: Readonly<{ replay: ReplayData; now:
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("replay.noPlan")}</p>
+          <p className="text-sm text-muted-foreground" style={{ minHeight: replay.plans.length ? rowsHeight(planRows, 0.375) : undefined }}>{t("replay.noPlan")}</p>
         )}
       </div>
       <div className={SUB}>
         <h3 className={H3}>{t("replay.events")}</h3>
-        <ol className="space-y-1 text-sm">
+        <ol className="space-y-1 text-sm" style={{ minHeight: rowsHeight(eventRows, 0.25) }}>
           {shown.map((e, i) => (
             <li key={`${e.at}-${i}`} className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-2">
               <Hint label={at(e.at)} className="font-mono text-xs text-muted-foreground tabular-nums">
@@ -407,6 +426,9 @@ function Story({ replay, now, figures, at }: Readonly<{ replay: ReplayData; now:
     </section>
   )
 }
+
+/** The height of n lines of small text (1.4rem each) with a gap between them, in rem. */
+const rowsHeight = (n: number, gap: number) => `${n * 1.4 + (n - 1) * gap}rem`
 
 const BOX: Record<string, string> = {
   completed: "border-finished bg-finished text-background",

@@ -40,6 +40,18 @@ export function kilo(n: number): string {
   return `${Math.round(n / 1000)}k`
 }
 
+/**
+ * 04:07, or 1:04:07 when the whole (`of`) runs to hours: a stopwatch that keeps the same
+ * width from the first second to the last, so nothing beside it moves while it runs.
+ */
+export function stopwatch(ms: number, of = ms): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const two = (n: number) => String(n).padStart(2, "0")
+  const tail = `${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`
+  const hours = Math.floor(Math.max(0, of) / 3_600_000)
+  return hours ? `${String(Math.floor(s / 3600)).padStart(String(hours).length, "0")}:${tail}` : tail
+}
+
 /** $0.004, $0.35, $12.40, $1,250 — money as OpenCode recorded it, which is in US dollars. */
 export function money(n: number): string {
   if (n > 0 && n < 0.01) return `$${n.toFixed(3)}`

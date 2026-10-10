@@ -203,7 +203,7 @@ History is recorded only while the monitor is running, into `data/history.jsonl`
 
 The **Replay** tab plays one session back: pick it from the list, or follow **Replay** at the foot of any card, or **Replay this session** in Stats and History when a session is chosen there (`#replay/<session id>`, so it can be bookmarked). It is labelled as a replay throughout, so a raised hand there is never taken for someone waiting now.
 
-- The player has play and pause, a slider, three speeds, and the real time of the moment it is at.
+- The player has play and pause, a step to what happens next or back, a slider, four speeds from real speed (1×) to 180×, and the real time of the moment it is at.
 - **Skip silences** is on by default: a stretch longer than two minutes where nothing at all happened (you went home, the agent finished and waited) takes 20 seconds of playback, and is marked on the timeline. Turn it off to play real time.
 - At each moment: the session's station on the bridge, the panel the Now tab would have shown (its state, what it was doing and for how long, calls so far, time waited for you, and the context against the point where OpenCode compacts), the agent drawn with the tools it reaches for and its subagents as they work, the plan as it stood, and what had happened up to then.
 - Under it, a timeline of the session and each subagent: reading the prompt, thinking, writing, tools, compacting, and waiting for you, with every compaction marked. Point at it to see what was happening; click to go there.

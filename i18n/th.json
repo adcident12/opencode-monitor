@@ -306,6 +306,8 @@
   "replay.again": "เล่นใหม่",
   "replay.at": "เวลาจริง {t}",
   "replay.position": "ตำแหน่งใน session",
+  "replay.previous": "ย้อนไปเหตุการณ์ก่อนหน้า",
+  "replay.next": "ข้ามไปเหตุการณ์ถัดไป",
   "replay.speed": "ความเร็ว",
   "replay.skip": "ข้ามช่วงเงียบ",
   "replay.skipNote": "ข้ามช่วงเงียบ {n} ช่วง รวม {t} ใช้เวลาเล่นช่วงละ 20 วินาที",

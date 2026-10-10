@@ -87,6 +87,36 @@ describe("The Replay tab", () => {
     expect(screen.getByRole("slider", { name: "Where in the session" })).toHaveAttribute("max", "1200000")
   })
 
+  it("plays at real speed too, and the running time keeps one shape", async () => {
+    renderTab("ses_1")
+    await screen.findByRole("heading", { name: "Checkout flow" })
+    const speeds = within(screen.getByRole("group", { name: "Speed" })).getAllByRole("button")
+    expect(speeds.map(b => b.textContent)).toEqual(["1×", "30×", "60×", "180×"])
+    await userEvent.click(speeds[0])
+    expect(speeds[0]).toHaveAttribute("aria-pressed", "true")
+    // 20 minutes with one silence of 16m 20s taken in 20 seconds: 4 minutes of playback.
+    expect(screen.getByText("00:00 / 04:00")).toBeInTheDocument()
+    fireEvent.change(screen.getByRole("slider", { name: "Where in the session" }), { target: { value: "80000" } })
+    expect(screen.getByText("01:20 / 04:00")).toBeInTheDocument()
+  })
+
+  it("steps to what happens next, and back", async () => {
+    renderTab("ses_1")
+    await screen.findByRole("heading", { name: "Checkout flow" })
+    const back = screen.getByRole("button", { name: "Back to what happened before" })
+    const on = screen.getByRole("button", { name: "On to what happens next" })
+    const moment = screen.getByRole("region", { name: "At this moment" })
+    expect(back).toBeDisabled()
+    // The prompt at 0 is where it starts; next the subagent's read at 20 s, then the main agent's bash at 60 s.
+    await userEvent.click(on)
+    expect(screen.getByText("00:20 / 04:00")).toBeInTheDocument()
+    await userEvent.click(on)
+    expect(screen.getByText("01:00 / 04:00")).toBeInTheDocument()
+    expect(within(moment).getByText("Running a tool: bash npm test")).toBeInTheDocument()
+    await userEvent.click(back)
+    expect(screen.getByText("00:20 / 04:00")).toBeInTheDocument()
+  })
+
   it("picks another session through the list", async () => {
     const onSession = vi.fn()
     renderTab("ses_1", onSession)
