@@ -69,8 +69,11 @@ test('server: sample mode serves the page, the state, and the history; refuses f
     const firstFour = JSON.parse((await get('/api/history?limit=4')).body);
     const rest = JSON.parse((await get(`/api/history?limit=100&before=${firstFour.events.at(-1).t}:${firstFour.events.at(-1).id}`)).body);
     assert.deepEqual([firstFour.more, rest.events.length], [5, 5]);
+    // The sample's config is fake, so no config file is watched and nothing is kept.
+    assert.deepEqual(JSON.parse((await get('/api/config-changes?days=14')).body), []);
     const stats = JSON.parse((await get('/api/stats?days=7')).body);
     assert.equal(stats.daily.length, 7);
+    assert.ok(Array.isArray(stats.takeaways));
     assert.ok(stats.totals.prompts >= 2, 'the sample prompts are counted');
     assert.equal(JSON.parse((await get('/api/stats?days=999')).body).daily.length, 14, 'unknown ranges fall back to 14 days');
     assert.ok(!/squ_[0-9a-f]{8}/.test(JSON.stringify(stats)));

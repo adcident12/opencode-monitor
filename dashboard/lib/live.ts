@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useSyncExternalStore } from "react"
-import type { HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
+import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -177,4 +177,25 @@ export function useStats(days: number, session: string | null, split: string | n
   }, [days, session, split, key, enabled])
   // Figures for another range or session are not shown as if they were for this one.
   return { stats: state.key === key ? state.stats : null, failed: state.failed }
+}
+
+/** Days on which an OpenCode config file changed, newest first. Empty until loaded, or when none. */
+export function useConfigChanges(days: number, enabled: boolean) {
+  const [changes, setChanges] = useState<ConfigChange[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    const load = () =>
+      fetch(`/api/config-changes?days=${days}`)
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(list => live && Array.isArray(list) && setChanges(list))
+        .catch(() => {})
+    load()
+    const timer = setInterval(load, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [days, enabled])
+  return changes
 }

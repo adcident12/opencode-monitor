@@ -10,6 +10,22 @@ const PROJECT_CONFIG_FILES = ['opencode.json', 'opencode.jsonc', join('.opencode
 const PROJECT_CONFIG_MAX_BYTES = 256 * 1024;
 const MAX_NAME = 64;
 
+/** Past any space and comments from `j`. */
+function skipBlank(text, j) {
+  for (;;) {
+    while (j < text.length && /\s/.test(text[j])) j++;
+    if (text.startsWith('//', j)) {
+      const end = text.indexOf('\n', j);
+      j = end === -1 ? text.length : end;
+    } else if (text.startsWith('/*', j)) {
+      const end = text.indexOf('*/', j + 2);
+      j = end === -1 ? text.length : end + 2;
+    } else {
+      return j;
+    }
+  }
+}
+
 // JSON with // and /* */ comments and trailing commas -> plain JSON.
 export function stripJsonc(text) {
   let out = '';
@@ -27,8 +43,8 @@ export function stripJsonc(text) {
       const end = text.indexOf('*/', i + 2);
       i = end === -1 ? text.length : end + 2;
     } else if (ch === ',') {
-      let j = i + 1;
-      while (j < text.length && /\s/.test(text[j])) j++;
+      // Trailing, when only space and comments stand between it and the closing bracket.
+      const j = skipBlank(text, i + 1);
       if (text[j] !== '}' && text[j] !== ']') out += ch;
       i++;
     } else {
@@ -98,6 +114,16 @@ function compactionOf(config) {
   if (typeof c.auto === 'boolean') out.auto = c.auto;
   if (Number.isFinite(c.reserved) && c.reserved >= 0) out.reserved = c.reserved;
   return out;
+}
+
+/**
+ * Every file OpenCode may read its settings from: the global ones, and each project's.
+ * Paths only; nothing is opened here.
+ */
+export function configFiles(configDir, projectDirs = []) {
+  const files = ['opencode.json', 'opencode.jsonc'].map(name => join(configDir, name));
+  for (const dir of projectDirs) if (dir && isSafeLocalPath(dir)) files.push(...PROJECT_CONFIG_FILES.map(name => join(dir, name)));
+  return files;
 }
 
 function readJson(path) {

@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { compact, duration, money, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
-import { useStats } from "@/lib/live"
-import type { DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
+import { useConfigChanges, useStats } from "@/lib/live"
+import type { ConfigChange, DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
 import { Chapter, GRID, H3, SUB, TAB, TH } from "./section"
@@ -32,6 +32,7 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
   // A day inside the period: what was changed that day is judged by the days on either side.
   const [split, setSplit] = useState<string | null>(null)
   const { stats, failed } = useStats(days, session, split, true)
+  const changes = useConfigChanges(days, true)
   // The list comes with the figures; keep the last one so the filter does not empty while loading.
   const [choices, setChoices] = useState<StatsData["sessions"]>([])
   if (stats && stats.sessions !== choices) setChoices(stats.sessions)
@@ -53,7 +54,7 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
           </SelectContent>
         </Select>
         <SessionFilter value={session} onChange={onSession} sessions={choices} current={stats?.session} />
-          <SplitPicker value={split} onChange={setSplit} days={days} />
+          <SplitPicker value={split} onChange={setSplit} days={days} changed={changes.map(c => dayOf(c.t))} />
           <Button
             variant="outline"
             size="sm"
@@ -70,6 +71,7 @@ export function Stats({ session, onSession }: { session: string | null; onSessio
 
       {failed && !stats && <p className="text-sm text-error">{t("stats.failed")}</p>}
       {!stats && !failed && <Loading />}
+      <ConfigChanges changes={changes} days={days} split={split} onCompare={setSplit} />
       {stats?.compare && <Compare compare={stats.compare} />}
       {stats && split && !stats.compare && <p className="text-sm text-muted-foreground">{t("compare.none")}</p>}
       {stats && <Figures stats={stats} />}
@@ -85,13 +87,91 @@ const dayOf = (t: number) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
+/** The days a period can be split at, newest first: every day but the first, at noon. */
+function useSplittable(days: number) {
+  // Lazy initial state: the list of days is fixed when it is first needed, and reading the clock during render is not pure.
+  const [today] = useState(() => new Date().setHours(12, 0, 0, 0))
+  return Array.from({ length: days - 1 }, (_, i) => today - i * 86_400_000)
+}
+
+const SHOWN_CHANGES = 3
+const SHOWN_SETTINGS = 4
+
+/**
+ * Saves of OpenCode's config that changed a setting, each with a way to see the days before
+ * it beside the days after. Left out when there were none.
+ */
+function ConfigChanges({ changes, days, split, onCompare }: { changes: ConfigChange[]; days: number; split: string | null; onCompare: (day: string) => void }) {
+  const { t, lang } = useI18n()
+  const splittable = useSplittable(days).map(dayOf)
+  if (!changes.length) return null
+  const when = new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  const told = (s: ConfigChange["changes"][number]) => {
+    if (s.hidden) return t("config.hidden")
+    if (s.kind === "added") return `${String(s.to)} (${t("config.added")})`
+    if (s.kind === "removed") return t("config.removed")
+    return `${String(s.from)} → ${String(s.to)}`
+  }
+  const action = (day: string) => {
+    if (split === day) return <span className="text-sm whitespace-nowrap text-muted-foreground">{t("config.comparing")}</span>
+    if (!splittable.includes(day)) return <span className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">{t("config.tooEarly")}</span>
+    return (
+      <Button variant="outline" size="sm" className="self-start" onClick={() => onCompare(day)}>
+        {t("config.compare")}
+      </Button>
+    )
+  }
+  const shown = changes.slice(0, SHOWN_CHANGES)
+
+  return (
+    <section aria-labelledby="config-changes-title" className="space-y-3 rounded-xl border bg-card px-4 py-4 sm:px-5">
+      <div>
+        <h3 id="config-changes-title" className={H3}>
+          {t("config.title")}
+        </h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("config.note")}</p>
+      </div>
+      <ul className="divide-y border-t">
+        {shown.map(c => {
+          const day = dayOf(c.t)
+          return (
+            <li key={`${c.t}-${c.file}`} className="flex flex-col gap-x-4 gap-y-2 py-2.5 sm:flex-row sm:items-start">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="tabular-nums">{when.format(c.t)}</span>
+                  <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{c.file}</span>
+                  {!c.global && <Tag>{t("config.project")}</Tag>}
+                </p>
+                <ul className="space-y-0.5">
+                  {c.changes.slice(0, SHOWN_SETTINGS).map(s => (
+                    <li key={s.path} className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                      <span className="font-mono text-code [overflow-wrap:anywhere]">{s.path}</span>
+                      <span className="tabular-nums text-muted-foreground">{told(s)}</span>
+                    </li>
+                  ))}
+                  {c.changes.length - SHOWN_SETTINGS + c.more > 0 && <li className="text-xs text-muted-foreground">{t("config.more", { n: Math.max(0, c.changes.length - SHOWN_SETTINGS) + c.more })}</li>}
+                </ul>
+              </div>
+              {action(day)}
+            </li>
+          )
+        })}
+      </ul>
+      {changes.length > SHOWN_CHANGES && <p className="text-xs text-muted-foreground">{t("config.older", { n: changes.length - SHOWN_CHANGES })}</p>}
+    </section>
+  )
+}
+
 /** Picks the day a setting was changed. The first day of the period would leave nothing before it. */
-function SplitPicker({ value, onChange, days }: { value: string | null; onChange: (day: string | null) => void; days: number }) {
+function SplitPicker({ value, onChange, days, changed }: { value: string | null; onChange: (day: string | null) => void; days: number; changed: string[] }) {
   const { t, lang } = useI18n()
   const label = new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short" })
-  // Lazy initial state: the list of days is fixed when the picker appears, and reading the clock during render is not pure.
-  const [today] = useState(() => new Date().setHours(12, 0, 0, 0))
-  const choices = Array.from({ length: days - 1 }, (_, i) => today - i * 86_400_000).map(at => ({ value: dayOf(at), label: t("compare.from", { day: label.format(at) }) }))
+  const splittable = useSplittable(days)
+  // A day OpenCode's settings changed on is the day most worth splitting at, so it says so.
+  const choices = splittable.map(at => {
+    const from = t("compare.from", { day: label.format(at) })
+    return { value: dayOf(at), label: changed.includes(dayOf(at)) ? t("config.mark", { day: from }) : from }
+  })
   const items = [{ value: NO_SPLIT, label: t("compare.off") }, ...choices]
 
   return (

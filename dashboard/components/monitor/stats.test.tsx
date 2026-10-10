@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "@/lib/i18n"
-import type { McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
+import type { ConfigChange, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { Stats } from "./stats"
 
 const NOW = 1_800_000_000_000
@@ -56,9 +56,11 @@ const summary = (extra: Partial<PeriodSummary> = {}): PeriodSummary => ({
 })
 
 let requested: string[] = []
+let configChanges: ConfigChange[] = []
 
 beforeEach(() => {
   requested = []
+  configChanges = []
   vi.stubGlobal("fetch", async (url: string) => {
     requested.push(url)
     if (url.startsWith("/api/stats")) {
@@ -71,6 +73,7 @@ beforeEach(() => {
       const context = { limit: 131_072, compactAt: 99_072, peak: 120_000, requests: 4, rereadAfterCompaction: 3, points: [30_000, 120_000, 35_000, 60_000].map((tokens, i) => ({ t: NOW + i, tokens })), compactions: [{ t: NOW + 2, at: 2, before: 120_000, after: 35_000, reread: 3 }] }
       return Response.json(figures(one ? { context, session: { id: "ses_shop", title: "Checkout flow", project: "shop" }, mcp: [server("memory", { unused: true, disconnects: null, startFailures: null })] } : {}))
     }
+    if (url.startsWith("/api/config-changes")) return Response.json(configChanges)
     const code = /\/i18n\/(\w+)\.json$/.exec(url)?.[1] ?? "en"
     return new Response(readFileSync(join(__dirname, "..", "..", "..", "i18n", `${code}.json`), "utf8"))
   })
@@ -202,6 +205,40 @@ describe("Before and after in Stats", () => {
     expect(table.getByText("Before (10 d, 12 sessions)")).toBeInTheDocument()
     // Two sessions on one side is not enough to conclude anything, and the page says so.
     expect(table.getByText(/fewer than 3 sessions/)).toBeInTheDocument()
+  })
+
+  it("lists the days OpenCode's settings changed, and compares from one at a click", async () => {
+    const at = Date.now() - 2 * 86_400_000
+    configChanges = [
+      {
+        t: at, file: "~/.config/opencode/opencode.json", global: true, more: 0,
+        changes: [
+          { path: "provider.local.models.qwen.limit.output", kind: "changed", from: 8192, to: 16384 },
+          { path: "mcp.trivy.enabled", kind: "added", from: null, to: false },
+          { path: "provider.local.options.baseURL", kind: "changed", hidden: true },
+        ],
+      },
+      // Older than any day the period can be split at.
+      { t: Date.now() - 13 * 86_400_000, file: "~/work/shop/opencode.json", global: false, more: 0, changes: [{ path: "model", kind: "removed", from: "a/x", to: null }] },
+    ]
+    renderStats()
+    const box = within((await screen.findByRole("heading", { name: "OpenCode settings changed in this period" })).closest("section")!)
+    expect(box.getByText("8192 → 16384")).toBeInTheDocument()
+    expect(box.getByText("false (added)")).toBeInTheDocument()
+    // An address is not kept, only that it changed.
+    expect(box.getByText("changed")).toBeInTheDocument()
+    expect(box.getByText("removed")).toBeInTheDocument()
+    expect(box.getByText("project")).toBeInTheDocument()
+    expect(box.getByText("No earlier day in this period to compare with")).toBeInTheDocument()
+
+    await userEvent.click(box.getByRole("button", { name: "Compare before and after" }))
+    expect(await screen.findByRole("region", { name: "Before and after" })).toBeInTheDocument()
+    const d = new Date(at)
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    expect(requested.some(url => url.includes(`split=${day}`))).toBe(true)
+    expect(box.getByText("Compared below")).toBeInTheDocument()
+    // And the picker marks that day.
+    expect(screen.getByRole("combobox", { name: "Compare before and after a day" })).toHaveTextContent("settings changed")
   })
 })
 

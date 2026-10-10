@@ -272,6 +272,8 @@ test('notifier: silent at start, fires on change, repeats, reports subagents onc
 
 test('config: JSONC parsing, process matching, webhook validation', () => {
   assert.deepEqual(JSON.parse(stripJsonc('{ // note\n "a": "x // y", /* b */ "c": [1, 2,], }')), { a: 'x // y', c: [1, 2] });
+  // A trailing comma with a comment after it.
+  assert.deepEqual(JSON.parse(stripJsonc('{ "a": 1, /* last */\n "b": [1, // one\n ], // end\n}')), { a: 1, b: [1] });
   assert.equal(matchProcesses('"opencode.exe","14056","Console","1","512 K"\n', ['opencode'], 'win32'), true);
   assert.equal(matchProcesses('"node.exe","1","Console","1","512 K"\n', ['opencode'], 'win32'), false);
   assert.equal(matchProcesses(' 10 /usr/local/bin/opencode\n', ['opencode'], 'linux', 1), true);

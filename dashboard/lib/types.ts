@@ -356,3 +356,16 @@ export interface Stats {
   rereads: { file: string; count: number; project: string; title: string }[]
   skills: { name: string; count: number }[]
 }
+
+/** One save of an OpenCode config file that changed a setting. */
+export interface ConfigChange {
+  t: number
+  /** Shown from the home directory. */
+  file: string
+  /** The global config, not a project's. */
+  global: boolean
+  /** `hidden`: the value is not kept (an address, a command), only that it changed. */
+  changes: { path: string; kind: "added" | "removed" | "changed"; from?: string | number | boolean | null; to?: string | number | boolean | null; hidden?: true }[]
+  /** Changes beyond those listed. */
+  more: number
+}
