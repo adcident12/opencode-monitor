@@ -40,6 +40,9 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
+      # What ships in the page must have no known vulnerability. Development tools are
+      # left out: an advisory there with no fixed release would only block every build.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

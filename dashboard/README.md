@@ -33,6 +33,10 @@ npm run build   # exports to out/ and copies it to ../public
 
 Commit the changes in `../public` together with the source changes.
 
+`npm audit --omit=dev` must stay clean; CI checks it. `npm audit` without it also reports the
+development tools (the shadcn CLI, ESLint). Do not run `npm audit fix --force` for those: when
+no fixed release exists it "fixes" by moving a tool back to an old major version.
+
 ## Where things are
 
 ```
