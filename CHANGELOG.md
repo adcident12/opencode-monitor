@@ -3,6 +3,21 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 6.1.0 - 2026-10-10
+
+The page, tidied. Nothing it shows or does has changed.
+
+- Type is one family, **Prompt**, for Thai and Latin, on a fixed size scale with line heights
+  loose enough for Thai tone marks. Commands and paths stay in IBM Plex Mono.
+- **Stats** is split into four chapters (waiting for you, the agent's work, the model, MCP
+  servers) with links to jump between them.
+- Columns line up: ranked rows, the environment strip, and session health.
+- On a phone nothing scrolls sideways any more, and dates move under labels instead of
+  overlapping them.
+- State colours in light mode reach 4.5:1 contrast for small text.
+- MCP servers that are off with nothing to report are named in one line instead of rows of
+  zeros.
+
 ## 6.0.0 - 2026-10-10
 
 Measuring whether a change to your setup helped.
