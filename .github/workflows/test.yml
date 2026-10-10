@@ -25,6 +25,22 @@ jobs:
       # Prints each failing test as an error annotation, so the cause shows on the run page.
       - run: node scripts/ci-test.mjs
 
+  # --autostart for real: register it with the system, wait for the monitor it started to
+  # answer, remove it again. Each runner is the system the code is written for.
+  autostart:
+    name: autostart / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/ci-autostart.mjs
+
   # The page in public/ is built from dashboard/ and committed. This checks that the source
   # still builds and passes its checks; it does not replace what is committed.
   dashboard:
