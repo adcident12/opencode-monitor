@@ -77,6 +77,36 @@ test('not knowing is not an answer: a failed listing closes nothing, and says so
   assert.equal(pending.asks()[0].answeredAt, T + 20_000);
 });
 
+test('a call that runs on is asked about less and less often', async () => {
+  const { run, calls } = fakeRun({ s1: [] });
+  const pending = createPending({ run });
+  const SECOND = 1000;
+  const asked = async until => {
+    for (let t = 0; t <= until; t += SECOND) {
+      pending.check(['s1'], T + t);
+      await settle();
+    }
+    return calls.length;
+  };
+  // Every 5 seconds for two minutes, every 15 for half an hour, then once a minute.
+  assert.equal(await asked(119 * SECOND), 24);
+  calls.length = 0;
+  const hour = fakeRun({ s1: [] });
+  const long = createPending({ run: hour.run });
+  for (let t = 0; t <= 3600 * SECOND; t += SECOND) {
+    long.check(['s1'], T + t);
+    await settle();
+  }
+  assert.equal(hour.calls.length, 24 + 112 + 30);
+  // A new call of the session starts the close look again.
+  long.check([], T + 3601 * SECOND);
+  long.check(['s1'], T + 3602 * SECOND);
+  await settle();
+  long.check(['s1'], T + 3607 * SECOND);
+  await settle();
+  assert.equal(hour.calls.length, 24 + 112 + 30 + 2);
+});
+
 test('what a prompt asks for is kept with its secrets hidden', async () => {
   const secret = { ...request(), action: 'bash', resources: ['curl -H "Authorization: Bearer abc123" https://x'] };
   const pending = createPending({ run: fakeRun({ s1: [secret] }).run, redact: text => text.replace(/Bearer \w+/, 'Bearer ***') });

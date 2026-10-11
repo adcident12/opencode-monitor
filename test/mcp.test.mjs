@@ -7,6 +7,9 @@ import { computeMcpStats, createServerMatcher, faultOf, latestFailures, markShut
 import { createProjectMcp } from '../src/opencode-config.mjs';
 import { mcpStatus } from '../src/environment.mjs';
 import { createLogTail, liveRuns } from '../src/logtail.mjs';
+import { appendFileSync as appendLog, mkdtempSync as tempDir, rmSync as removeDir } from 'node:fs';
+import { tmpdir as osTemp } from 'node:os';
+import { join as joinPath } from 'node:path';
 
 const T = 1_800_000_000_000;
 
@@ -145,4 +148,29 @@ test('a one-off command does not hide a failure the open window logged', () => {
   assert.deepEqual([...log.liveRuns()], ['window']);
   // Only what the window itself logged counts; the finished command's own failure does not.
   assert.deepEqual([...log.mcpFailures().keys()], ['sonarqube']);
+});
+
+test('a command that only asks the running OpenCode something is not an OpenCode of its own', () => {
+  const dir = tempDir(joinPath(osTemp(), 'ocm-cli-'));
+  const file = joinPath(dir, 'opencode.log');
+  const line = (t, run, rest) => `timestamp=${new Date(t).toISOString()} level=INFO run=${run} ${rest}\n`;
+  const T0 = Date.parse('2026-10-11T05:00:00Z');
+  try {
+    // The service starts and works; then the monitor's own questions, each under a run id of its own.
+    appendLog(file, line(T0, 'service', 'message="cli starting" version=2.0.26 args="[\\"serve\\",\\"--service\\"]" role=cli'));
+    appendLog(file, line(T0 + 1000, 'service', 'message="mcp connected" key=graft'));
+    for (let i = 0; i < 5; i++) appendLog(file, line(T0 + 60_000 + i * 5000, `api${i}`, 'message="cli starting" version=2.0.26 args="[\\"api\\",\\"session.permission.list\\"]" role=cli'));
+    const log = createLogTail(file);
+    log.poll();
+    assert.deepEqual([...log.liveRuns()], ['service']);
+    assert.equal(log.lastRun(), 'service');
+    assert.deepEqual([...log.runEnds().keys()], ['service']);
+    // A command that goes on to write more is an OpenCode of its own from then on.
+    appendLog(file, line(T0 + 120_000, 'own', 'message="cli starting" version=2.0.26 args="[\\"run\\",\\"--standalone\\"]" role=cli'));
+    appendLog(file, line(T0 + 121_000, 'own', 'message="creating instance" directory=/work'));
+    log.poll();
+    assert.deepEqual([...log.liveRuns()].sort(), ['own']);
+  } finally {
+    removeDir(dir, { recursive: true, force: true });
+  }
 });

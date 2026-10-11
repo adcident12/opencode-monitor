@@ -124,6 +124,44 @@ test('what OpenCode 2 does not time is worked out from what it does, or left unk
   assert.deepEqual([summary.completed, out.compactions[0].auto], [T + 75_000, 0]);
 });
 
+test('a database made by OpenCode 2 alone, with none of the 1.x tables, is read all the same', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-v2only-'));
+  const raw = new DatabaseSync(join(dir, 'opencode.db'));
+  raw.exec(`create table session_v2 (id text primary key, parent_id text, directory text, title text, version text, model text, time_created integer, time_updated integer, time_compacting integer);
+    create table session_message (id text primary key, session_id text, type text, seq integer, time_created integer, time_updated integer, data text);`);
+  raw.prepare('insert into session_v2 values (?,?,?,?,?,?,?,?,?)').run('new', null, '/work/y', 'New', '2.0.26', null, T, T + 20_000, null);
+  const put = r => raw.prepare('insert into session_message values (?,?,?,?,?,?,?)').run(r.id, r.session_id, r.type, r.seq, r.time_created, r.time_updated, r.data);
+  put(row('new', 'user', T, { text: 'hello' }));
+  put(reply('new', T + 100, [tool('shell', { command: 'ls' }, { created: T + 500, ran: T + 9200, completed: T + 9900 })], { finish: 'stop' }));
+  raw.close();
+
+  const db = openDb(dir);
+  try {
+    assert.equal(db.v2, true);
+    assert.deepEqual(db.recentSessions(0, 5).map(s => [s.id, s.version]), [['new', '2.0.26']]);
+    assert.deepEqual(db.stats.tools(0).map(t => [t.tool, t.cmd]), [['bash', 'ls']]);
+    assert.deepEqual(db.stats.messages(0).map(m => m.role), ['user', 'assistant']);
+    assert.deepEqual(db.parts('new').map(p => p.type), ['step-start', 'tool', 'step-finish']);
+    assert.deepEqual(db.lastMessages('new').map(m => [m.role, m.finish ?? null]), [['user', null], ['assistant', 'stop']]);
+    assert.deepEqual([db.todos('new'), db.stats.todoStatus(), db.stats.toolEvents('new'), db.replay.tree('new').length], [[], [], [], 1]);
+  } finally {
+    db.close();
+  }
+  // Nothing was written: the file still has no 1.x table.
+  const after = new DatabaseSync(join(dir, 'opencode.db'), { readOnly: true });
+  assert.deepEqual(after.prepare("select name from sqlite_master where type = 'table' order by name").all().map(r => r.name), ['session_message', 'session_v2']);
+  after.close();
+  rmSync(dir, { recursive: true, force: true });
+
+  // A database with neither layout is still refused, saying what is missing.
+  const bad = mkdtempSync(join(tmpdir(), 'ocm-none-'));
+  const half = new DatabaseSync(join(bad, 'opencode.db'));
+  half.exec('create table session_v2 (id text primary key)');
+  half.close();
+  assert.throws(() => openDb(bad), /table "session" is missing/);
+  rmSync(bad, { recursive: true, force: true });
+});
+
 test('one database with both versions: nothing OpenCode 2 copied from 1.x is counted twice', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ocm-v2-'));
   const raw = new DatabaseSync(join(dir, 'opencode.db'));

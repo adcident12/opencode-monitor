@@ -6,8 +6,11 @@ import { exec, execFile } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-// A session is asked about at most this often, and at most this many sessions at a time.
-const MIN_GAP_MS = 5000;
+// How often a session is asked about, by how long it has had a call running: [up to, every].
+// A prompt comes when a call starts, so that is when it is looked for closely. A call that has
+// run for minutes, or a prompt left unanswered for the night, is asked about less and less:
+// every question is a process started and a line in OpenCode's log.
+const GAPS = [[120_000, 5000], [1_800_000, 15_000], [Infinity, 60_000]];
 const MAX_SESSIONS = 6;
 const TIMEOUT_MS = 10_000;
 const MAX_ASKS = 5000;
@@ -77,6 +80,7 @@ function askOf(request, sessionId, now, redact) {
 export function createPending({ enabled = true, command = 'opencode', file = null, readOnly = false, retentionDays = 30, run = runCommand, redact = text => text } = {}) {
   const asks = new Map(); // id -> ask
   const askedAt = new Map(); // session id -> when it was last asked about
+  const wantedSince = new Map(); // session id -> since when it has had a call running
   let sorted = [];
   let busy = 0;
   let status = { ok: null, error: null, at: null }; // of the last listing
@@ -202,8 +206,11 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
         }
       }
       if (changed) resort();
+      for (const id of wantedSince.keys()) if (!wanted.has(id)) wantedSince.delete(id);
+      for (const id of wanted) if (!wantedSince.has(id)) wantedSince.set(id, now);
       if (busy) return;
-      const due = [...wanted].filter(id => now - (askedAt.get(id) ?? 0) >= MIN_GAP_MS).slice(0, MAX_SESSIONS);
+      const gap = id => GAPS.find(([upTo]) => now - wantedSince.get(id) < upTo)[1];
+      const due = [...wanted].filter(id => now - (askedAt.get(id) ?? 0) >= gap(id)).slice(0, MAX_SESSIONS);
       for (const id of due) {
         askedAt.set(id, now);
         ask(id, now);

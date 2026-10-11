@@ -184,9 +184,25 @@ function mergeModels(v1, messages) {
   return [...byKey.values()];
 }
 
+/**
+ * A database made by OpenCode 2 alone has none of the 1.x tables (only one upgraded from 1.x
+ * keeps them). The queries below are written for both, so each missing 1.x table gets an empty
+ * stand-in: a temporary table, held in memory by this connection. The file is not touched: it
+ * stays opened read-only, and a 1.x database, or one with a table half there, gets none.
+ */
+function standInFor1x(db) {
+  const has = table => db.prepare(`pragma table_info(${table})`).all().length > 0;
+  if (!Object.keys(V2_TABLES).every(has)) return;
+  const missing = Object.keys(REQUIRED).filter(table => !has(table));
+  if (!missing.length) return;
+  db.exec('pragma temp_store = memory');
+  for (const table of missing) db.exec(`create temp table ${table} (${REQUIRED[table].map(column => `${column}${column.startsWith('time_') ? ' integer' : ' text'}`).join(', ')})`);
+}
+
 export function openDb(dataDir) {
   const path = join(dataDir, 'opencode.db');
   const db = openReadOnly(path);
+  standInFor1x(db);
   const columns = checkLayout(db, path);
 
   const optional = OPTIONAL_SESSION.map(c => (columns.session.has(c) ? c : `null as ${c}`)).join(', ');

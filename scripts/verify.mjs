@@ -76,6 +76,11 @@ for (let i = 0; ; i++) {
 
 // ---------------------------------------------------------------- independent counts
 const db = new DatabaseSync(dbPath, { readOnly: true });
+// A database made by OpenCode 2 alone has no 1.x tables: counted as empty ones, held in
+// memory by this connection, so the same SQL runs. The file itself stays read-only.
+for (const [table, columns] of Object.entries({ session: 'id, parent_id, time_created', message: 'id, session_id, time_created, data', part: 'id, message_id, session_id, time_created, time_updated, data' })) {
+  if (!db.prepare(`pragma table_info(${table})`).all().length) db.exec(`pragma temp_store = memory; create temp table ${table} (${columns})`);
+}
 const one = (sql, ...a) => db.prepare(sql).get(...a);
 const all = (sql, ...a) => db.prepare(sql).all(...a);
 const START = `coalesce(json_extract(data,'$.state.time.start'), time_created)`;

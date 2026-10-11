@@ -135,7 +135,11 @@ async function printed(fn) {
 test('server: started and stopped in this process; every address answers', async () => {
   const { main } = await import('../src/main.mjs');
   const here = (path, host = null) => get(path, host, INNER_PORT);
-  const { result: monitor, text } = await printed(() => main(['--sample', '--port', String(INNER_PORT)]));
+  // A config of its own: the machine's config.json (--lan, a language) must not change what is printed.
+  const configDir = mkdtempSync(join(tmpdir(), 'ocm-inner-'));
+  writeFileSync(join(configDir, 'config.json'), '{}');
+  const { result: monitor, text } = await printed(() => main(['--sample', '--port', String(INNER_PORT), '--config', join(configDir, 'config.json')]));
+  rmSync(configDir, { recursive: true, force: true });
   try {
     assert.equal(monitor.port, INNER_PORT);
     assert.match(text, /SAMPLE DATA/);

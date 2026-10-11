@@ -14,7 +14,8 @@ on the page and printed at startup.
   database, without the new tables, is read exactly as before.
 - **Waiting for you, in OpenCode 2.** It records a permission prompt neither in its database
   nor in its log, so the monitor asks OpenCode itself: `opencode api session.permission.list`
-  for a session, at most every five seconds and only while one of its tool calls is running.
+  for a session, only while one of its tool calls is running: every five seconds at first,
+  then every fifteen, then once a minute for a call that has run for half an hour.
   It lists and never answers. The session shows as waiting, with what it asks for, from the
   moment it asked; the prompts seen are kept in `data/prompts.jsonl` so that Stats counts how
   long they waited. Questions are read from the `question` calls themselves. `opencodeApi` in
@@ -22,6 +23,11 @@ on the page and printed at startup.
 - Thinking and writing are an estimate for OpenCode 2: it times them as one, so the time is
   shared out by the length of what was written (on 1.x data, 106% of the thinking and 95% of
   the writing).
+- A database made by OpenCode 2 alone has none of the 1.x tables; the monitor refused it. It
+  is read now, the missing tables stood in for by empty ones held in memory (the file stays
+  read-only).
+- A command that only asks the running OpenCode something (`opencode api ...`) is no longer
+  taken from the log for an OpenCode of its own, which could hide the one that is running.
 - `npm run verify` counts OpenCode 2's rows as well, separately from the monitor's own code.
 - A model server is asked for `<baseURL>/health`, no longer for its list of models: a server
   that wants a key answered the list with 401 and wrote a failed login in its own log at

@@ -12,6 +12,12 @@ const PREFIX = /^timestamp=(\S+) level=\S+ run=(\S+) /;
 const ASK = /^timestamp=(\S+) level=\S+ run=(\S+) message=asking id=((per|que)_\S+)(?: permission=(\S+))?(?: patterns=(.*))?/;
 const MCP = /^timestamp=(\S+) level=\S+ run=(\S+) message="(server unavailable|MCP connection closed)" (?:key|server)=(\S+)/;
 
+// The first line of every `opencode` command in OpenCode 2. A command that only asks the
+// running OpenCode something (`opencode api ...`, as the monitor itself does, or `opencode
+// service status`) writes this line under a run id of its own and nothing more: it is not an
+// OpenCode that holds sessions. A run counts from its second line on.
+const CLI_START = /^timestamp=\S+ level=\S+ run=\S+ message="cli starting" /;
+
 // What OpenCode logs last when it exits by itself.
 const DISPOSE = /^timestamp=\S+ level=\S+ run=\S+ message="disposing (?:all instances|instance)"/;
 // A few lines can still follow the last "disposing" line of a run that has ended.
@@ -127,6 +133,7 @@ export function createLogTail(path) {
   function take(line) {
     const prefix = PREFIX.exec(line);
     if (!prefix) return;
+    if (CLI_START.test(line)) return;
     noteRun(line, prefix[2], Date.parse(prefix[1]));
     if (line.includes('message=asking')) {
       const ask = parseAskLine(line);
