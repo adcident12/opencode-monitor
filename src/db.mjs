@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { UserError } from './config.mjs';
+import { normalizeV2 } from './db-v2.mjs';
 
 // Columns the monitor cannot work without. Checked at startup so a schema change in a
 // future OpenCode release fails loudly instead of showing wrong states.
@@ -12,6 +13,13 @@ const REQUIRED = {
   part: ['id', 'message_id', 'session_id', 'time_created', 'time_updated', 'data'],
 };
 const OPTIONAL_SESSION = ['version', 'model', 'time_compacting'];
+// OpenCode 2's tables. Checked only when they exist: a 1.x database has none of them.
+const V2_TABLES = {
+  session_v2: ['id', 'parent_id', 'directory', 'title', 'time_created', 'time_updated'],
+  session_message: ['id', 'session_id', 'type', 'seq', 'time_created', 'time_updated', 'data'],
+};
+// How long rows read from OpenCode 2's tables are reused by the next query for the same range.
+const V2_REUSE_MS = 5000;
 
 // How much of a running command's output is read; only its last lines are shown.
 export const OUTPUT_TAIL_CHARS = 1500;
@@ -71,10 +79,10 @@ function openReadOnly(path) {
 function checkLayout(db, path) {
   const columns = {};
   const problems = [];
-  for (const [table, required] of Object.entries(REQUIRED)) {
+  for (const [table, required] of Object.entries({ ...REQUIRED, ...V2_TABLES })) {
     columns[table] = new Set(db.prepare(`pragma table_info(${table})`).all().map(c => c.name));
     if (columns[table].size) problems.push(...required.filter(c => !columns[table].has(c)).map(c => `column "${table}.${c}" is missing`));
-    else problems.push(`table "${table}" is missing`);
+    else if (Object.hasOwn(REQUIRED, table)) problems.push(`table "${table}" is missing`);
   }
   if (problems.length) {
     db.close();
@@ -85,6 +93,95 @@ function checkLayout(db, path) {
     );
   }
   return columns;
+}
+
+/** Sessions from both versions' tables, one row a session: the one updated last (1.x on a tie). */
+function mergeSessions(v1, v2) {
+  const byId = new Map(v1.map(s => [s.id, s]));
+  for (const s of v2) {
+    const old = byId.get(s.id);
+    if (!old || s.time_updated > old.time_updated) byId.set(s.id, s);
+  }
+  return [...byId.values()];
+}
+
+/**
+ * OpenCode 2's sessions, as 1.x rows. null for a database without its tables.
+ * OpenCode 2 copied every 1.x session into its own tables when it was installed, so a message
+ * is read from there only when it is newer than everything the 1.x tables hold for its
+ * session: a session begun in OpenCode 2, or a 1.x session carried on in it.
+ */
+function openV2(db, columns) {
+  if (!Object.keys(V2_TABLES).every(table => columns[table].size)) return null;
+  const NEWER = 'not exists (select 1 from message m where m.session_id = sm.session_id and m.time_created >= sm.time_created)';
+  const ROWS = `select sm.id, sm.session_id, sm.type, sm.seq, sm.time_created, sm.time_updated, sm.data from session_message sm
+    where sm.type in ('user','assistant','synthetic','compaction','idle') and ${NEWER}`;
+  const ORDER = 'order by sm.session_id, sm.time_created, sm.seq';
+  const optional = OPTIONAL_SESSION.map(c => (columns.session_v2.has(c) ? c : `null as ${c}`)).join(', ');
+  const SESSION = `id, parent_id, directory, title, time_created, time_updated, ${optional}`;
+  const stmt = {
+    since: db.prepare(`${ROWS} and sm.time_created >= ? ${ORDER}`),
+    inSessions: db.prepare(`${ROWS} and sm.session_id in (select value from json_each(?)) ${ORDER}`),
+    ofSession: db.prepare(`${ROWS} and sm.session_id = ? ${ORDER}`),
+    // Enough of a session's end to tell how its last reply ended.
+    lastOfSession: db.prepare(`select * from (${ROWS} and sm.session_id = ? order by sm.time_created desc, sm.seq desc limit 40)
+      order by time_created, seq`),
+    signature: db.prepare(`select count(*) n, max(sm.time_updated) t from session_message sm where sm.session_id = ? and ${NEWER}`),
+    sessions: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ?`),
+    recent: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ? order by time_updated desc limit ?`),
+    tree: db.prepare(`with recursive tree(id) as (select ? union all select s.id from session_v2 s join tree on s.parent_id = tree.id)
+      select id, parent_id, directory, title, time_created, time_updated from session_v2 where id in (select id from tree)`),
+  };
+
+  // The Stats page asks for a range's tools, messages, spans... one after another: the rows
+  // are read and turned into 1.x rows once for all of them.
+  let reused = { key: null, at: 0, value: null };
+  const rowsOf = (key, read) => {
+    const now = Date.now();
+    if (reused.key !== key || now - reused.at > V2_REUSE_MS) reused = { key, at: now, value: normalizeV2(read()) };
+    return reused.value;
+  };
+  // The live view's rows of a session, read again only when the session has changed.
+  const live = new Map(); // session id -> { key, parts }
+  const partsOf = sessionId => {
+    const { n, t } = stmt.signature.get(sessionId);
+    const key = `${n}|${t}`;
+    let entry = live.get(sessionId);
+    if (!entry || entry.key !== key) {
+      entry = { key, parts: n ? normalizeV2(stmt.ofSession.all(sessionId)).parts : [] };
+      live.set(sessionId, entry);
+    }
+    return entry.parts;
+  };
+
+  return {
+    since: since => rowsOf(`since|${since}`, () => stmt.since.all(since)),
+    inSessions: ids => rowsOf(`in|${JSON.stringify(ids)}`, () => stmt.inSessions.all(JSON.stringify(ids))),
+    sessions: since => stmt.sessions.all(since),
+    recent: (since, limit) => stmt.recent.all(since, limit),
+    tree: sessionId => stmt.tree.all(sessionId),
+    /** Copies: the monitor marks and trims the rows it is given. */
+    parts: (sessionId, updatedSince) => partsOf(sessionId).filter(p => p.time_updated >= updatedSince).map(p => ({ ...p })),
+    partStats: sessionId => {
+      const parts = partsOf(sessionId);
+      return { count: parts.length, max_updated: parts.length ? Math.max(...parts.map(p => p.time_updated)) : null };
+    },
+    lastMessages: sessionId => normalizeV2(stmt.lastOfSession.all(sessionId)).messages,
+  };
+}
+
+/** Models used, from both versions' rows, as the 1.x query counts them. */
+function mergeModels(v1, messages) {
+  const byKey = new Map(v1.map(m => [`${m.provider}|${m.model}`, { ...m }]));
+  for (const m of messages) {
+    if (m.role !== 'assistant' || !m.model_id) continue;
+    const key = `${m.provider_id}|${m.model_id}`;
+    const entry = byKey.get(key) ?? { provider: m.provider_id, model: m.model_id, requests: 0, last: 0 };
+    entry.requests++;
+    entry.last = Math.max(entry.last ?? 0, m.time_created);
+    byKey.set(key, entry);
+  }
+  return [...byKey.values()];
 }
 
 export function openDb(dataDir) {
@@ -188,33 +285,52 @@ export function openDb(dataDir) {
         where aggregate_id = ? and type = 'message.part.updated.1' and json_extract(data,'$.part.type') = 'tool'`)
     : null;
 
+  const v2 = openV2(db, columns);
+  // The rows of one kind from both versions' tables. A message OpenCode 2 adds on its own
+  // (a "continue" after a compaction) is not a prompt of yours, so the figures leave it out.
+  const ROWS = ['tools', 'messages', 'compactions', 'spans', 'steps', 'patches', 'todoWrites'];
+  const withV2 = (name, rows, fromV2) => {
+    if (!v2) return rows;
+    const more = fromV2()[name];
+    return [...rows, ...(name === 'messages' ? more.filter(m => !m.synthetic) : more)];
+  };
+
   return {
     path,
+    /** Whether OpenCode 2's tables are read too. */
+    v2: Boolean(v2),
     stats: {
-      sessions: since => statsStmt.sessions.all(since),
-      tools: since => statsStmt.tools.all(since),
-      messages: since => statsStmt.messages.all(since),
-      compactions: since => statsStmt.compactions.all(since),
-      steps: since => statsStmt.steps.all(since),
-      models: since => statsStmt.models.all(since),
-      spans: since => statsStmt.spans.all(since),
-      patches: since => statsStmt.patches.all(since),
+      sessions: since => (v2 ? mergeSessions(statsStmt.sessions.all(since), v2.sessions(since)) : statsStmt.sessions.all(since)),
+      ...Object.fromEntries(ROWS.map(name => [name, since => withV2(name, statsStmt[name].all(since), () => v2.since(since))])),
+      models: since => (v2 ? mergeModels(statsStmt.models.all(since), v2.since(since).messages) : statsStmt.models.all(since)),
       todoStatus: () => (todoStatus ? todoStatus.all() : []),
-      todoWrites: since => statsStmt.todoWrites.all(since),
       todoWriters: () => new Set(statsStmt.todoWriters.all().map(r => r.session_id)),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
     replay: {
-      /** The session and every session under it, the session itself first. */
-      tree: sessionId => replayStmt.tree.all(sessionId),
-      ...Object.fromEntries(['tools', 'messages', 'compactions', 'spans', 'steps', 'todoWrites'].map(name => [name, ids => replayStmt[name].all(JSON.stringify(ids))])),
+      /** The session and every session under it. */
+      tree: sessionId => (v2 ? mergeSessions(replayStmt.tree.all(sessionId), v2.tree(sessionId)) : replayStmt.tree.all(sessionId)),
+      ...Object.fromEntries(ROWS.filter(name => name !== 'patches').map(name => [name, ids => withV2(name, replayStmt[name].all(JSON.stringify(ids)), () => v2.inSessions(ids))])),
     },
     todos: sessionId => (todos ? todos.all(sessionId) : []),
-    recentSessions: (since, limit) => stmt.sessions.all(since, limit),
-    partStats: sessionId => stmt.partStats.get(sessionId),
-    parts: (sessionId, updatedSince = 0) => stmt.parts.all(sessionId, updatedSince),
+    recentSessions: (since, limit) => {
+      const rows = stmt.sessions.all(since, limit);
+      if (!v2) return rows;
+      return mergeSessions(rows, v2.recent(since, limit)).sort((a, b) => b.time_updated - a.time_updated).slice(0, limit);
+    },
+    partStats: sessionId => {
+      const own = stmt.partStats.get(sessionId);
+      if (!v2) return own;
+      const more = v2.partStats(sessionId);
+      return { count: own.count + more.count, max_updated: Math.max(own.max_updated ?? 0, more.max_updated ?? 0) || null };
+    },
+    parts: (sessionId, updatedSince = 0) => [...stmt.parts.all(sessionId, updatedSince), ...(v2 ? v2.parts(sessionId, updatedSince) : [])],
     // Oldest first.
-    lastMessages: sessionId => stmt.messages.all(sessionId).reverse(),
+    lastMessages: sessionId => {
+      const rows = stmt.messages.all(sessionId).reverse();
+      if (!v2) return rows;
+      return [...rows, ...v2.lastMessages(sessionId)].sort((a, b) => a.time_created - b.time_created).slice(-12);
+    },
     close: () => db.close(),
   };
 }

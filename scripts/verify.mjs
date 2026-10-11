@@ -89,7 +89,48 @@ const parse = text => {
   }
 };
 
-const sessions = all('select id, parent_id from session');
+// OpenCode 2 keeps its sessions in tables of its own, and copied every 1.x session into them.
+// Counted from there: only what is later than the last 1.x message of the same session.
+const hasV2 = all("select name from sqlite_master where type = 'table' and name in ('session_v2', 'session_message')").length === 2;
+const v2 = (hasV2 ? all(`select sm.id, sm.session_id, sm.type, sm.time_created, sm.time_updated, sm.data from session_message sm
+    where sm.time_created > coalesce((select max(m.time_created) from message m where m.session_id = sm.session_id), -1)
+    order by sm.session_id, sm.time_created, sm.seq`) : []).map(r => ({ ...r, d: parse(r.data) ?? {} }));
+const v2Replies = v2.filter(r => r.type === 'assistant');
+const v2Sessions = hasV2 ? all('select id, parent_id, time_created from session_v2 where id not in (select id from session)') : [];
+const sent = d => (d.tokens?.input ?? 0) + (d.tokens?.cache?.read ?? 0) + (d.tokens?.cache?.write ?? 0);
+const mcpOf = item => (item.name === 'execute' ? (item.state?.metadata?.toolCalls ?? []).filter(c => String(c.tool).includes('.')) : []);
+/** Every tool call OpenCode 2 recorded: an execute script is the MCP calls it made, if any. */
+const v2Calls = v2Replies.flatMap(r => (r.d.content ?? []).filter(i => i.type === 'tool').flatMap(item => {
+  const at = item.time?.ran ?? item.time?.created ?? r.time_created;
+  const inner = mcpOf(item);
+  if (!inner.length) return [{ session_id: r.session_id, at, tool: { shell: 'bash', subagent: 'task' }[item.name] ?? item.name, error: item.state?.status === 'error', item }];
+  return inner.map(c => ({ session_id: r.session_id, at, tool: c.tool.replace('.', '_'), error: (c.status ?? item.state?.status) === 'error', item }));
+}));
+/** When a compaction ended: its row's last update, but never after the session's next row. */
+const v2Compactions = v2.map((r, i) => ({ r, next: v2[i + 1] })).filter(x => x.r.type === 'compaction').map(({ r, next }) => {
+  const bound = next?.session_id === r.session_id ? next.time_created : Infinity;
+  return { ...r, ended: r.d.status === 'completed' ? Math.min(r.time_updated, bound) : r.time_created };
+});
+/**
+ * Thinking and writing of a reply OpenCode 2 wrote. It times the reasoning to the end of the
+ * whole reply and nothing after it, so the time is shared out by the length of what was
+ * written: the reasoning's share is thinking, the rest writing (only when there is text).
+ */
+const v2Spans = r => {
+  const content = r.d.content ?? [];
+  const end = r.d.time?.streamed;
+  const thoughts = content.filter(i => i.type === 'reasoning' && i.time?.created != null);
+  if (end == null || !thoughts.length) return null;
+  const start = Math.min(...thoughts.map(i => i.time.created));
+  if (!(end > start)) return null;
+  const len = type => content.filter(i => i.type === type).reduce((n, i) => n + (type === 'tool' ? JSON.stringify(i.state?.input ?? {}).length : (i.text ?? '').length), 0);
+  const all = len('reasoning') + len('text') + len('tool');
+  const turn = all ? Math.round(start + ((end - start) * len('reasoning')) / all) : end;
+  return { start, turn, thinking: turn - start, writing: content.some(i => i.type === 'text') ? end - turn : 0 };
+};
+const inRange = (t, from, to) => t >= from && t <= to;
+
+const sessions = [...all('select id, parent_id from session'), ...v2Sessions];
 const family = id => {
   const set = new Set([id]);
   for (let grew = true; grew;) {
@@ -131,7 +172,39 @@ function count(from, to, ids = null) {
       where json_extract(data,'$.type') in ('reasoning','text') and json_extract(data,'$.time.start') between ? and ? and json_extract(data,'$.time.end') > json_extract(data,'$.time.start')${within(ids)})`, from, to, ...s);
   f.thinkingMs = spans.think;
   f.writingMs = spans.write;
+  if (hasV2) addV2(f, from, to, ids);
   return f;
+}
+
+/** The same figures from OpenCode 2's rows, added to those of 1.x. */
+function addV2(f, from, to, ids) {
+  const mine = r => !ids || ids.includes(r.session_id);
+  const calls = v2Calls.filter(c => mine(c) && inRange(c.at, from, to));
+  f.toolCalls += calls.length;
+  f.toolErrors += calls.filter(c => c.error).length;
+  f.compactions += v2Compactions.filter(r => mine(r) && inRange(r.time_created, from, to)).length;
+  const active = (start, end) => Math.max(0, Math.min(end, to) - Math.max(start, from));
+  for (const r of v2Replies.filter(mine)) f.activeMs += active(r.time_created, r.d.time?.completed ?? r.time_created);
+  for (const r of v2Compactions.filter(mine)) f.activeMs += active(r.time_created, r.ended);
+  for (const r of v2Replies.filter(x => mine(x) && inRange(x.time_created, from, to) && sent(x.d) + (x.d.tokens?.output ?? 0) > 0)) {
+    f.requests++;
+    f.tokensSent += (r.d.tokens?.input ?? 0) + (r.d.tokens?.cache?.read ?? 0);
+    f.tokensOutput += r.d.tokens?.output ?? 0;
+    f.cost = Math.round((f.cost + (r.d.cost ?? 0)) * 1e4) / 1e4;
+  }
+  if (!ids) f.sessions += v2Sessions.filter(s => !s.parent_id && inRange(s.time_created, from, to)).length;
+  const changed = v2Replies.filter(r => mine(r) && (r.d.snapshot?.files ?? []).length && inRange(r.d.time?.completed ?? r.time_updated, from, to));
+  f.edits += changed.length;
+  if (changed.length) {
+    // Distinct files over both versions: counted together, not added.
+    const before = all(`select json_extract(data,'$.files') f from part where json_extract(data,'$.type')='patch' and time_created between ? and ?${within(ids)}`, from, to, ...(ids ?? [])).flatMap(r => parse(r.f) ?? []);
+    f.filesChanged = new Set([...before, ...changed.flatMap(r => r.d.snapshot.files)].map(fold)).size;
+  }
+  for (const r of v2Replies.filter(mine)) {
+    const spans = v2Spans(r);
+    if (spans && inRange(spans.start, from, to)) f.thinkingMs += spans.thinking;
+    if (spans?.writing > 0 && inRange(spans.turn, from, to)) f.writingMs += spans.writing;
+  }
 }
 const shown = stats => ({
   toolCalls: stats.totals.toolCalls,
@@ -185,7 +258,10 @@ for (const s of s30.sessions.slice(0, 5)) {
 
 // MCP rows
 const prefixes = s30.mcp.map(m => m.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '_');
-const mcpCalls = all(`select json_extract(data,'$.tool') tool, json_extract(data,'$.state.status') st from part where json_extract(data,'$.type')='tool' and ${START} between ? and ?`, s30.range.from, s30.range.to);
+const mcpCalls = [
+  ...all(`select json_extract(data,'$.tool') tool, json_extract(data,'$.state.status') st from part where json_extract(data,'$.type')='tool' and ${START} between ? and ?`, s30.range.from, s30.range.to),
+  ...v2Calls.filter(c => inRange(c.at, s30.range.from, s30.range.to)).map(c => ({ tool: c.tool, st: c.error ? 'error' : 'completed' })),
+];
 for (const m of s30.mcp.filter(x => x.calls > 0)) {
   const p = m.name.replace(/[^a-zA-Z0-9_-]/g, '_') + '_';
   // The longest matching prefix wins, as in the monitor.
@@ -203,6 +279,11 @@ if (top) {
       (select max(case json_extract(p.data,'$.type') when 'tool' then json_extract(p.data,'$.state.time.start') when 'text' then json_extract(p.data,'$.time.end') when 'reasoning' then json_extract(p.data,'$.time.end') end) from part p where p.message_id = m.id) wr
     from message m where json_extract(m.data,'$.role')='assistant' and json_extract(m.data,'$.providerID')=? and json_extract(m.data,'$.modelID')=? and m.time_created between ? and ?`,
   top.model.slice(0, slash), top.model.slice(slash + 1), s30.range.from, s30.range.to);
+  // OpenCode 2: the first token is the start of the first thing written (text is not timed),
+  // and the reply's own record says when the model stopped writing.
+  for (const r of v2Replies.filter(x => `${x.d.model?.providerID}/${x.d.model?.id}` === top.model && inRange(x.time_created, s30.range.from, s30.range.to) && sent(x.d) + (x.d.tokens?.output ?? 0) > 0)) {
+    msgs.push({ out: (r.d.tokens?.output ?? 0) + (r.d.tokens?.reasoning ?? 0), ft: r.d.content?.[0]?.time?.created ?? null, wr: r.d.time?.streamed ?? null });
+  }
   let tokens = 0;
   let ms = 0;
   for (const r of msgs) if (r.ft != null && r.wr != null && r.out >= 20 && r.wr - r.ft >= 300) { tokens += r.out; ms += r.wr - r.ft; }
@@ -214,12 +295,15 @@ const state = await get('/api/state');
 for (const s of state.sessions.filter(x => !x.parentId).slice(0, 5)) {
   const area = `Now, "${s.title.slice(0, 30)}"`;
   const p = one(`select coalesce(sum(json_extract(data,'$.type')='tool'),0) t, coalesce(sum(json_extract(data,'$.type')='tool' and json_extract(data,'$.state.status')='error'),0) e, coalesce(sum(json_extract(data,'$.type')='compaction'),0) c from part where session_id = ?`, s.id);
-  compare(area, 'tool calls', p.t, s.health.toolCalls);
-  compare(area, 'failed', p.e, s.health.toolErrors);
-  compare(area, 'compactions', p.c, s.health.compactions);
+  const calls = v2Calls.filter(c => c.session_id === s.id);
+  compare(area, 'tool calls', p.t + calls.length, s.health.toolCalls);
+  compare(area, 'failed', p.e + calls.filter(c => c.error).length, s.health.toolErrors);
+  compare(area, 'compactions', p.c + v2Compactions.filter(r => r.session_id === s.id).length, s.health.compactions);
   const files = new Set([
     ...all(`select json_extract(data,'$.state.input.filePath') f from part where session_id = ? and json_extract(data,'$.tool') in ('edit','write','multiedit','apply_patch') and json_extract(data,'$.state.status')='completed'`, s.id).map(r => r.f).filter(Boolean),
     ...all(`select json_extract(data,'$.files') f from part where session_id = ? and json_extract(data,'$.type')='patch'`, s.id).flatMap(r => parse(r.f) ?? []),
+    ...calls.filter(c => ['edit', 'write', 'multiedit', 'apply_patch'].includes(c.tool) && c.item.state?.status === 'completed').map(c => c.item.state.input?.path ?? c.item.state.input?.filePath).filter(Boolean),
+    ...v2Replies.filter(r => r.session_id === s.id).flatMap(r => r.d.snapshot?.files ?? []),
   ].map(fold));
   compare(area, 'files touched', files.size, s.work.files.count);
 }
@@ -228,7 +312,8 @@ for (const s of state.sessions.filter(x => !x.parentId).slice(0, 5)) {
 const setup = await get('/api/setup');
 for (const m of setup.models) {
   const slash = m.id.indexOf('/');
-  compare('This machine', `${m.id}: replies, 30 days`, one(`select count(*) n from message where json_extract(data,'$.role')='assistant' and json_extract(data,'$.providerID')=? and json_extract(data,'$.modelID')=? and time_created >= ?`, m.id.slice(0, slash), m.id.slice(slash + 1), Date.now() - 30 * 86_400_000).n, m.requests);
+  compare('This machine', `${m.id}: replies, 30 days`, one(`select count(*) n from message where json_extract(data,'$.role')='assistant' and json_extract(data,'$.providerID')=? and json_extract(data,'$.modelID')=? and time_created >= ?`, m.id.slice(0, slash), m.id.slice(slash + 1), Date.now() - 30 * 86_400_000).n
+    + v2Replies.filter(r => `${r.d.model?.providerID}/${r.d.model?.id}` === m.id && r.time_created >= Date.now() - 30 * 86_400_000).length, m.requests);
 }
 
 // Prompts that waited for you, from the log's own lines

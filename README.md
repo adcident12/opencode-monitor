@@ -332,7 +332,7 @@ By default a Discord message carries only the state, the project folder name, th
 ## Limits
 
 - `--autostart` is exercised by CI on Ubuntu, macOS and Windows runners, not on a desktop across a reboot.
-- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Bug reports are welcome as issues.
+- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** Sessions of OpenCode 2 (2.0.26) are read too, from its own tables, next to those of 1.x; a 1.x database works as before. Not everything is known for them yet: OpenCode 2 records a permission prompt neither in its database nor in its log, so a session waiting for a permission shows as working (a question is seen); the time prompts waited is not counted; and thinking and writing are told apart by an estimate, because OpenCode 2 times them as one. The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Bug reports are welcome as issues.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus tool calls.
@@ -361,6 +361,7 @@ server.mjs              entry point, Node version check
 mcp.mjs                 entry point of the MCP server for Claude Code (stdio, read-only)
 src/config.mjs          defaults, config.json, command line
 src/db.mjs              read-only queries, schema check
+src/db-v2.mjs           OpenCode 2's message rows as 1.x rows (pure, unit-tested)
 src/logtail.mjs         follows opencode.log for prompts
 src/state.mjs           state and health rules (pure, unit-tested)
 src/monitor.mjs         polling, caching, redaction of the snapshot

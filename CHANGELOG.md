@@ -3,6 +3,22 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## Unreleased
+
+- **OpenCode 2.** Sessions written by OpenCode 2 (`session_v2`, `session_message`) are read
+  next to those of 1.x, in every tab and in the MCP tools. Renamed tools keep their 1.x
+  names (`shell` is `bash`, `subagent` is `task`); an `execute` script counts as the MCP
+  calls it made, per server. OpenCode 2 copies every 1.x session into its own tables: a
+  message is read from there only when it is newer than what the 1.x tables hold for its
+  session, so nothing is counted twice and a 1.x session carried on in 2 is whole. A 1.x
+  database, without the new tables, is read exactly as before.
+- Not known for OpenCode 2 sessions yet: a permission prompt is in neither its database nor
+  its log, so a session waiting for one shows as working (a question is seen), and the time
+  prompts waited is not counted. Thinking and writing are an estimate there: OpenCode 2 times
+  them as one, so the time is shared out by the length of what was written (on 1.x data,
+  106% of the thinking and 95% of the writing).
+- `npm run verify` counts OpenCode 2's rows as well, separately from the monitor's own code.
+
 ## 11.2.0 - 2026-10-11
 
 The whole bridge played back, the monitor as an app, and on your own network.

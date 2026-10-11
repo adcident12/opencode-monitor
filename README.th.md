@@ -332,7 +332,7 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 ## ข้อจำกัด
 
 - `--autostart` ถูกทดสอบโดย CI บน runner ของ Ubuntu, macOS และ Windows ไม่ใช่บน desktop ข้ามการ reboot
-- **ทดสอบกับ OpenCode 1.18.35 บน Windows 11 (Node 24)** ชุด test ยังรันบน Linux และ macOS ด้วย Node 22 และ 24 ใน CI กับข้อมูลตัวอย่างที่สร้างขึ้น การรันคู่กับ OpenCode จริงบน Linux หรือ macOS และการแจ้งเตือนบน desktop ที่นั่น (`notify-send`, `osascript`) ยังไม่ได้ลอง รายงาน bug ได้ทาง issue
+- **ทดสอบกับ OpenCode 1.18.35 บน Windows 11 (Node 24)** session ของ OpenCode 2 (2.0.26) ก็อ่านได้จากตารางของมันเอง คู่กับของ 1.x และฐานข้อมูลของ 1.x ใช้ได้เหมือนเดิม แต่ยังรู้ไม่ครบสำหรับ session เหล่านั้น: OpenCode 2 ไม่บันทึกการขอ permission ทั้งในฐานข้อมูลและใน log ดังนั้น session ที่รอ permission จะแสดงเป็นกำลังทำงาน (ส่วนคำถามมองเห็น) เวลาที่ prompt รอคุณยังไม่ถูกนับ และเวลาคิดกับเวลาเขียนแยกกันด้วยการประมาณ เพราะ OpenCode 2 จับเวลาสองอย่างนี้รวมกัน ชุด test ยังรันบน Linux และ macOS ด้วย Node 22 และ 24 ใน CI กับข้อมูลตัวอย่างที่สร้างขึ้น การรันคู่กับ OpenCode จริงบน Linux หรือ macOS และการแจ้งเตือนบน desktop ที่นั่น (`notify-send`, `osascript`) ยังไม่ได้ลอง รายงาน bug ได้ทาง issue
 - โครงสร้างฐานข้อมูลของ OpenCode ไม่ใช่ interface สาธารณะ monitor ตรวจตารางและคอลัมน์ที่ต้องใช้ตอนเริ่ม และไม่ยอมรันถ้าขาด แต่การเปลี่ยนที่แนบเนียนกว่านั้นยังอาจทำให้สถานะผิดได้
 - **คำขออนุญาตที่ค้างอยู่เป็นการอนุมาน** OpenCode ไม่บันทึกคำตอบของ prompt ดังนั้น monitor ถือว่า prompt ยังค้างอยู่ ตราบใดที่การเรียก tool ที่มันเป็นของยังรันอยู่และไม่ถูกแตะ สอง session ที่ถามภายในสองวินาทีเดียวกันอาจถูกสับสนกันได้
 - สถานะของ MCP อนุมานจากบรรทัดความล้มเหลวใน log ร่วมกับการเรียก tool
@@ -361,6 +361,7 @@ server.mjs              จุดเริ่มต้น ตรวจเวอ�
 mcp.mjs                 จุดเริ่มต้นของ MCP server สำหรับ Claude Code (stdio, อ่านอย่างเดียว)
 src/config.mjs          ค่าเริ่มต้น, config.json, command line
 src/db.mjs              query แบบอ่านอย่างเดียว, ตรวจ schema
+src/db-v2.mjs           แปลงแถวข้อความของ OpenCode 2 เป็นแถวแบบ 1.x (pure, มี unit test)
 src/logtail.mjs         ตาม opencode.log เพื่อหา prompt
 src/state.mjs           กฎของสถานะและสุขภาพ (pure, มี unit test)
 src/monitor.mjs         การ poll, cache, การปิดบัง snapshot
