@@ -348,4 +348,8 @@ for (const r of rows) {
 }
 console.log(`\n${rows.length - bad.length} of ${rows.length} figures agree with an independent count of this machine's data.`);
 if (bad.length) console.log('Figures that differ are a bug: please report them with this output (it holds counts only, no content).');
-process.exit(bad.length ? 1 : 0);
+db.close();
+// Not process.exit(): on Windows, leaving while a connection to the monitor is still closing
+// ends Node with a failed assertion and an exit code of its own, whatever was found.
+process.exitCode = bad.length ? 1 : 0;
+stop();

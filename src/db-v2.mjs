@@ -298,7 +298,8 @@ function compaction(out, row, d, base) {
     completed: done ? row.time_updated : null,
     finish: done ? 'stop' : null,
     // Still summarising: OpenCode 2 does not set the session's time_compacting, as 1.x did.
-    compacting: !done,
+    // Only a status that says so: one that failed, or is not known, is not taken for work.
+    compacting: d.status === 'running' || d.status === 'pending',
     // A row of its own: 1.x wrote a user message before each compaction, OpenCode 2 does not,
     // so a prompt of yours just before one is yours.
     standalone: true,

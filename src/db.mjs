@@ -20,6 +20,8 @@ const V2_TABLES = {
 };
 // How long rows read from OpenCode 2's tables are reused by the next query for the same range.
 const V2_REUSE_MS = 5000;
+// How many sessions' rows are kept ready for the live view; the page shows 30 by default.
+const V2_LIVE_SESSIONS = 64;
 
 // How much of a running command's output is read; only its last lines are shown.
 export const OUTPUT_TAIL_CHARS = 1500;
@@ -141,16 +143,17 @@ function openV2(db, columns) {
     if (reused.key !== key || now - reused.at > V2_REUSE_MS) reused = { key, at: now, value: normalizeV2(read()) };
     return reused.value;
   };
-  // The live view's rows of a session, read again only when the session has changed.
-  const live = new Map(); // session id -> { key, parts }
+  // The live view's rows of a session, read again only when the session has changed. Kept for
+  // the sessions looked at lately and no more: a long session's rows are many.
+  const live = new Map(); // session id -> { key, parts }, the one used last at the end
   const partsOf = sessionId => {
     const { n, t } = stmt.signature.get(sessionId);
     const key = `${n}|${t}`;
     let entry = live.get(sessionId);
-    if (!entry || entry.key !== key) {
-      entry = { key, parts: n ? normalizeV2(stmt.ofSession.all(sessionId)).parts : [] };
-      live.set(sessionId, entry);
-    }
+    if (!entry || entry.key !== key) entry = { key, parts: n ? normalizeV2(stmt.ofSession.all(sessionId)).parts : [] };
+    live.delete(sessionId);
+    live.set(sessionId, entry);
+    while (live.size > V2_LIVE_SESSIONS) live.delete(live.keys().next().value);
     return entry.parts;
   };
 
