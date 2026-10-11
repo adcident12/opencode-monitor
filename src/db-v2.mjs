@@ -6,10 +6,6 @@ import { toolPrefix } from './mcp.mjs';
 
 // Tools that were renamed. The rest of the monitor knows them by their 1.x names.
 const RENAMED = { shell: 'bash', subagent: 'task' };
-// OpenCode 2 runs every MCP tool from a script given to its `execute` tool ("Code Mode"):
-// `await tools.graft.graft_find_code({...})` or `await tools["chrome-devtools"].click({...})`.
-const MCP_CALL = /tools(?:\.([\w$]+)|\[\s*["']([^"']+)["']\s*\])(?:\.([\w$]+)|\[\s*["']([^"']+)["']\s*\])\s*\(/g;
-
 // The same lengths db.mjs cuts the 1.x columns to.
 const OUTPUT_TAIL_CHARS = 1500;
 const OUTPUT_SCAN_CHARS = 8000;
@@ -24,19 +20,22 @@ function errorName(error) {
   return text(error.name, 200) ?? text(error.type, 200) ?? 'Error';
 }
 
-/** The MCP calls an `execute` script made: from OpenCode's own list, else read from the script. */
+/**
+ * The MCP calls an `execute` script made. OpenCode 2 runs every MCP tool from a script given
+ * to its `execute` tool ("Code Mode"), and lists on the call the tools the script reached.
+ * Only that list is believed. The script's text says what it meant to call, not what it did:
+ * one stopped before its first call names a tool that was never run. A script without a list
+ * (still running, or interrupted) is one `execute` call, with no MCP call claimed for it.
+ */
 export function mcpCallsOf(state) {
   const listed = state?.metadata?.toolCalls;
-  if (Array.isArray(listed)) {
-    return listed
-      .filter(c => typeof c?.tool === 'string' && c.tool.includes('.'))
-      .map(c => {
-        const dot = c.tool.indexOf('.');
-        return { server: c.tool.slice(0, dot), tool: c.tool.slice(dot + 1), status: typeof c.status === 'string' ? c.status : null, input: c.input && typeof c.input === 'object' ? c.input : null };
-      });
-  }
-  const code = String(state?.input?.code ?? '');
-  return [...code.matchAll(MCP_CALL)].map(m => ({ server: m[1] ?? m[2], tool: m[3] ?? m[4], status: null, input: null }));
+  if (!Array.isArray(listed)) return [];
+  return listed
+    .filter(c => typeof c?.tool === 'string' && c.tool.includes('.'))
+    .map(c => {
+      const dot = c.tool.indexOf('.');
+      return { server: c.tool.slice(0, dot), tool: c.tool.slice(dot + 1), status: typeof c.status === 'string' ? c.status : null, input: c.input && typeof c.input === 'object' ? c.input : null };
+    });
 }
 
 /** A tool's output as text: what it returned, or what a running command has printed so far. */
@@ -290,13 +289,24 @@ function compaction(out, row, d, base) {
   const auto = d.reason === 'auto' ? 1 : 0;
   const overflow = d.reason === 'overflow' || d.overflow === true ? 1 : 0;
   out.compactions.push({ session_id: row.session_id, time_created: row.time_created, auto, overflow });
+  const done = d.status === 'completed';
   const message = {
     ...base,
     role: 'assistant',
     agent: 'compaction',
     summary: true,
-    completed: d.status === 'completed' ? row.time_updated : null,
-    finish: d.status === 'completed' ? 'stop' : null,
+    completed: done ? row.time_updated : null,
+    finish: done ? 'stop' : null,
+    // Still summarising: OpenCode 2 does not set the session's time_compacting, as 1.x did.
+    compacting: !done,
+    // A row of its own: 1.x wrote a user message before each compaction, OpenCode 2 does not,
+    // so a prompt of yours just before one is yours.
+    standalone: true,
+    // What the summary cost, which OpenCode 2 writes on the row once it is done.
+    provider_id: text(d.model?.providerID, 200),
+    model_id: text(d.model?.id, 200),
+    ...tokensOf(d),
+    cost: num(d.cost),
   };
   out.messages.push(message);
   out.parts.push({ id: row.id, message_id: row.id, session_id: row.session_id, type: 'compaction', time_created: row.time_created, time_updated: row.time_updated, auto, overflow });

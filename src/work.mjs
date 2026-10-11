@@ -72,8 +72,9 @@ export function turnsOfSession(list) {
   const turns = [];
   let turn = null;
   list.forEach((m, i) => {
-    // The user message a compaction writes belongs to the turn it interrupts.
-    if (m.role === 'user' && !isCompaction(list[i + 1])) {
+    // The user message a 1.x compaction writes belongs to the turn it interrupts.
+    const next = list[i + 1];
+    if (m.role === 'user' && !(isCompaction(next) && !next.standalone)) {
       if (turn) turn.followed = true;
       turn = { session: m.session_id, at: m.time_created, replies: [], followed: false };
       turns.push(turn);

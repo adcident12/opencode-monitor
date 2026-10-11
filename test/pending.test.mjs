@@ -181,6 +181,13 @@ test('a pending prompt makes its session wait, by the call it names and not by t
   assert.equal(state(T + 90_000).state, 'working');
 });
 
+test('OpenCode 2 compacting: its last message is a compaction not yet done', () => {
+  const session = { id: 's1', time_created: T - 100_000, time_compacting: null };
+  const messages = [{ id: 'u', role: 'user', time_created: T - 90_000 }, { id: 'c', role: 'assistant', agent: 'compaction', summary: true, compacting: true, time_created: T, completed: null }];
+  const state = deriveState({ session, parts: [], messages, asks: [], now: T + 60_000, thresholds: DEFAULTS.thresholds, opencodeRunning: true });
+  assert.deepEqual([state.state, state.reason, state.since], ['working', 'compacting', T]);
+});
+
 test('how long a prompt waited: from when it was asked to when the monitor saw it answered', () => {
   const ask = { t: T, run: null, id: ASK_ID, kind: 'permission', permission: 'read', patterns: '.env', session: 's1', part: 'call1', answeredAt: T + 223_000 };
   // The call ran on for a long while after it was allowed; the wait ends at the answer.

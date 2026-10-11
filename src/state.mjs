@@ -123,7 +123,9 @@ function live({ session, parts, messages, asks, now, thresholds }) {
   if (waiting) return waiting;
   if (running.length) return runningTools(running, { now, thresholds, turnStart });
 
-  if (session.time_compacting) return { state: 'working', reason: 'compacting', since: session.time_compacting };
+  // OpenCode 2 does not set time_compacting: its last message is the compaction, not yet done.
+  const compactingSince = session.time_compacting ?? (last.compacting ? last.time_created : null);
+  if (compactingSince) return { state: 'working', reason: 'compacting', since: compactingSince };
 
   const ended = afterReply(last);
   if (ended) return ended;

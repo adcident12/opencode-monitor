@@ -191,7 +191,8 @@ function addV2(f, from, to, ids) {
   const active = (start, end) => Math.max(0, Math.min(end, to) - Math.max(start, from));
   for (const r of v2Replies.filter(mine)) f.activeMs += active(r.time_created, r.d.time?.completed ?? r.time_created);
   for (const r of v2Compactions.filter(mine)) f.activeMs += active(r.time_created, r.ended);
-  for (const r of v2Replies.filter(x => mine(x) && inRange(x.time_created, from, to) && sent(x.d) + (x.d.tokens?.output ?? 0) > 0)) {
+  // A compaction is a request too: OpenCode 2 writes what the summary cost on its row.
+  for (const r of [...v2Replies, ...v2Compactions].filter(x => mine(x) && inRange(x.time_created, from, to) && sent(x.d) + (x.d.tokens?.output ?? 0) > 0)) {
     f.requests++;
     f.tokensSent += (r.d.tokens?.input ?? 0) + (r.d.tokens?.cache?.read ?? 0);
     f.tokensOutput += r.d.tokens?.output ?? 0;
@@ -318,7 +319,7 @@ const setup = await get('/api/setup');
 for (const m of setup.models) {
   const slash = m.id.indexOf('/');
   compare('This machine', `${m.id}: replies, 30 days`, one(`select count(*) n from message where json_extract(data,'$.role')='assistant' and json_extract(data,'$.providerID')=? and json_extract(data,'$.modelID')=? and time_created >= ?`, m.id.slice(0, slash), m.id.slice(slash + 1), Date.now() - 30 * 86_400_000).n
-    + v2Replies.filter(r => `${r.d.model?.providerID}/${r.d.model?.id}` === m.id && r.time_created >= Date.now() - 30 * 86_400_000).length, m.requests);
+    + [...v2Replies, ...v2Compactions].filter(r => `${r.d.model?.providerID}/${r.d.model?.id}` === m.id && r.time_created >= Date.now() - 30 * 86_400_000).length, m.requests);
 }
 
 // Prompts that waited for you, from the log's own lines

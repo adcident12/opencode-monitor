@@ -20,6 +20,9 @@ on the page and printed at startup.
   moment it asked; the prompts seen are kept in `data/prompts.jsonl` so that Stats counts how
   long they waited. Questions are read from the `question` calls themselves. `opencodeApi` in
   config.json switches it off or names the command; This machine says when it does not work.
+- A session of OpenCode 2 that is compacting says so, and what the compaction cost is
+  counted. An `execute` script that was interrupted, or is still running, is one call: no MCP
+  call is counted for it unless OpenCode lists it.
 - Thinking and writing are an estimate for OpenCode 2: it times them as one, so the time is
   shared out by the length of what was written (on 1.x data, 106% of the thinking and 95% of
   the writing).

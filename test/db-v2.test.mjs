@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { mcpCallsOf, normalizeV2, toolRowsOf } from '../src/db-v2.mjs';
 import { openDb } from '../src/db.mjs';
+import { turnsOfSession } from '../src/work.mjs';
 
 const T = 1_791_690_000_000;
 let seq = 0;
@@ -29,9 +30,10 @@ test('an execute script counts as the MCP calls it made, named as 1.x named them
     { server: 'chrome-devtools', tool: 'click', status: 'error', input: { uid: '1_2' } },
     { server: 'graft', tool: 'graft_find_code', status: 'completed', input: null },
   ]);
-  // Without OpenCode's own list, the calls are read from the script.
-  const code = 'const r = await tools.graft.graft_repo_map({}); await tools["chrome-devtools"].new_page({ url }); search({ namespace: "graft" })';
-  assert.deepEqual(mcpCallsOf({ input: { code } }).map(c => `${c.server}/${c.tool}`), ['graft/graft_repo_map', 'chrome-devtools/new_page']);
+  // Without OpenCode's own list nothing is claimed: the script's text is what it meant to
+  // call, and one interrupted before its first call never ran the tool it names.
+  const code = 'await new Promise(() => {}); const snap = await tools["chrome-devtools"].take_snapshot({ pageId: 2 });';
+  assert.deepEqual(mcpCallsOf({ input: { code } }), []);
 
   const message = { id: 'm', session_id: 's', time_created: T, time_updated: T + 5000 };
   const calls = toolRowsOf(message, tool('execute', { code }, { created: T, ran: T + 1000, completed: T + 3000 }, listed));
@@ -43,6 +45,8 @@ test('an execute script counts as the MCP calls it made, named as 1.x named them
   // Each call has its own input: two calls of one script are not one call made twice.
   assert.equal(calls[0].input, '{"uid":"1_2"}');
   assert.notEqual(calls[1].input, calls[0].input);
+  const stopped = toolRowsOf(message, tool('execute', { code }, { created: T, ran: T + 100, completed: T + 900_000 }, { status: 'error', error: { type: 'aborted', message: 'Tool execution interrupted' } }));
+  assert.deepEqual(stopped.map(c => [c.tool, c.status, c.error]), [['execute', 'error', 'Tool execution interrupted']]);
   // A script that only searched the tool catalog is one call of its own.
   const search = toolRowsOf(message, tool('execute', { code: 'search({ namespace: "graft" })' }, { created: T }, { metadata: { toolCalls: [{ tool: 'search', status: 'completed' }] } }));
   assert.deepEqual(search.map(c => c.tool), ['execute']);
@@ -85,7 +89,7 @@ test('a compaction is a compaction and a reply of the compaction agent; an inter
   const out = normalizeV2([
     row('s', 'user', T, { text: 'go' }),
     reply('s', T + 100, []),
-    row('s', 'compaction', T + 20_000, { status: 'completed', reason: 'auto', summary: '…' }, T + 80_000),
+    row('s', 'compaction', T + 20_000, { status: 'completed', reason: 'auto', summary: '…', model: { id: 'qwen', providerID: 'local' }, cost: 0, tokens: { input: 34_249, output: 1425, reasoning: 0, cache: { read: 0, write: 0 } } }, T + 80_000),
     row('s', 'synthetic', T + 80_100, { text: 'Continue if you have next steps' }),
     reply('s', T + 80_200, [], { finish: null, tokens: undefined, time: { created: T + 80_200 } }),
     row('s', 'idle', T + 90_000, { outcome: 'interrupted' }),
@@ -94,7 +98,19 @@ test('a compaction is a compaction and a reply of the compaction agent; an inter
   ]);
   assert.deepEqual(out.compactions, [{ session_id: 's', time_created: T + 20_000, auto: 1, overflow: 0 }]);
   const summary = out.messages.find(m => m.agent === 'compaction');
-  assert.deepEqual([summary.role, summary.summary, summary.completed], ['assistant', true, T + 80_000]);
+  assert.deepEqual([summary.role, summary.summary, summary.completed, summary.compacting], ['assistant', true, T + 80_000, false]);
+  // What the summary cost is on its row: counted as a request of that model, as 1.x counted it.
+  assert.deepEqual([summary.model_id, summary.tokens_input, summary.tokens_output], ['qwen', 34_249, 1425]);
+  // A prompt of yours that OpenCode 2 compacts before answering is still a turn of yours.
+  const squeezed = normalizeV2([
+    row('s', 'user', T, { text: 'go on' }),
+    row('s', 'compaction', T + 100, { status: 'completed', reason: 'auto' }, T + 60_000),
+    reply('s', T + 60_100, [], { finish: 'stop' }),
+  ]).messages;
+  assert.deepEqual(turnsOfSession(squeezed).map(t => [t.at, t.replies.length]), [[T, 1]]);
+  // Not done yet: no end, no cost, and the session is compacting.
+  const running = normalizeV2([row('s', 'compaction', T, { status: 'running', reason: 'auto', summary: '' })]).messages[0];
+  assert.deepEqual([running.compacting, running.completed, running.finish, running.model_id, running.tokens_input], [true, null, null, null, null]);
   assert.equal(out.messages.filter(m => m.synthetic).length, 1);
   assert.equal(out.messages.at(-1).error_name, 'MessageAbortedError');
   // A reply still being written has no token count yet: nothing is said about the context.
@@ -192,7 +208,7 @@ test('one database with both versions: nothing OpenCode 2 copied from 1.x is cou
   sessionV2.run('new', null, '/work/y', 'New', '2.0.26', '{"id":"qwen","providerID":"local"}', T + 300_000, T + 320_000, null);
   sessionV2.run('new-sub', 'new', '/work/y', 'Sub', '2.0.26', null, T + 301_000, T + 310_000, null);
   put(row('new', 'user', T + 300_000, { text: 'hello' }));
-  put(reply('new', T + 300_100, [tool('execute', { code: 'await tools.graft.graft_find_code({})' }, { created: T + 300_500, ran: T + 309_200, completed: T + 309_900 })]));
+  put(reply('new', T + 300_100, [tool('execute', { code: 'await tools.graft.graft_find_code({})' }, { created: T + 300_500, ran: T + 309_200, completed: T + 309_900 }, { metadata: { toolCalls: [{ tool: 'graft.graft_find_code', status: 'completed', input: {} }] } })]));
   put(reply('new-sub', T + 301_000, [], { agent: 'general', finish: 'stop' }));
   raw.close();
 
