@@ -322,7 +322,10 @@ if (existsSync(logPath)) {
   const log = readFileSync(logPath, 'utf8');
   for (const d of [7, 30]) {
     const v = views[d];
-    const n = [...log.matchAll(/^timestamp=(\S+) level=\S+ run=\S+ message=asking id=(?:per|que)_/gm)].map(m => Date.parse(m[1])).filter(t => t >= v.range.from && t <= v.range.to).length;
+    // OpenCode 2 logs no prompt. Its questions are the `question` calls themselves; its
+    // permission prompts are known only while a monitor is running, and this one keeps none.
+    const n = [...log.matchAll(/^timestamp=(\S+) level=\S+ run=\S+ message=asking id=(?:per|que)_/gm)].map(m => Date.parse(m[1])).filter(t => t >= v.range.from && t <= v.range.to).length
+      + v2Calls.filter(c => c.tool === 'question' && inRange(c.at, v.range.from, v.range.to)).length;
     compare(`Stats, ${d} days`, 'prompts that waited for you', n, v.totals.prompts);
   }
 }

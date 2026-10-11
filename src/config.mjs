@@ -65,6 +65,9 @@ export const DEFAULTS = {
   contextLimit: { default: null, models: {} },
   processNames: ['opencode'],
   processCheck: true,
+  // OpenCode 2 says what it is waiting for you to allow only to `opencode api`. The monitor
+  // runs that command, to list and nothing else, while a tool call of a session is running.
+  opencodeApi: { enabled: true, command: 'opencode' },
   redact: { enabled: true, extraPatterns: [] },
   environment: { checkSeconds: 15, modelServers: 'local' },
   services: [],
@@ -150,6 +153,8 @@ function validate(cfg) {
   if (!(cfg.pollMs >= 500)) throw new UserError('pollMs must be at least 500.');
   if (!['off', 'local', 'all'].includes(cfg.environment.modelServers)) throw new UserError('environment.modelServers must be "off", "local", or "all".');
   if (!Array.isArray(cfg.services)) throw new UserError('services must be a list.');
+  if (typeof cfg.opencodeApi.enabled !== 'boolean') throw new UserError('opencodeApi.enabled must be true or false.');
+  if (typeof cfg.opencodeApi.command !== 'string' || !cfg.opencodeApi.command.trim()) throw new UserError('opencodeApi.command must be the command that starts OpenCode.');
   const hook = cfg.notify.discord.webhookUrl;
   if (hook && !/^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(hook)) {
     throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');

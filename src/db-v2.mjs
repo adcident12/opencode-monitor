@@ -61,6 +61,8 @@ function toolRow(row, item) {
     message_id: row.id,
     session_id: row.session_id,
     type: 'tool',
+    // Written by OpenCode 2: what it is waiting for is asked of OpenCode, not read from the log.
+    v2: true,
     time_created: num(time.created) ?? row.time_created,
     // A call still running was last updated when its message was; a finished one when it ended.
     time_updated: running ? row.time_updated : (num(time.completed) ?? row.time_updated),

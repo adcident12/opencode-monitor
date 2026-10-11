@@ -12,6 +12,7 @@ import { createHistory } from './history.mjs';
 import { ROOT, HELP, VERSION, TESTED_OPENCODE, isUntestedOpencode, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
+import { createPending, withPending } from './pending.mjs';
 import { createRedactor } from './redact.mjs';
 import { configFiles, createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './opencode-config.mjs';
 import { createEnvironment } from './environment.mjs';
@@ -160,7 +161,12 @@ export async function main(argv) {
   if (args.accessKey) return runAccessKey(cfg);
 
   const db = openDb(cfg.dataDir);
-  const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
+  // What OpenCode 2 waits for you to allow, asked of OpenCode itself; kept beside the history.
+  // Not for a 1.x database (its log says it), nor for --sample.
+  const pending = db.v2 && !args.sample
+    ? createPending({ ...cfg.opencodeApi, file: cfg.history.enabled ? join(dirname(resolve(ROOT, cfg.history.file)), 'prompts.jsonl') : null, retentionDays: cfg.history.retentionDays, redact: createRedactor(cfg.redact) })
+    : null;
+  const log = withPending(createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), pending);
   const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck });
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
   const environment = createEnvironment({ cfg, opencode, log, probe });
@@ -170,7 +176,7 @@ export async function main(argv) {
   // Off for --sample: fake sessions must never be matched against real processes.
   const leftovers = createLeftoverProbe({ enabled: cfg.work.processes && !args.sample, ignoreNames: cfg.processNames });
   const monitor = createMonitor({
-    db, log, cfg, probe, environment, git, leftovers, projectMcp,
+    db, log, cfg, probe, environment, git, leftovers, projectMcp, pending,
     redact: createRedactor(cfg.redact),
     modelLimits: opencode.limits,
     modelReserves: opencode.reserves,
@@ -231,7 +237,7 @@ export async function main(argv) {
       unavailable: ['Stats failed', 'Stats are not available right now.'],
     },
     '/api/setup': {
-      body: () => JSON.stringify(buildSetupReport({ cfg, opencode, db, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: historyCount(), notifications: notify.recent() })),
+      body: () => JSON.stringify(buildSetupReport({ cfg, opencode, db, pending: pending?.status() ?? null, opencodeVersion: monitor.opencodeVersion(), running: probe.running, historyCount: historyCount(), notifications: notify.recent() })),
       unavailable: ['Setup report failed', 'The setup report is not available right now.'],
     },
     '/api/history': {

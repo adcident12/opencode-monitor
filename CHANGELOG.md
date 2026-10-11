@@ -12,11 +12,16 @@ on the page and printed at startup.
   message is read from there only when it is newer than what the 1.x tables hold for its
   session, so nothing is counted twice and a 1.x session carried on in 2 is whole. A 1.x
   database, without the new tables, is read exactly as before.
-- Not known for OpenCode 2 sessions yet: a permission prompt is in neither its database nor
-  its log, so a session waiting for one shows as working (a question is seen), and the time
-  prompts waited is not counted. Thinking and writing are an estimate there: OpenCode 2 times
-  them as one, so the time is shared out by the length of what was written (on 1.x data,
-  106% of the thinking and 95% of the writing).
+- **Waiting for you, in OpenCode 2.** It records a permission prompt neither in its database
+  nor in its log, so the monitor asks OpenCode itself: `opencode api session.permission.list`
+  for a session, at most every five seconds and only while one of its tool calls is running.
+  It lists and never answers. The session shows as waiting, with what it asks for, from the
+  moment it asked; the prompts seen are kept in `data/prompts.jsonl` so that Stats counts how
+  long they waited. Questions are read from the `question` calls themselves. `opencodeApi` in
+  config.json switches it off or names the command; This machine says when it does not work.
+- Thinking and writing are an estimate for OpenCode 2: it times them as one, so the time is
+  shared out by the length of what was written (on 1.x data, 106% of the thinking and 95% of
+  the writing).
 - `npm run verify` counts OpenCode 2's rows as well, separately from the monitor's own code.
 
 ## 11.2.0 - 2026-10-11

@@ -3,6 +3,7 @@
 import { clip } from './redact.mjs';
 import { buildReplay } from './replay.mjs';
 import { limitsFor, remembered, updateTimes } from './stats-source.mjs';
+import { promptsFor } from './pending.mjs';
 
 const CACHE_MS = 10_000;
 const MAX_CACHED = 12;
@@ -32,8 +33,9 @@ export function createReplaySource({ db, log, cfg, redact, projectMcp = null, mo
     const from = Math.min(...tree.map(s => s.time_created));
     const to = Math.max(...tree.map(s => s.time_updated ?? s.time_created));
     log.poll();
-    const asks = log.asks().filter(a => a.t >= from - 1000 && a.t <= to + 60_000);
     const tools = db.replay.tools(ids);
+    const prompts = promptsFor(log, tools);
+    const asks = prompts.asks.filter(a => a.t >= from - 1000 && a.t <= to + 60_000);
     // Other sessions' calls in the same hours, so a prompt is matched to the call it was for.
     const allTools = asks.length ? db.stats.tools(from).filter(p => (p.started ?? p.time_created) <= to + 60_000) : tools;
     return buildReplay({
@@ -46,7 +48,7 @@ export function createReplaySource({ db, log, cfg, redact, projectMcp = null, mo
       compactions: db.replay.compactions(ids),
       todoWrites: db.replay.todoWrites(ids),
       asks,
-      replies: log.replies(),
+      replies: prompts.replies,
       eventTimes: updateTimes(db, allTools, asks),
       now,
       stuckMs: cfg.thresholds.stuckToolMinutes * 60_000,

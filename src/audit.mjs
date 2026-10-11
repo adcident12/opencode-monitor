@@ -6,6 +6,7 @@
 // (variables, substitutions, scripts on disk, another interpreter). Nothing may rely on an
 // empty result to mean "nothing risky happened". What blocks commands is OpenCode's own
 // permission system; this only helps a person decide where to look afterwards.
+import { askIsFor } from './state.mjs';
 
 export const FLAG_KINDS = ['risky', 'secret_value', 'secret_file', 'outbound', 'background'];
 
@@ -117,6 +118,8 @@ const ASK_MATCH_MS = 2000;
 // The exact text OpenCode stores when the user says no. Matched from the start, so a
 // command cannot earn the "refused" label by printing similar words.
 const REJECTED = 'The user rejected permission';
+// The same from OpenCode 2.
+const DECLINED = 'The user declined this tool call';
 // Which prompt kinds can belong to which tool. A prompt of another kind logged at the same
 // moment (another session, another tool) must not be read as approval of this call.
 const PROMPT_KINDS = { bash: ['bash'], read: ['read'], edit: ['edit'], write: ['edit'], webfetch: ['webfetch'] };
@@ -135,10 +138,15 @@ export function promptFits(ask, tool) {
  * @returns {'asked'|'rule'|'refused'}
  */
 export function approvalOf(part, asks) {
-  if (part.status === 'error' && String(part.error ?? '').startsWith(REJECTED)) return 'refused';
+  if (part.status === 'error' && [REJECTED, DECLINED].some(text => String(part.error ?? '').startsWith(text))) return 'refused';
   const at = part.started ?? part.time_created;
   for (let i = asks.length - 1; i >= 0; i--) {
     const ask = asks[i];
+    // OpenCode 2 says which call a prompt was for.
+    if (ask.part) {
+      if (ask.kind === 'permission' && askIsFor(ask, part)) return 'asked';
+      continue;
+    }
     if (ask.t < at - ASK_MATCH_MS) break;
     if (ask.kind === 'permission' && Math.abs(ask.t - at) <= ASK_MATCH_MS && promptFits(ask, part.tool)) return 'asked';
   }

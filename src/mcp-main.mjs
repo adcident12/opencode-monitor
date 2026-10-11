@@ -8,6 +8,7 @@ import { createConfigWatch } from './config-changes.mjs';
 import { openDb } from './db.mjs';
 import { loadTranslator } from './format.mjs';
 import { createLogTail } from './logtail.mjs';
+import { createPending, withPending } from './pending.mjs';
 import { buildTools, createMcpServer, serve } from './mcp-server.mjs';
 import { createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './opencode-config.mjs';
 import { createRedactor } from './redact.mjs';
@@ -27,7 +28,9 @@ export async function mcpMain(argv) {
   if (args.sample) cfg.opencodeConfigDir = cfg.dataDir;
 
   const db = openDb(cfg.dataDir);
-  const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
+  // The prompts of OpenCode 2 the monitor recorded: read, never asked for from here.
+  const pending = cfg.history.enabled && !args.sample ? createPending({ file: join(dirname(resolve(ROOT, cfg.history.file)), 'prompts.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true }) : null;
+  const log = withPending(createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), pending);
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
   const redact = createRedactor(cfg.redact);
   const outputTokenMax = outputTokenMaxFrom();

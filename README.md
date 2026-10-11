@@ -6,7 +6,7 @@ A local status page for [OpenCode](https://opencode.ai). It answers one question
 
 It exists because of things like a permission prompt sitting unanswered for eight hours overnight while it looked like the agent was busy.
 
-- **Read-only.** It reads what OpenCode already stores on disk and changes nothing in OpenCode.
+- **Read-only.** It reads what OpenCode already stores on disk and changes nothing in OpenCode. For OpenCode 2 it also asks OpenCode one thing, which is stored nowhere: what a session is waiting for you to allow.
 - **Local.** Binds to `127.0.0.1` only, unless you open it to your own network with `--lan`, where every other device must show an access key. No telemetry. Nothing leaves your machine unless you configure a Discord webhook.
 - **No install step.** The server uses built-in Node modules only, and the page comes pre-built. npm is needed only to change the page (see [dashboard/](dashboard/README.md)).
 - **Secrets are hidden by default** before anything is displayed or sent.
@@ -299,6 +299,8 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `work.protectedBranches` | `["main","master"]` | Warn when the agent changes files on these |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
 | `history.retentionDays` | 30 | How long state changes are kept in `data/history.jsonl` |
+| `opencodeApi.enabled` | true | OpenCode 2 only: run `opencode api` to see a permission prompt that is waiting (see Where the data comes from) |
+| `opencodeApi.command` | `opencode` | The command that starts OpenCode on this machine |
 | `notify.on` | `["waiting","stuck"]` | States that trigger a notification. Add `"compact_soon"` to be told once when a session is about to be compacted |
 | `notify.repeatMinutes` | 30 | Remind again while the state lasts; 0 turns reminders off |
 | `notify.desktop` | `true` | Desktop notification |
@@ -320,7 +322,8 @@ By default a Discord message carries only the state, the project folder name, th
 ## Where the data comes from
 
 - `opencode.db` in OpenCode's data directory (`~/.local/share/opencode`, or `$XDG_DATA_HOME/opencode`), opened read-only: sessions, messages, and parts.
-- `log/opencode.log` in the same directory: the only place permission prompts are recorded.
+- `log/opencode.log` in the same directory: the only place permission prompts are recorded (OpenCode 1.x).
+- OpenCode 2 itself, for the one thing it stores nowhere: a permission prompt that is waiting. The monitor runs `opencode api session.permission.list` for a session, at most every five seconds and only while one of that session's tool calls is running. It lists and never answers. The prompts it sees are kept in `data/prompts.jsonl`, beside the history and for as long, so that Stats can say how long they waited. Set `opencodeApi.enabled` to `false` to never run the command: a session waiting to be allowed something then shows as working until its call counts as stuck. If OpenCode is started by another command on your machine, give it as `opencodeApi.command`.
 - OpenCode's config (`~/.config/opencode/opencode.json[c]`): model context limits, MCP server names, and model server addresses. API keys and MCP credentials in those files are never kept.
 - Each project directory's own OpenCode config (`opencode.json[c]`, also under `.opencode/`), for the names of MCP servers it adds or switches on. Only small regular files on a local disk are read, and only names, types and the enabled flag are kept.
 - The same config files again, once a minute, to notice a changed setting (see Stats). Secrets are not read; other text is kept only as a hash.
@@ -332,7 +335,7 @@ By default a Discord message carries only the state, the project folder name, th
 ## Limits
 
 - `--autostart` is exercised by CI on Ubuntu, macOS and Windows runners, not on a desktop across a reboot.
-- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** Sessions of OpenCode 2 (2.0.26) are read too, from its own tables, next to those of 1.x; a 1.x database works as before. Not everything is known for them yet: OpenCode 2 records a permission prompt neither in its database nor in its log, so a session waiting for a permission shows as working (a question is seen); the time prompts waited is not counted; and thinking and writing are told apart by an estimate, because OpenCode 2 times them as one. The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Bug reports are welcome as issues.
+- **Tested with OpenCode 1.18.35 on Windows 11 (Node 24).** Sessions of OpenCode 2 (2.0.26) are read too, from its own tables, next to those of 1.x; a 1.x database works as before. Two things are different for them. OpenCode 2 records a permission prompt neither in its database nor in its log, so the monitor asks OpenCode itself (see Where the data comes from); how long such a prompt waited is known only for prompts that came while the monitor was running. And thinking and writing are told apart by an estimate, because OpenCode 2 times them as one. The compaction point has not been checked against OpenCode 2 yet, so the page still says that this release is newer than the one the monitor was checked against. The test suite also runs on Linux and macOS with Node 22 and 24 in CI, against generated sample data. Running next to a real OpenCode on Linux or macOS, and desktop notifications there (`notify-send`, `osascript`), have not been tried yet. Bug reports are welcome as issues.
 - OpenCode's database layout is not a public interface. The monitor checks the tables and columns it needs at startup and refuses to run if they are missing, but a subtler change could still produce wrong states.
 - **Pending permission prompts are inferred.** OpenCode does not record the answer to a prompt, so the monitor treats a prompt as pending while the tool call it belongs to is still running and untouched. Two sessions prompting within the same two seconds could be confused.
 - MCP status is inferred from failure lines in the log plus tool calls.
@@ -363,6 +366,7 @@ src/config.mjs          defaults, config.json, command line
 src/db.mjs              read-only queries, schema check
 src/db-v2.mjs           OpenCode 2's message rows as 1.x rows (pure, unit-tested)
 src/logtail.mjs         follows opencode.log for prompts
+src/pending.mjs         OpenCode 2: asks OpenCode which permission prompts are waiting
 src/state.mjs           state and health rules (pure, unit-tested)
 src/monitor.mjs         polling, caching, redaction of the snapshot
 src/audit.mjs           rules for risky, outbound, and secret-touching calls

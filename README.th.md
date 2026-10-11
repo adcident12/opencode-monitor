@@ -6,7 +6,7 @@
 
 เครื่องมือนี้เกิดขึ้นเพราะเรื่องอย่างเช่น มีคำขออนุญาตค้างรอคำตอบอยู่แปดชั่วโมงข้ามคืน ทั้งที่ดูเหมือน agent กำลังทำงานอยู่
 
-- **อ่านอย่างเดียว** อ่านสิ่งที่ OpenCode บันทึกไว้บนดิสก์อยู่แล้ว และไม่เปลี่ยนอะไรใน OpenCode
+- **อ่านอย่างเดียว** อ่านสิ่งที่ OpenCode บันทึกไว้บนดิสก์อยู่แล้ว และไม่เปลี่ยนอะไรใน OpenCode สำหรับ OpenCode 2 จะถาม OpenCode เพิ่มอีกหนึ่งอย่างที่ไม่ถูกบันทึกไว้ที่ใด คือ session กำลังรอให้คุณอนุญาตอะไร
 - **อยู่ในเครื่อง** เปิดรับที่ `127.0.0.1` เท่านั้น เว้นแต่คุณเปิดให้เครือข่ายของคุณเองด้วย `--lan` ซึ่งอุปกรณ์อื่นทุกเครื่องต้องแสดงรหัสเข้าถึง ไม่มี telemetry ไม่มีอะไรออกจากเครื่องของคุณ เว้นแต่คุณตั้ง Discord webhook เอง
 - **ไม่ต้องติดตั้ง** server ใช้เฉพาะโมดูลที่มากับ Node และหน้าเว็บ build มาให้แล้ว ต้องใช้ npm เฉพาะเมื่อจะแก้หน้าเว็บ (ดู [dashboard/](dashboard/README.md))
 - **ซ่อน secret เป็นค่าเริ่มต้น** ก่อนจะแสดงหรือส่งอะไรออกไป
@@ -299,6 +299,8 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 | `work.protectedBranches` | `["main","master"]` | เตือนเมื่อ agent แก้ไฟล์บน branch เหล่านี้ |
 | `notify.environment` | `true` | แจ้งเมื่อ MCP server, model server หรือ service ล่ม |
 | `history.retentionDays` | 30 | เก็บการเปลี่ยนสถานะไว้ใน `data/history.jsonl` นานเท่าไร |
+| `opencodeApi.enabled` | true | เฉพาะ OpenCode 2: รัน `opencode api` เพื่อดูคำขออนุญาตที่กำลังรออยู่ (ดู ข้อมูลมาจากไหน) |
+| `opencodeApi.command` | `opencode` | คำสั่งที่ใช้เรียก OpenCode บนเครื่องนี้ |
 | `notify.on` | `["waiting","stuck"]` | สถานะที่ทำให้แจ้งเตือน เพิ่ม `"compact_soon"` เพื่อให้แจ้งหนึ่งครั้งเมื่อ session ใกล้จะถูก compact |
 | `notify.repeatMinutes` | 30 | เตือนซ้ำขณะที่สถานะยังอยู่ ใส่ 0 เพื่อปิดการเตือนซ้ำ |
 | `notify.desktop` | `true` | การแจ้งเตือนบน desktop |
@@ -320,7 +322,8 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 ## ข้อมูลมาจากไหน
 
 - `opencode.db` ในโฟลเดอร์ข้อมูลของ OpenCode (`~/.local/share/opencode` หรือ `$XDG_DATA_HOME/opencode`) เปิดแบบอ่านอย่างเดียว: session, message และ part
-- `log/opencode.log` ในโฟลเดอร์เดียวกัน: ที่เดียวที่บันทึกคำขออนุญาต
+- `log/opencode.log` ในโฟลเดอร์เดียวกัน: ที่เดียวที่บันทึกคำขออนุญาต (OpenCode 1.x)
+- ตัว OpenCode 2 เอง สำหรับสิ่งเดียวที่มันไม่บันทึกไว้ที่ใด คือคำขออนุญาตที่กำลังรออยู่ monitor รัน `opencode api session.permission.list` ของ session นั้น ไม่ถี่กว่าทุกห้าวินาที และเฉพาะขณะที่ tool call ของ session นั้นกำลังรัน เป็นการขอดูรายการเท่านั้น ไม่เคยตอบแทนคุณ คำขอที่เห็นจะถูกเก็บไว้ใน `data/prompts.jsonl` ข้างไฟล์ประวัติและนานเท่ากัน เพื่อให้สถิติบอกได้ว่ารอนานเท่าไร ตั้ง `opencodeApi.enabled` เป็น `false` ถ้าไม่ต้องการให้รันคำสั่งนี้เลย session ที่รอการอนุญาตจะแสดงเป็นกำลังทำงาน จนกว่า tool call นั้นจะถูกนับว่าค้าง ถ้าเครื่องของคุณเรียก OpenCode ด้วยคำสั่งอื่น ให้ใส่ไว้ที่ `opencodeApi.command`
 - config ของ OpenCode (`~/.config/opencode/opencode.json[c]`): limit ของ context ของโมเดล ชื่อ MCP server และ address ของ model server ส่วน API key และ credential ของ MCP ในไฟล์เหล่านั้นไม่เคยถูกเก็บ
 - config ของ OpenCode ในโฟลเดอร์ของแต่ละโปรเจกต์ (`opencode.json[c]` รวมถึงใต้ `.opencode/`) เพื่อดูชื่อ MCP server ที่โปรเจกต์เพิ่มหรือเปิดไว้ อ่านเฉพาะไฟล์ธรรมดาขนาดเล็กบนดิสก์ในเครื่อง และเก็บเฉพาะชื่อ ชนิด และสถานะเปิด/ปิด
 - ไฟล์ config เดียวกันอีกครั้ง นาทีละครั้ง เพื่อสังเกตการตั้งค่าที่เปลี่ยน (ดูสถิติ) ความลับไม่ถูกอ่าน และข้อความอื่นถูกเก็บเป็น hash เท่านั้น
@@ -332,7 +335,7 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 ## ข้อจำกัด
 
 - `--autostart` ถูกทดสอบโดย CI บน runner ของ Ubuntu, macOS และ Windows ไม่ใช่บน desktop ข้ามการ reboot
-- **ทดสอบกับ OpenCode 1.18.35 บน Windows 11 (Node 24)** session ของ OpenCode 2 (2.0.26) ก็อ่านได้จากตารางของมันเอง คู่กับของ 1.x และฐานข้อมูลของ 1.x ใช้ได้เหมือนเดิม แต่ยังรู้ไม่ครบสำหรับ session เหล่านั้น: OpenCode 2 ไม่บันทึกการขอ permission ทั้งในฐานข้อมูลและใน log ดังนั้น session ที่รอ permission จะแสดงเป็นกำลังทำงาน (ส่วนคำถามมองเห็น) เวลาที่ prompt รอคุณยังไม่ถูกนับ และเวลาคิดกับเวลาเขียนแยกกันด้วยการประมาณ เพราะ OpenCode 2 จับเวลาสองอย่างนี้รวมกัน ชุด test ยังรันบน Linux และ macOS ด้วย Node 22 และ 24 ใน CI กับข้อมูลตัวอย่างที่สร้างขึ้น การรันคู่กับ OpenCode จริงบน Linux หรือ macOS และการแจ้งเตือนบน desktop ที่นั่น (`notify-send`, `osascript`) ยังไม่ได้ลอง รายงาน bug ได้ทาง issue
+- **ทดสอบกับ OpenCode 1.18.35 บน Windows 11 (Node 24)** session ของ OpenCode 2 (2.0.26) ก็อ่านได้จากตารางของมันเอง คู่กับของ 1.x และฐานข้อมูลของ 1.x ใช้ได้เหมือนเดิม มีสองอย่างที่ต่างออกไปสำหรับ session เหล่านั้น OpenCode 2 ไม่บันทึกการขอ permission ทั้งในฐานข้อมูลและใน log monitor จึงถาม OpenCode เอง (ดู ข้อมูลมาจากไหน) และรู้ว่า prompt แบบนั้นรอนานเท่าไรเฉพาะ prompt ที่เกิดขณะ monitor รันอยู่ อีกอย่างคือเวลาคิดกับเวลาเขียนแยกกันด้วยการประมาณ เพราะ OpenCode 2 จับเวลาสองอย่างนี้รวมกัน ส่วนจุดย่อบทสนทนายังไม่ได้ตรวจกับ OpenCode 2 หน้าเว็บจึงยังบอกว่าเวอร์ชันนี้ใหม่กว่าเวอร์ชันที่ monitor ตรวจไว้ ชุด test ยังรันบน Linux และ macOS ด้วย Node 22 และ 24 ใน CI กับข้อมูลตัวอย่างที่สร้างขึ้น การรันคู่กับ OpenCode จริงบน Linux หรือ macOS และการแจ้งเตือนบน desktop ที่นั่น (`notify-send`, `osascript`) ยังไม่ได้ลอง รายงาน bug ได้ทาง issue
 - โครงสร้างฐานข้อมูลของ OpenCode ไม่ใช่ interface สาธารณะ monitor ตรวจตารางและคอลัมน์ที่ต้องใช้ตอนเริ่ม และไม่ยอมรันถ้าขาด แต่การเปลี่ยนที่แนบเนียนกว่านั้นยังอาจทำให้สถานะผิดได้
 - **คำขออนุญาตที่ค้างอยู่เป็นการอนุมาน** OpenCode ไม่บันทึกคำตอบของ prompt ดังนั้น monitor ถือว่า prompt ยังค้างอยู่ ตราบใดที่การเรียก tool ที่มันเป็นของยังรันอยู่และไม่ถูกแตะ สอง session ที่ถามภายในสองวินาทีเดียวกันอาจถูกสับสนกันได้
 - สถานะของ MCP อนุมานจากบรรทัดความล้มเหลวใน log ร่วมกับการเรียก tool
@@ -363,6 +366,7 @@ src/config.mjs          ค่าเริ่มต้น, config.json, command 
 src/db.mjs              query แบบอ่านอย่างเดียว, ตรวจ schema
 src/db-v2.mjs           แปลงแถวข้อความของ OpenCode 2 เป็นแถวแบบ 1.x (pure, มี unit test)
 src/logtail.mjs         ตาม opencode.log เพื่อหา prompt
+src/pending.mjs         OpenCode 2: ถาม OpenCode ว่ามีคำขออนุญาตใดรออยู่
 src/state.mjs           กฎของสถานะและสุขภาพ (pure, มี unit test)
 src/monitor.mjs         การ poll, cache, การปิดบัง snapshot
 src/audit.mjs           กฎสำหรับการเรียกที่เสี่ยง ส่งออกนอกเครื่อง และแตะ secret

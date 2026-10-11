@@ -42,7 +42,7 @@ function exampleOf(group, text, p) {
   return example;
 }
 
-export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null }) {
+export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null, pending = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
   const hasSecret = text => redact(text) !== text;
@@ -275,9 +275,13 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     return { counts, total, items, ignored, more: total - items.reduce((sum, item) => sum + item.count, 0) };
   }
 
+  const runningV2 = new Set(); // sessions of this reading whose last reply has an OpenCode 2 call running
+
   function buildSession(session, now, asks) {
     const { sorted: parts, maxUpdated, digest } = loadParts(session.id);
     const messages = db.lastMessages(session.id);
+    const lastId = messages.at(-1)?.id;
+    if (probe.running !== false && parts.some(p => p.v2 && p.message_id === lastId && (p.status === 'running' || p.status === 'pending'))) runningV2.add(session.id);
     const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running });
     const { model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
     const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt, autoCompact });
@@ -336,6 +340,10 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
       const asks = log.asks();
       directories = [...new Set(rows.map(r => r.directory).filter(Boolean))];
       const sessions = bubbleChildren(rows.map(row => buildSession(row, now, asks)));
+      // OpenCode 2 sessions with a tool call running: is one of them waiting to be allowed?
+      // Only OpenCode itself knows; the answer is there at the next reading.
+      pending?.check(rows.filter(row => runningV2.has(row.id)).map(row => row.id), now);
+      runningV2.clear();
       const listed = new Set(rows.map(r => r.id));
       for (const id of cache.keys()) if (!listed.has(id)) cache.delete(id);
 

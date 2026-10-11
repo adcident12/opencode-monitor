@@ -13,10 +13,23 @@ const minutes = n => n * 60_000;
 const isRunningTool = p => p.type === 'tool' && (p.status === 'running' || p.status === 'pending');
 const startOf = p => p.started ?? p.time_created;
 
-function findAsk(asks, at) {
+/**
+ * Whether a prompt is for this tool call. OpenCode 2 says which call a prompt is for; for 1.x
+ * it is told by time. One script's MCP calls ("id:0", "id:1") share the script's prompt.
+ */
+export const askIsFor = (ask, part) => ask.part === part.id || String(part.id).startsWith(`${ask.part}:`);
+
+function findAsk(asks, p) {
+  const at = p.time_updated;
   for (let i = asks.length - 1; i >= 0; i--) {
     const ask = asks[i];
-    if (ask.kind === 'permission' && Math.abs(ask.t - at) <= ASK_MATCH_MS) return ask;
+    if (ask.kind !== 'permission') continue;
+    // OpenCode 2: a prompt for this very call, until it is answered.
+    if (ask.part) {
+      if (ask.answeredAt == null && askIsFor(ask, p)) return ask;
+      continue;
+    }
+    if (Math.abs(ask.t - at) <= ASK_MATCH_MS) return ask;
     if (ask.t < at - ASK_MATCH_MS) break;
   }
   return null;
@@ -58,7 +71,7 @@ function waitingOn(running, asks) {
     };
   }
   for (const p of running) {
-    const ask = findAsk(asks, p.time_updated);
+    const ask = findAsk(asks, p);
     if (ask) {
       return {
         state: 'waiting', reason: 'permission', since: ask.t, current: p,

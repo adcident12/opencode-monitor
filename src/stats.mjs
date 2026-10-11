@@ -1,6 +1,7 @@
 // Looking back over days rather than at the moment: how long prompts waited for you, which
 // calls hung, how the agent spends its tool calls. Pure: rows in, figures out.
 import { promptFits } from './audit.mjs';
+import { askIsFor } from './state.mjs';
 import { computeMcpStats } from './mcp.mjs';
 import { agentsOf, filesOf, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
@@ -71,9 +72,14 @@ export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = 
       prompts.push(settle(ask, part, replies.get(ask.id) ?? null));
       continue;
     }
-    const part = nearest(byStart, ask.t, p => promptFits(ask, p.tool));
-    let answeredAt = null;
-    if (part) {
+    // OpenCode 2 says which call a prompt was for, and the monitor saw when it was answered.
+    const part = ask.part ? (byStart.find(p => askIsFor(ask, p)) ?? null) : nearest(byStart, ask.t, p => promptFits(ask, p.tool));
+    let answeredAt = replies.get(ask.id) ?? null;
+    // The monitor sees an answer a moment late, at its next reading. A call that was over
+    // before that says more exactly when: it could only end once it was answered.
+    const over = part && part.status !== 'running' && part.status !== 'pending' ? Math.max(ask.t, part.time_updated) : null;
+    if (answeredAt != null && over != null) answeredAt = Math.min(answeredAt, over);
+    if (part && answeredAt == null) {
       const after = (eventTimes.get(part.id) ?? []).find(t => t >= ask.t + ANSWER_MIN_MS);
       if (after != null) answeredAt = after;
       else if (part.status !== 'running' && part.status !== 'pending') answeredAt = Math.max(ask.t, part.time_updated);

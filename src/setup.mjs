@@ -32,7 +32,7 @@ const fileInfo = path => {
  * @param {number|null} [input.historyCount]
  * @returns the report, in data only: the page and --doctor put the words to it
  */
-export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, running = null, historyCount = null, notifications = [], env = process.env, now = Date.now() }) {
+export function buildSetupReport({ cfg, opencode, db, pending = null, opencodeVersion = null, running = null, historyCount = null, notifications = [], env = process.env, now = Date.now() }) {
   const database = fileInfo(join(cfg.dataDir, 'opencode.db'));
   const log = fileInfo(join(cfg.dataDir, 'log', 'opencode.log'));
   const configFiles = ['opencode.json', 'opencode.jsonc'].filter(name => existsSync(join(cfg.opencodeConfigDir, name)));
@@ -70,6 +70,9 @@ export function buildSetupReport({ cfg, opencode, db, opencodeVersion = null, ru
   if (!configFiles.length) problem('no_opencode_config', cfg.opencodeConfigDir);
   if (isUntestedOpencode(opencodeVersion) === true) problem('untested_opencode', opencodeVersion);
   if (opencode.compaction.auto === false) problem('compaction_off');
+  // OpenCode 2 only: a session waiting to be allowed something is seen by asking OpenCode.
+  if (db?.v2 && cfg.opencodeApi?.enabled === false) problem('opencode_api_off');
+  else if (pending?.ok === false) problem('opencode_api_failed', pending.error);
   for (const m of models) if (m.context == null) problem('model_limit_unknown', m.id);
   if (!cfg.notify.desktop && !cfg.notify.discord.webhookUrl) problem('no_notification');
 

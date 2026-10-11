@@ -5,6 +5,7 @@ import { takeawaysOf } from './takeaways.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
 import { compactionPoint } from './opencode-config.mjs';
+import { promptsFor } from './pending.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
 const CACHE_MS = 60_000;
@@ -105,7 +106,8 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const since = now - (days + 1) * 86_400_000;
     log.poll();
     const tools = db.stats.tools(since);
-    const asks = log.asks().filter(a => a.t >= since);
+    const prompts = promptsFor(log, tools);
+    const asks = prompts.asks.filter(a => a.t >= since);
 
     const eventTimes = updateTimes(db, tools, asks);
 
@@ -128,7 +130,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       todoWriters: db.stats.todoWriters(),
       compactions: db.stats.compactions(since),
       asks,
-      replies: log.replies(),
+      replies: prompts.replies,
       liveRuns: log.liveRuns(),
       runEnds: log.runEnds(),
       eventTimes,
