@@ -23,6 +23,9 @@ on the page and printed at startup.
   shared out by the length of what was written (on 1.x data, 106% of the thinking and 95% of
   the writing).
 - `npm run verify` counts OpenCode 2's rows as well, separately from the monitor's own code.
+- A model server is asked for `<baseURL>/health`, no longer for its list of models: a server
+  that wants a key answered the list with 401 and wrote a failed login in its own log at
+  every check (2,456 lines in 19 hours on one llama.cpp server).
 
 ## 11.2.0 - 2026-10-11
 

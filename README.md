@@ -160,7 +160,7 @@ Pick a station to see that session's card under the picture. Only the project's 
 
 A strip at the top shows the things the agent depends on:
 
-- **Model server**: providers in OpenCode's config that have their own `baseURL` are asked for `<baseURL>/models` (no credentials sent; any answer below HTTP 500 counts as up). By default only addresses on this machine or network are checked; set `environment.modelServers` to `"all"` to include others, or `"off"`.
+- **Model server**: providers in OpenCode's config that have their own `baseURL` are asked for `<baseURL>/health` (no credentials sent; any answer below HTTP 500 counts as up, so a server without that address still counts, and one that is still loading its model does not). By default only addresses on this machine or network are checked; set `environment.modelServers` to `"all"` to include others, or `"off"`.
 - **MCP servers**: OpenCode only logs MCP failures, so status is inferred. *Failed* means the running OpenCode logged the server failing, or a tool call found the connection gone, and none of its tools has worked since. *OK* means one of its tools completed. *No signal* means neither. Servers that a project's own `opencode.json` adds or switches on are included for the sessions on screen. Connections that close because OpenCode itself quit are not failures.
 - **Services**: anything you list under `services` in `config.json`, by URL or by host and port.
 

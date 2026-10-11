@@ -61,6 +61,14 @@ function targetOf(url) {
   }
 }
 
+/**
+ * Where a model server is asked whether it is up. Its health address, not its list of models:
+ * a server that wants a key answers the list with 401 and writes a failed login in its own log
+ * every time, while llama.cpp answers its health address without one. A server that has no
+ * such address says 404, which is an answer all the same.
+ */
+export const healthUrl = baseURL => `${trimEndOf(baseURL, '/')}/health`;
+
 async function httpCheck(url) {
   const t0 = performance.now();
   try {
@@ -98,7 +106,7 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
   const mode = cfg.environment.modelServers;
   const modelTargets = opencode.providers
     .filter(p => mode === 'all' || (mode === 'local' && isLocalHost(targetOf(p.baseURL))))
-    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(`${trimEndOf(p.baseURL, '/')}/models`) }));
+    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(healthUrl(p.baseURL)) }));
   const serviceTargets = (cfg.services ?? [])
     .filter(s => s?.name && (s.url || (s.host && s.port)))
     .map(s => (s.url
