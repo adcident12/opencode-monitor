@@ -3,7 +3,9 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
-## Unreleased
+## 11.3.0 - 2026-10-11
+
+OpenCode 2, read next to 1.x.
 
 - **OpenCode 2.** Sessions written by OpenCode 2 (`session_v2`, `session_message`) are read
   next to those of 1.x, in every tab and in the MCP tools. Renamed tools keep their 1.x
