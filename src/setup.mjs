@@ -37,7 +37,8 @@ export function buildSetupReport({ cfg, opencode, db, pending = null, opencodeVe
   const log = fileInfo(join(cfg.dataDir, 'log', 'opencode.log'));
   const configFiles = ['opencode.json', 'opencode.jsonc'].filter(name => existsSync(join(cfg.opencodeConfigDir, name)));
   const outputTokenMax = outputTokenMaxFrom(env);
-  const settings = { ...opencode.compaction, outputTokenMax };
+  // By the rule of the OpenCode in use now.
+  const settings = { ...opencode.compaction, outputTokenMax, version: opencodeVersion };
 
   // The models actually used lately, each with what is known about its limits.
   const used = db ? db.stats.models(now - MODEL_DAYS * DAY_MS) : [];

@@ -89,23 +89,43 @@ export function outputTokenMaxFrom(env = process.env) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// OpenCode 2's own constant: what it keeps free below a window of at least twice this size,
+// when that is more than a tenth of it (packages/core/src/session/compaction.ts, RESERVE_MIN).
+export const RESERVE_MIN_V2 = 16_000;
+
+/** Whether a version string is OpenCode 2 or later. */
+export const isOpencode2 = version => Number(/^(\d+)\./.exec(String(version ?? ''))?.[1]) >= 2;
+
 /**
- * The size at which OpenCode compacts a session, worked out the way OpenCode itself does
- * (SessionCompaction.isOverflow), from the limits the user set for that model:
+ * The size at which OpenCode compacts a session, worked out the way OpenCode itself does, from
+ * the limits the user set for that model.
  *
+ * OpenCode 1.x (SessionCompaction.isOverflow):
  *   reply  = min(limit.output, outputTokenMax) || outputTokenMax
  *   limit.input set:  limit.input - (compaction.reserved ?? min(20 000, reply))
  *   otherwise:        limit.context - reply
+ *
+ * OpenCode 2 (calculateCeiling in packages/core/src/session/compaction.ts, 2.0.26):
+ *   window = limit.input || limit.context
+ *   compaction.buffer set:  window - buffer
+ *   otherwise:              window - max(10% of window, 16 000 when window >= 32 000)
+ * The output limit plays no part in it.
  *
  * It compacts when a request's total tokens reach this. null when it never compacts on its
  * own: compaction.auto is false, or the context window is unknown or 0.
  *
  * @param {number|null} context  limit.context of the model
  * @param {{output: number|null, input: number|null}} [reserve]  limit.output and limit.input
- * @param {{auto?: boolean, reserved?: number|null, outputTokenMax?: number|null}} [settings]
+ * @param {{auto?: boolean, reserved?: number|null, buffer?: number|null, outputTokenMax?: number|null, version?: string|null}} [settings]
+ *   version: of the OpenCode whose session it is; its rule is used
  */
-export function compactionPoint(context, reserve, { auto = true, reserved = null, outputTokenMax = null } = {}) {
+export function compactionPoint(context, reserve, { auto = true, reserved = null, buffer = null, outputTokenMax = null, version = null } = {}) {
   if (auto === false || !context) return null;
+  if (isOpencode2(version)) {
+    const window = reserve?.input || context;
+    if (buffer != null) return Math.max(0, window - buffer);
+    return Math.max(0, window - Math.max(Math.floor(window * 0.1), window >= 2 * RESERVE_MIN_V2 ? RESERVE_MIN_V2 : 0));
+  }
   const max = outputTokenMax > 0 ? outputTokenMax : OUTPUT_TOKEN_MAX;
   const reply = Math.min(reserve?.output ?? Number.NaN, max) || max;
   if (reserve?.input) return Math.max(0, reserve.input - (reserved ?? Math.min(COMPACTION_RESERVED, reply)));
@@ -119,6 +139,8 @@ function compactionOf(config) {
   const out = {};
   if (typeof c.auto === 'boolean') out.auto = c.auto;
   if (Number.isFinite(c.reserved) && c.reserved >= 0) out.reserved = c.reserved;
+  // OpenCode 2's name for the room kept free.
+  if (Number.isFinite(c.buffer) && c.buffer >= 0) out.buffer = c.buffer;
   return out;
 }
 

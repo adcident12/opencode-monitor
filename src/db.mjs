@@ -132,7 +132,7 @@ function openV2(db, columns) {
     sessions: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ?`),
     recent: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ? order by time_updated desc limit ?`),
     tree: db.prepare(`with recursive tree(id) as (select ? union all select s.id from session_v2 s join tree on s.parent_id = tree.id)
-      select id, parent_id, directory, title, time_created, time_updated from session_v2 where id in (select id from tree)`),
+      select id, parent_id, directory, title, time_created, time_updated, ${columns.session_v2.has('version') ? 'version' : 'null as version'} from session_v2 where id in (select id from tree)`),
   };
 
   // The Stats page asks for a range's tools, messages, spans... one after another: the rows
@@ -232,7 +232,7 @@ export function openDb(dataDir) {
 
   // For the stats page: everything in a time range, with only the fields it counts.
   const statsStmt = {
-    sessions: db.prepare('select id, parent_id, directory, title, time_created, time_updated from session where time_updated >= ?'),
+    sessions: db.prepare(`select id, parent_id, directory, title, time_created, time_updated, ${columns.session.has('version') ? 'version' : 'null as version'} from session where time_updated >= ?`),
     tools: db.prepare(`select id, session_id, time_created, time_updated,
         json_extract(data,'$.tool') tool,
         json_extract(data,'$.state.status') status,
@@ -292,7 +292,7 @@ export function openDb(dataDir) {
   const narrowed = name => db.prepare(statsStmt[name].sourceSQL.replace('time_created >= ?', IN_TREE));
   const replayStmt = {
     tree: db.prepare(`with recursive tree(id) as (select ? union all select s.id from session s join tree on s.parent_id = tree.id)
-      select id, parent_id, directory, title, time_created, time_updated from session where id in (select id from tree)`),
+      select id, parent_id, directory, title, time_created, time_updated, ${columns.session.has('version') ? 'version' : 'null as version'} from session where id in (select id from tree)`),
     ...Object.fromEntries(['tools', 'messages', 'compactions', 'spans', 'steps', 'todoWrites'].map(name => [name, narrowed(name)])),
   };
 

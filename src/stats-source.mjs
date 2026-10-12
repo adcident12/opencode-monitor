@@ -66,10 +66,11 @@ export function updateTimes(db, tools, asks) {
  * live page uses: config.json first, then OpenCode's own config.
  */
 export function limitsFor({ cfg, projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null }) {
-  const compactAt = (provider, model, directory) => {
+  // version: of the OpenCode whose session it is, whose rule is used.
+  const compactAt = (provider, model, directory, version = null) => {
     const key = `${provider}/${model}`;
     const project = projectMcp?.settingsFor(directory);
-    return compactionPoint(project?.limits.get(key) ?? modelLimits.get(key) ?? null, project?.reserves.get(key) ?? modelReserves.get(key), { ...compactionSettings, ...project?.compaction, outputTokenMax });
+    return compactionPoint(project?.limits.get(key) ?? modelLimits.get(key) ?? null, project?.reserves.get(key) ?? modelReserves.get(key), { ...compactionSettings, ...project?.compaction, outputTokenMax, version });
   };
   const contextLimit = (provider, model) => {
     const key = `${provider}/${model}`;

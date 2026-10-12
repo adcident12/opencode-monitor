@@ -56,8 +56,15 @@ const stop = () => {
 process.on('exit', stop);
 
 const base = `http://127.0.0.1:${port}`;
-const get = async path => {
-  const res = await fetch(base + path);
+const get = async (path, retried = false) => {
+  let res;
+  try {
+    res = await fetch(base + path);
+  } catch (err) {
+    // A kept-alive connection the monitor closed as it was being reused: asked again, once.
+    if (retried || err.cause?.code !== 'ECONNRESET') throw err;
+    return get(path, true);
+  }
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
   return res.json();
 };

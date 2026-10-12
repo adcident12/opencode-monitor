@@ -42,7 +42,7 @@ test('each model in use gets its own compaction point, from that machine\'s own 
 test('a limit given in the monitor\'s own config is used and marked as such; compaction off is reported', () => {
   const cfg = machine();
   cfg.contextLimit.models = { 'other/mystery': 64_000 };
-  const report = buildSetupReport({ cfg, opencode: opencode({ compaction: { auto: false } }), db: db([used('other', 'mystery')]), opencodeVersion: '1.19.0', now: NOW });
+  const report = buildSetupReport({ cfg, opencode: opencode({ compaction: { auto: false } }), db: db([used('other', 'mystery')]), opencodeVersion: '2.1.0', now: NOW });
   assert.deepEqual([report.models[0].context, report.models[0].source, report.models[0].compactAt], [64_000, 'monitor', null]);
   assert.deepEqual(report.problems.map(p => p.code), ['untested_opencode', 'compaction_off']);
   assert.equal(report.compaction.auto, false);

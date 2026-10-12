@@ -19,7 +19,7 @@ export const VERSION = readVersion();
 
 // The OpenCode release whose database layout and compaction rule this version was read from
 // and checked against. Update it together with the checks, never on its own.
-export const TESTED_OPENCODE = '1.18.35';
+export const TESTED_OPENCODE = '2.0.26';
 
 /**
  * Is `version` a later minor or major release than `tested`? Patch releases are not

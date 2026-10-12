@@ -155,7 +155,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     // What OpenCode itself uses for this session: the project's config over the global one.
     const opencodeLimit = project?.limits.get(key) ?? modelLimits.get(key) ?? null;
     const reserve = project?.reserves.get(key) ?? modelReserves.get(key);
-    const settings = { ...compactionSettings, ...project?.compaction, outputTokenMax };
+    const settings = { ...compactionSettings, ...project?.compaction, outputTokenMax, version: session.version ?? null };
     // config.json can name a window the monitor could not read; OpenCode's own value wins
     // for the compaction point, because that is the one OpenCode compacts by.
     const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? opencodeLimit ?? cfg.contextLimit.default;

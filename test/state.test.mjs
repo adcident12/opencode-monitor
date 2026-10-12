@@ -144,6 +144,16 @@ test('health: room before OpenCode compacts, and roughly how many requests that 
   // An input limit: less the reserve, 20 000 by default or compaction.reserved.
   assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }), 130_000);
   assert.equal(compactionPoint(200_000, { output: 8000, input: 150_000 }), 142_000);
+  // OpenCode 2: the window less compaction.buffer, or less a tenth of it (at least 16 000).
+  // The output limit plays no part; a version 1.x session keeps the 1.x rule.
+  const v2 = { version: '2.0.26' };
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { ...v2, buffer: 32_768 }), 98_304);
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, v2), 115_072);
+  assert.equal(compactionPoint(262_144, { output: 32_768, input: null }, v2), 235_930);
+  assert.equal(compactionPoint(24_000, { output: null, input: null }, v2), 21_600);
+  assert.equal(compactionPoint(200_000, { output: 8000, input: 150_000 }, v2), 134_000);
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { ...v2, auto: false }), null);
+  assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { version: '1.18.35', buffer: 32_768 }), at);
   assert.equal(compactionPoint(200_000, { output: null, input: 150_000 }, { reserved: 5000 }), 145_000);
   // OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX changes the cap; compaction.auto false means never.
   assert.equal(compactionPoint(131_072, { output: 32_768, input: null }, { outputTokenMax: 16_000 }), 115_072);

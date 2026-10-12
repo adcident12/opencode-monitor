@@ -289,6 +289,9 @@ test('an OpenCode with a later minor or major version than the one checked is fl
   assert.equal(isUntestedOpencode('1.18.99', '1.18.35'), false);
   assert.equal(isUntestedOpencode('1.19.0', '1.18.35'), true);
   assert.equal(isUntestedOpencode('2.0.0', '1.18.35'), true);
+  assert.equal(isUntestedOpencode('2.0.26'), false);
+  assert.equal(isUntestedOpencode('1.18.35'), false);
+  assert.equal(isUntestedOpencode('2.1.0'), true);
   assert.equal(isUntestedOpencode('1.15.12', '1.18.35'), false);
   assert.equal(isUntestedOpencode(null, '1.18.35'), null);
   // The snapshot carries the version of the OpenCode that wrote the newest session.

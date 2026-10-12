@@ -454,14 +454,14 @@ function longestWaits(prompts, { show, where }) {
 }
 
 /** One session's context window over its own requests, with the limits of the model it used last. */
-function contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory }) {
+function contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory, version = null }) {
   const last = own.at(-1);
   return contextTimeline({
     requests: own,
     compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
     reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
     limit: last ? contextLimit(last.provider, last.model) : null,
-    compactAt: last ? compactAt(last.provider, last.model, directory) : null,
+    compactAt: last ? compactAt(last.provider, last.model, directory, version) : null,
   });
 }
 
@@ -565,7 +565,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     mcp: mcp ? computeMcpStats({ servers: mcp.servers, calls, events: scope ? null : mcp.events, from, now }) : [],
     mcpLogFrom: mcp?.logFrom ?? null,
     // Only for one session: a context window belongs to a session, not to a period.
-    context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory }) : null,
+    context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory, version: sessionById.get(sessionId)?.version ?? null }) : null,
     work,
     speed: computeSpeed({ requests: timed, keys, show }),
     usage: {

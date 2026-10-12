@@ -5,6 +5,11 @@ on the page and printed at startup.
 
 ## Unreleased
 
+- **Where OpenCode 2 compacts.** It has a rule of its own: the window less
+  `compaction.buffer`, or less a tenth of it (at least 16,000), the output limit no part of
+  it. Read from OpenCode's own source and followed for its sessions; `compaction.buffer` is
+  read from the config. Checked against 1,644 real requests of 2.0.26. With it, 2.0.26 is the
+  release the monitor is checked against, and the notice that it is newer goes.
 - **A prompt nobody answered, dropped.** OpenCode 2 puts a project away after an hour without
   activity; a question or permission prompt left open goes with it and the session stops.
   The monitor reads that from OpenCode's log: the session says "OpenCode stopped waiting"

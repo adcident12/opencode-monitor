@@ -127,7 +127,7 @@ export function buildReplay({ tree, messages, tools, allTools = tools, spans, st
     turns: turnsIn(by(messages, root.id), now),
     context: requests.map(m => [m.time_created, tokensSent(m)]),
     contextLimit: lastModel ? contextLimit(lastModel.provider_id, lastModel.model_id) : null,
-    compactAt: lastModel ? compactAt(lastModel.provider_id, lastModel.model_id, root.directory) : null,
+    compactAt: lastModel ? compactAt(lastModel.provider_id, lastModel.model_id, root.directory, root.version ?? null) : null,
     compactions: by(compactions, root.id).map(c => c.time_created).sort((a, b) => a - b),
     plans: plansIn(by(todoWrites, root.id), show),
   };

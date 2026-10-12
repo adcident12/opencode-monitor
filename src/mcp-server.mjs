@@ -29,7 +29,7 @@ const SESSION = { type: 'string', description: 'Only this session: an id from op
  * @param {{list: (since?: number) => object[]}} deps.configChanges
  * @param {(text: string) => string} deps.redact
  */
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
@@ -71,12 +71,12 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
         const models = used.map(model => {
           const context = opencode.limits.get(model) ?? null;
           const reserve = opencode.reserves.get(model);
-          return { model, context, input: reserve?.input ?? null, output: reserve?.output ?? null, compactsAt: compactionPoint(context, reserve, { ...opencode.compaction, outputTokenMax }) };
+          return { model, context, input: reserve?.input ?? null, output: reserve?.output ?? null, compactsAt: compactionPoint(context, reserve, { ...opencode.compaction, outputTokenMax, version: opencodeVersion() }) };
         });
         return {
           models,
-          modelsNote: 'The models used in the last 30 days, most used first. compactsAt is OpenCode\'s own rule applied to the global config (a project\'s config may differ); null means the limits are not known or it never compacts on its own.',
-          compaction: { auto: opencode.compaction.auto ?? true, reserved: opencode.compaction.reserved ?? null, outputTokenMax },
+          modelsNote: 'The models used in the last 30 days, most used first. compactsAt is OpenCode\'s own rule, of the version that wrote the newest session, applied to the global config (a project\'s config may differ); null means the limits are not known or it never compacts on its own.',
+          compaction: { auto: opencode.compaction.auto ?? true, reserved: opencode.compaction.reserved ?? null, buffer: opencode.compaction.buffer ?? null, outputTokenMax, opencodeVersion: opencodeVersion() },
           mcpServers: opencode.mcp.map(m => ({ name: m.name, type: m.type, enabled: m.enabled })),
           configFiles: configFiles(cfg.opencodeConfigDir).filter(f => existsSync(f)).map(f => f.replaceAll('\\', '/')),
           configFilesNote: 'Global. A project may have its own opencode.json or .opencode/opencode.json, which is applied over these.',
