@@ -205,14 +205,19 @@ test("OpenCode 2's questions are read from the calls themselves", () => {
     { id: 'q2', v2: true, session_id: 's1', tool: 'question', status: 'running', time_created: T + 200_000, started: T + 200_100, ended: null },
     { id: 'old', session_id: 's0', tool: 'question', status: 'completed', started: T - 9000, ended: T - 8000 }, // 1.x: the log has it
     { id: 'r', v2: true, session_id: 's1', tool: 'read', status: 'completed', started: T, ended: T + 5 },
+    // Left open for an hour, then dropped by OpenCode: never answered.
+    { id: 'q3', v2: true, session_id: 's1', tool: 'question', status: 'error', error: 'Tool execution interrupted', time_created: T + 400_000, started: T + 400_100, ended: T + 4_018_100, time_updated: T + 4_018_100 },
   ];
   const { asks, replies } = questionsOf(tools);
-  assert.deepEqual(asks.map(a => [a.id, a.kind, a.t]), [['q1', 'question', T + 100], ['q2', 'question', T + 200_100]]);
+  assert.deepEqual(asks.map(a => [a.id, a.kind, a.t]), [['q1', 'question', T + 100], ['q2', 'question', T + 200_100], ['q3', 'question', T + 400_100]]);
   assert.deepEqual([...replies], [['q1', T + 188_000]]);
   const log = { asks: () => [{ t: T - 9000, kind: 'question', id: 'que_log', permission: null, patterns: '', run: 'r' }], replies: () => new Map([['que_log', T - 8000]]) };
   const all = promptsFor(log, tools);
-  const prompts = matchPrompts({ asks: all.asks, replies: all.replies, tools, eventTimes: new Map(), now: T + 300_000 });
-  assert.deepEqual(prompts.map(p => [p.id, p.part?.id, p.answeredAt == null ? null : p.waitMs]), [['que_log', 'old', 1000], ['q1', 'q1', 187_900], ['q2', 'q2', null]]);
+  const prompts = matchPrompts({ asks: all.asks, replies: all.replies, tools, eventTimes: new Map(), now: T + 5_000_000 });
+  assert.deepEqual(prompts.map(p => [p.id, p.part?.id, p.answeredAt == null ? null : p.waitMs]), [['que_log', 'old', 1000], ['q1', 'q1', 187_900], ['q2', 'q2', null], ['q3', 'q3', null]]);
+  // The dropped one waited an hour, to the moment it was dropped, and was abandoned, not answered.
+  const dropped = matchPrompts({ asks: all.asks, replies: all.replies, tools, eventTimes: new Map(), now: T + 9_000_000, movedOn: () => T + 7_000_000 }).at(-1);
+  assert.deepEqual([dropped.abandoned, dropped.answeredAt, dropped.waitMs], [true, null, 3_618_000]);
   // Nothing of OpenCode 2: the log's own lists, untouched.
-  assert.deepEqual(promptsFor(log, tools.slice(2)).asks, log.asks());
+  assert.deepEqual(promptsFor(log, tools.slice(2, 4)).asks, log.asks());
 });

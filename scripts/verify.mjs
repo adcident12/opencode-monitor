@@ -97,25 +97,36 @@ const parse = text => {
 // OpenCode 2 keeps its sessions in tables of its own, and copied every 1.x session into them.
 // Counted from there: only what is later than the last 1.x message of the same session.
 const hasV2 = all("select name from sqlite_master where type = 'table' and name in ('session_v2', 'session_message')").length === 2;
-const v2 = (hasV2 ? all(`select sm.id, sm.session_id, sm.type, sm.time_created, sm.time_updated, sm.data from session_message sm
-    where sm.time_created > coalesce((select max(m.time_created) from message m where m.session_id = sm.session_id), -1)
-    order by sm.session_id, sm.time_created, sm.seq`) : []).map(r => ({ ...r, d: parse(r.data) ?? {} }));
-const v2Replies = v2.filter(r => r.type === 'assistant');
-const v2Sessions = hasV2 ? all('select id, parent_id, time_created from session_v2 where id not in (select id from session)') : [];
+// Read again before each view: OpenCode may be writing while this runs, and a count made from
+// rows read a minute ago would be called a difference.
+let v2 = [];
+let v2Replies = [];
+let v2Sessions = [];
+let v2Calls = [];
+let v2Compactions = [];
+let sessions = [];
 const sent = d => (d.tokens?.input ?? 0) + (d.tokens?.cache?.read ?? 0) + (d.tokens?.cache?.write ?? 0);
 const mcpOf = item => (item.name === 'execute' ? (item.state?.metadata?.toolCalls ?? []).filter(c => String(c.tool).includes('.')) : []);
-/** Every tool call OpenCode 2 recorded: an execute script is the MCP calls it made, if any. */
-const v2Calls = v2Replies.flatMap(r => (r.d.content ?? []).filter(i => i.type === 'tool').flatMap(item => {
-  const at = item.time?.ran ?? item.time?.created ?? r.time_created;
-  const inner = mcpOf(item);
-  if (!inner.length) return [{ session_id: r.session_id, at, tool: { shell: 'bash', subagent: 'task' }[item.name] ?? item.name, error: item.state?.status === 'error', item }];
-  return inner.map(c => ({ session_id: r.session_id, at, tool: c.tool.replace('.', '_'), error: (c.status ?? item.state?.status) === 'error', item }));
-}));
-/** When a compaction ended: its row's last update, but never after the session's next row. */
-const v2Compactions = v2.map((r, i) => ({ r, next: v2[i + 1] })).filter(x => x.r.type === 'compaction').map(({ r, next }) => {
-  const bound = next?.session_id === r.session_id ? next.time_created : Infinity;
-  return { ...r, ended: r.d.status === 'completed' ? Math.min(r.time_updated, bound) : r.time_created };
-});
+function readV2() {
+  v2 = (hasV2 ? all(`select sm.id, sm.session_id, sm.type, sm.time_created, sm.time_updated, sm.data from session_message sm
+      where sm.time_created > coalesce((select max(m.time_created) from message m where m.session_id = sm.session_id), -1)
+      order by sm.session_id, sm.time_created, sm.seq`) : []).map(r => ({ ...r, d: parse(r.data) ?? {} }));
+  v2Replies = v2.filter(r => r.type === 'assistant');
+  v2Sessions = hasV2 ? all('select id, parent_id, time_created from session_v2 where id not in (select id from session)') : [];
+  // Every tool call OpenCode 2 recorded: an execute script is the MCP calls it made, if any.
+  v2Calls = v2Replies.flatMap(r => (r.d.content ?? []).filter(i => i.type === 'tool').flatMap(item => {
+    const at = item.time?.ran ?? item.time?.created ?? r.time_created;
+    const inner = mcpOf(item);
+    if (!inner.length) return [{ session_id: r.session_id, at, tool: { shell: 'bash', subagent: 'task' }[item.name] ?? item.name, error: item.state?.status === 'error', item }];
+    return inner.map(c => ({ session_id: r.session_id, at, tool: c.tool.replace('.', '_'), error: (c.status ?? item.state?.status) === 'error', item }));
+  }));
+  // When a compaction ended: its row's last update, but never after the session's next row.
+  v2Compactions = v2.map((r, i) => ({ r, next: v2[i + 1] })).filter(x => x.r.type === 'compaction').map(({ r, next }) => {
+    const bound = next?.session_id === r.session_id ? next.time_created : Infinity;
+    return { ...r, ended: r.d.status === 'completed' ? Math.min(r.time_updated, bound) : r.time_created };
+  });
+  sessions = [...all('select id, parent_id from session'), ...v2Sessions];
+}
 /**
  * Thinking and writing of a reply OpenCode 2 wrote. It times the reasoning to the end of the
  * whole reply and nothing after it, so the time is shared out by the length of what was
@@ -135,7 +146,7 @@ const v2Spans = r => {
 };
 const inRange = (t, from, to) => t >= from && t <= to;
 
-const sessions = [...all('select id, parent_id from session'), ...v2Sessions];
+readV2();
 const family = id => {
   const set = new Set([id]);
   for (let grew = true; grew;) {
@@ -237,6 +248,7 @@ const compare = (area, name, independent, monitor) => rows.push({ area, name, in
 async function view(area, path, ids = null) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const stats = await get(path);
+    readV2();
     const mine = count(stats.range.from, stats.range.to, ids);
     const theirs = shown(stats);
     const same = Object.keys(mine).every(k => JSON.stringify(mine[k]) === JSON.stringify(theirs[k]));
@@ -298,6 +310,7 @@ if (top) {
 
 // Sessions on the Now tab
 const state = await get('/api/state');
+readV2();
 for (const s of state.sessions.filter(x => !x.parentId).slice(0, 5)) {
   const area = `Now, "${s.title.slice(0, 30)}"`;
   const p = one(`select coalesce(sum(json_extract(data,'$.type')='tool'),0) t, coalesce(sum(json_extract(data,'$.type')='tool' and json_extract(data,'$.state.status')='error'),0) e, coalesce(sum(json_extract(data,'$.type')='compaction'),0) c from part where session_id = ?`, s.id);
@@ -316,6 +329,7 @@ for (const s of state.sessions.filter(x => !x.parentId).slice(0, 5)) {
 
 // This machine: models in use
 const setup = await get('/api/setup');
+readV2();
 for (const m of setup.models) {
   const slash = m.id.indexOf('/');
   compare('This machine', `${m.id}: replies, 30 days`, one(`select count(*) n from message where json_extract(data,'$.role')='assistant' and json_extract(data,'$.providerID')=? and json_extract(data,'$.modelID')=? and time_created >= ?`, m.id.slice(0, slash), m.id.slice(slash + 1), Date.now() - 30 * 86_400_000).n

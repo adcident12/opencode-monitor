@@ -59,6 +59,8 @@ export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = 
     if (answeredAt == null) {
       // Whichever came first: the session moving on, or the asking process going away.
       const candidates = [];
+      // OpenCode 2 says when a question ended without an answer.
+      if (ask.droppedAt != null) candidates.push(Math.max(ask.t, ask.droppedAt));
       const next = part ? movedOn(part.session_id, ask.t) : null;
       if (next != null) candidates.push(next);
       if (ask.run && liveRuns && !liveRuns.has(ask.run)) candidates.push(Math.max(ask.t, runEnds.get(ask.run) ?? ask.t));

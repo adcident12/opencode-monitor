@@ -254,7 +254,9 @@ export function withPending(log, pending) {
 
 /**
  * The questions OpenCode 2 asked you, from the calls themselves: a `question` call runs from
- * the moment it asks to the moment you answer, and the log says nothing of either.
+ * the moment it asks to the moment you answer, and the log says nothing of either. A call that
+ * ended any other way was not answered: stopped by you, or dropped by OpenCode itself, which
+ * puts a project away after an hour without activity and a question left open with it.
  * @param {object[]} tools  tool rows; only OpenCode 2's are taken
  */
 export function questionsOf(tools) {
@@ -263,8 +265,11 @@ export function questionsOf(tools) {
   for (const p of tools) {
     if (!p.v2 || p.tool !== 'question') continue;
     const t = p.started ?? p.time_created;
-    asks.push({ t, run: null, id: p.id, kind: 'question', permission: null, patterns: '', session: p.session_id, part: p.id, answeredAt: p.ended ?? null });
-    if (p.ended != null) replies.set(p.id, p.ended);
+    const answered = p.status === 'completed' && p.ended != null;
+    // Over without an answer: when, so that it is not counted as waiting until the next message.
+    const droppedAt = !answered && p.status === 'error' ? (p.ended ?? p.time_updated ?? null) : null;
+    asks.push({ t, run: null, id: p.id, kind: 'question', permission: null, patterns: '', session: p.session_id, part: p.id, answeredAt: answered ? p.ended : null, droppedAt });
+    if (answered) replies.set(p.id, p.ended);
   }
   return { asks, replies };
 }
