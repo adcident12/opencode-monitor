@@ -107,6 +107,7 @@ const hasV2 = all("select name from sqlite_master where type = 'table' and name 
 // Read again before each view: OpenCode may be writing while this runs, and a count made from
 // rows read a minute ago would be called a difference.
 let v2 = [];
+let forkedAt = new Map();
 let v2Replies = [];
 let v2Sessions = [];
 let v2Calls = [];
@@ -115,9 +116,15 @@ let sessions = [];
 const sent = d => (d.tokens?.input ?? 0) + (d.tokens?.cache?.read ?? 0) + (d.tokens?.cache?.write ?? 0);
 const mcpOf = item => (item.name === 'execute' ? (item.state?.metadata?.toolCalls ?? []).filter(c => String(c.tool).includes('.')) : []);
 function readV2() {
+  forkedAt = new Map(hasV2 && all("select name from pragma_table_info('session_v2') where name = 'fork_session_id'").length
+    ? all('select id, time_created from session_v2 where fork_session_id is not null').map(s => [s.id, s.time_created])
+    : []);
   v2 = (hasV2 ? all(`select sm.id, sm.session_id, sm.type, sm.time_created, sm.time_updated, sm.data from session_message sm
       where sm.time_created > coalesce((select max(m.time_created) from message m where m.session_id = sm.session_id), -1)
-      order by sm.session_id, sm.time_created, sm.seq`) : []).map(r => ({ ...r, d: parse(r.data) ?? {} }));
+      order by sm.session_id, sm.time_created, sm.seq`) : [])
+    // A fork's copy of its parent's history is the parent's work.
+    .filter(r => !forkedAt.has(r.session_id) || r.time_created >= forkedAt.get(r.session_id))
+    .map(r => ({ ...r, d: parse(r.data) ?? {} }));
   v2Replies = v2.filter(r => r.type === 'assistant');
   v2Sessions = hasV2 ? all('select id, parent_id, time_created from session_v2 where id not in (select id from session)') : [];
   // Every tool call OpenCode 2 recorded: an execute script is the MCP calls it made, if any.

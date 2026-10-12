@@ -5,6 +5,15 @@ on the page and printed at startup.
 
 ## Unreleased
 
+- **Read from OpenCode 2's own source** (2.0.26), and changed where the monitor had guessed:
+  - A shell command OpenCode 2 runs in the background says so (`background: true`), with
+    no `&` in it: such commands are flagged as background now, for the review and for the
+    processes left running. 18 on this machine had been missed.
+  - A fork copies its parent's history into itself; that history is counted once, in the
+    parent.
+  - The project is put away after exactly 60 minutes without activity, not configurable;
+    OpenCode records only that the session was interrupted, not why, which is why the
+    monitor reads it from the log.
 - **Where OpenCode 2 compacts.** It has a rule of its own: the window less
   `compaction.buffer`, or less a tenth of it (at least 16,000), the output limit no part of
   it. Read from OpenCode's own source and followed for its sessions; `compaction.buffer` is

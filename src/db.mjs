@@ -115,7 +115,12 @@ function mergeSessions(v1, v2) {
  */
 function openV2(db, columns) {
   if (!Object.keys(V2_TABLES).every(table => columns[table].size)) return null;
-  const NEWER = 'not exists (select 1 from message m where m.session_id = sm.session_id and m.time_created >= sm.time_created)';
+  // A fork copies its parent's history into itself, each row as it was: those rows are the
+  // parent's work, counted there. Only what the fork did itself is read for it.
+  const FORKED = columns.session_v2.has('fork_session_id')
+    ? ' and not exists (select 1 from session_v2 f where f.id = sm.session_id and f.fork_session_id is not null and sm.time_created < f.time_created)'
+    : '';
+  const NEWER = `not exists (select 1 from message m where m.session_id = sm.session_id and m.time_created >= sm.time_created)${FORKED}`;
   const ROWS = `select sm.id, sm.session_id, sm.type, sm.seq, sm.time_created, sm.time_updated, sm.data from session_message sm
     where sm.type in ('user','assistant','synthetic','compaction','idle') and ${NEWER}`;
   const ORDER = 'order by sm.session_id, sm.time_created, sm.seq';

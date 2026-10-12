@@ -90,6 +90,8 @@ function classifyCommand(cmd, add) {
 const BY_TOOL = {
   bash: (part, add) => {
     if (part.cmd) classifyCommand(part.cmd, add);
+    // OpenCode 2 says so itself: `background: true`, and nothing in the command shows it.
+    if (part.background === true && !part.cmd?.match(BACKGROUND)) add('background', 'background');
   },
   read: (part, add) => {
     if (part.file && SECRET_FILE.test(part.file)) add('secret_file', 'secret_file');

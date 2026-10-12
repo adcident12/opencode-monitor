@@ -71,6 +71,8 @@ function toolRow(row, item) {
     started: num(time.ran) ?? (running ? null : num(time.created)),
     ended: running ? null : num(time.completed),
     cmd: text(input.command, 4000),
+    // OpenCode 2's shell runs a command in the background when asked, with no `&` in it.
+    background: input.background === true,
     file: text(input.path, 1000) ?? text(input.filePath, 1000),
     question: text(input.questions?.[0]?.question, 1000),
     descr: text(input.description, 1000),

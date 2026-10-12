@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { mcpCallsOf, normalizeV2, toolRowsOf } from '../src/db-v2.mjs';
 import { openDb } from '../src/db.mjs';
+import { classifyPart } from '../src/audit.mjs';
 import { turnsOfSession } from '../src/work.mjs';
 
 const T = 1_791_690_000_000;
@@ -71,6 +72,9 @@ test('a reply becomes a message, its timing, its spans, its tool calls and the f
   assert.deepEqual(out.spans.map(s => [s.type, s.s]), [['reasoning', T + 2000]]);
   assert.ok(out.spans[0].e > T + 2000 && out.spans[0].e < T + 9100);
   // Renamed tools keep their 1.x names; `path` is the file.
+  assert.deepEqual(out.tools.map(t => t.background), [false, false, false]);
+  const served = normalizeV2([reply('s', T, [tool('shell', { command: 'npx http-server -p 8765', background: true }, { created: T + 1, ran: T + 2, completed: T + 3 })])]).tools[0];
+  assert.deepEqual([served.tool, served.background, classifyPart(served).map(f => f.kind)], ['bash', true, ['background']]);
   assert.deepEqual(out.tools.map(t => [t.tool, t.status, t.cmd, t.file, t.descr]), [
     ['bash', 'completed', 'ls', null, null],
     ['read', 'completed', null, 'src/a.js', null],
@@ -179,6 +183,34 @@ test('a database made by OpenCode 2 alone, with none of the 1.x tables, is read 
   half.close();
   assert.throws(() => openDb(bad), /table "session" is missing/);
   rmSync(bad, { recursive: true, force: true });
+});
+
+test('a fork is its own work only: the history it copied from its parent is counted there', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-fork-'));
+  const raw = new DatabaseSync(join(dir, 'opencode.db'));
+  raw.exec(`create table session_v2 (id text primary key, parent_id text, fork_session_id text, directory text, title text, version text, model text, time_created integer, time_updated integer, time_compacting integer);
+    create table session_message (id text primary key, session_id text, type text, seq integer, time_created integer, time_updated integer, data text);`);
+  const session = raw.prepare('insert into session_v2 values (?,?,?,?,?,?,?,?,?,?)');
+  session.run('p', null, null, '/w', 'Plan', '2.0.26', null, T, T + 50_000, null);
+  session.run('f', null, 'p', '/w', 'Plan (fork #1)', '2.0.26', null, T + 60_000, T + 90_000, null);
+  const put = (r, id = r.id) => raw.prepare('insert into session_message values (?,?,?,?,?,?,?)').run(id, r.session_id, r.type, r.seq, r.time_created, r.time_updated, r.data);
+  const history = [row('p', 'user', T, { text: 'go' }), reply('p', T + 100, [tool('shell', { command: 'ls' }, { created: T + 500, ran: T + 600, completed: T + 700 })])];
+  for (const r of history) {
+    put(r);
+    put({ ...r, session_id: 'f' }, `copy_${r.id}`); // as OpenCode copies it: same times, same data
+  }
+  put(row('f', 'user', T + 70_000, { text: 'and now' }));
+  put(reply('f', T + 70_100, [tool('shell', { command: 'pwd' }, { created: T + 70_500, ran: T + 70_600, completed: T + 70_700 })], { finish: 'stop' }));
+  raw.close();
+  const db = openDb(dir);
+  try {
+    assert.deepEqual(db.stats.tools(0).map(t => `${t.session_id}:${t.cmd}`).sort(), ['f:pwd', 'p:ls']);
+    assert.deepEqual(db.stats.messages(0).filter(m => m.session_id === 'f').map(m => m.time_created), [T + 70_000, T + 70_100]);
+    assert.deepEqual(db.parts('f').filter(p => p.type === 'tool').map(p => p.cmd), ['pwd']);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('one database with both versions: nothing OpenCode 2 copied from 1.x is counted twice', () => {
