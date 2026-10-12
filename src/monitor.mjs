@@ -282,7 +282,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     const messages = db.lastMessages(session.id);
     const lastId = messages.at(-1)?.id;
     if (probe.running !== false && parts.some(p => p.v2 && p.message_id === lastId && (p.status === 'running' || p.status === 'pending'))) runningV2.add(session.id);
-    const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running });
+    const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running, evictions: log.evictions?.() ?? [] });
     const { model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
     const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt, autoCompact });
     const progress = deriveProgress({ parts, messages, todos: db.todos(session.id) });

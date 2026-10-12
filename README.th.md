@@ -301,7 +301,7 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 | `history.retentionDays` | 30 | เก็บการเปลี่ยนสถานะไว้ใน `data/history.jsonl` นานเท่าไร |
 | `opencodeApi.enabled` | true | เฉพาะ OpenCode 2: รัน `opencode api` เพื่อดูคำขออนุญาตที่กำลังรออยู่ (ดู ข้อมูลมาจากไหน) |
 | `opencodeApi.command` | `opencode` | คำสั่งที่ใช้เรียก OpenCode บนเครื่องนี้ |
-| `notify.on` | `["waiting","stuck"]` | สถานะที่ทำให้แจ้งเตือน เพิ่ม `"compact_soon"` เพื่อให้แจ้งหนึ่งครั้งเมื่อ session ใกล้จะถูก compact |
+| `notify.on` | `["waiting","stuck","dropped"]` | สิ่งที่ทำให้แจ้งเตือน `"dropped"`: OpenCode 2 เลิกรอคำถามหรือคำขออนุญาตที่ไม่มีใครตอบ (มันเก็บโปรเจกต์เมื่อไม่มีความเคลื่อนไหวครบหนึ่งชั่วโมง) และ session หยุด เพิ่ม `"compact_soon"` เพื่อให้แจ้งหนึ่งครั้งเมื่อ session ใกล้จะถูก compact |
 | `notify.repeatMinutes` | 30 | เตือนซ้ำขณะที่สถานะยังอยู่ ใส่ 0 เพื่อปิดการเตือนซ้ำ |
 | `notify.desktop` | `true` | การแจ้งเตือนบน desktop |
 | `notify.discord.webhookUrl` | `""` | Discord webhook ตั้งผ่าน `OPENCODE_MONITOR_DISCORD_WEBHOOK` ได้ด้วย |

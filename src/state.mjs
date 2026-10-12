@@ -45,8 +45,8 @@ function findAsk(asks, p) {
  * @param {object} input.thresholds
  * @param {boolean|null} input.opencodeRunning null = unknown, treated as running
  */
-export function deriveState({ session, parts, messages, asks, now, thresholds, opencodeRunning }) {
-  const result = live({ session, parts, messages, asks, now, thresholds });
+export function deriveState({ session, parts, messages, asks, now, thresholds, opencodeRunning, evictions = [] }) {
+  const result = live({ session, parts, messages, asks, now, thresholds, evictions });
   // Nothing can be working, waiting, or stuck if OpenCode itself is gone.
   if (opencodeRunning === false && ['working', 'waiting', 'stuck'].includes(result.state)) {
     return { state: 'idle', reason: 'not_running', since: result.since, current: result.current ?? null };
@@ -54,11 +54,20 @@ export function deriveState({ session, parts, messages, asks, now, thresholds, o
   return result;
 }
 
-/** The last reply ended in an error: stopped by you, or failed. */
-function afterError(last, since) {
-  return last.error === 'MessageAbortedError'
-    ? { state: 'idle', reason: 'aborted', since }
-    : { state: 'error', reason: 'message_error', detail: last.error, since };
+// OpenCode logs that it put the project away within a moment of interrupting the reply.
+const EVICT_MATCH_MS = 5000;
+const sameDirectory = (a, b) => String(a ?? '').replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase() === String(b ?? '').replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+
+/**
+ * The last reply ended in an error: stopped by you, dropped by OpenCode, or failed.
+ * Dropped: OpenCode 2 put the project away, after an hour without activity, at the moment the
+ * reply was interrupted. What it was waiting for (a question, a permission) went unanswered.
+ */
+function afterError(last, since, session, evictions) {
+  if (last.error !== 'MessageAbortedError') return { state: 'error', reason: 'message_error', detail: last.error, since };
+  const at = last.completed ?? since;
+  const dropped = evictions.some(e => Math.abs(e.t - at) <= EVICT_MATCH_MS && sameDirectory(e.directory, session.directory));
+  return { state: 'idle', reason: dropped ? 'dropped' : 'aborted', since };
 }
 
 /** A running call that is waiting for you: a question first, then a permission prompt. */
@@ -107,7 +116,7 @@ function owedReason(last) {
 }
 
 // The rules, in order: the first that applies decides.
-function live({ session, parts, messages, asks, now, thresholds }) {
+function live({ session, parts, messages, asks, now, thresholds, evictions }) {
   const last = messages.at(-1);
   if (!last) return { state: 'idle', reason: 'empty', since: session.time_created };
 
@@ -115,7 +124,7 @@ function live({ session, parts, messages, asks, now, thresholds }) {
   for (const p of parts) if (p.time_updated > lastActivity) lastActivity = p.time_updated;
   const turnStart = messages.findLast(m => m.role === 'user')?.time_created ?? messages[0].time_created;
 
-  if (last.role === 'assistant' && last.error) return afterError(last, lastActivity);
+  if (last.role === 'assistant' && last.error) return afterError(last, lastActivity, session, evictions);
 
   // Running tools on older messages are leftovers from a crash or abort, not live work.
   const running = last.role === 'assistant' ? parts.filter(p => p.message_id === last.id && isRunningTool(p)) : [];

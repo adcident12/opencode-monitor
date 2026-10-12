@@ -18,6 +18,25 @@ const MCP = /^timestamp=(\S+) level=\S+ run=(\S+) message="(server unavailable|M
 // OpenCode that holds sessions. A run counts from its second line on.
 const CLI_START = /^timestamp=\S+ level=\S+ run=\S+ message="cli starting" /;
 
+// OpenCode 2 puts a project away after an hour without activity. A question or a permission
+// prompt left open goes with it: its call is interrupted and the session stops.
+const EVICTED = /^timestamp=(\S+) level=\S+ run=\S+ message="location services evicted" directory=("(?:[^"\\]|\\.)*"|\S+)/;
+const MAX_EVICTIONS = 500;
+
+/** { t, directory } of a "location services evicted" line, or null. */
+export function parseEvictedLine(line) {
+  const m = EVICTED.exec(line);
+  const t = m ? Date.parse(m[1]) : Number.NaN;
+  if (Number.isNaN(t)) return null;
+  let directory = m[2];
+  try {
+    if (directory.startsWith('"')) directory = JSON.parse(directory);
+  } catch {
+    return null;
+  }
+  return { t, directory };
+}
+
 // What OpenCode logs last when it exits by itself.
 const DISPOSE = /^timestamp=\S+ level=\S+ run=\S+ message="disposing (?:all instances|instance)"/;
 // A few lines can still follow the last "disposing" line of a run that has ended.
@@ -92,6 +111,7 @@ export function createLogTail(path) {
   let carry = '';
   let asks = [];
   let mcpEvents = []; // every MCP failure line read, oldest first
+  let evictions = []; // projects OpenCode 2 put away, oldest first
   let mcpMarked = []; // the same, each marked as a shutdown or not
   let mcpFailures = new Map(); // server name -> its latest failure in a live run that was not a shutdown
   let firstAt = null; // time of the oldest line read: nothing is known from before it
@@ -107,6 +127,7 @@ export function createLogTail(path) {
     carry = '';
     asks = [];
     mcpEvents = [];
+    evictions = [];
     mcpMarked = [];
     mcpFailures = new Map();
     firstAt = null;
@@ -144,6 +165,10 @@ export function createLogTail(path) {
     } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
       const failure = parseMcpLine(line);
       if (failure) mcpEvents.push(failure);
+    } else if (line.includes('message="location services evicted"')) {
+      const evicted = parseEvictedLine(line);
+      if (evicted) evictions.push(evicted);
+      if (evictions.length > MAX_EVICTIONS) evictions = evictions.slice(-MAX_EVICTIONS);
     }
   }
 
@@ -185,6 +210,7 @@ export function createLogTail(path) {
     poll,
     asks: () => asks,
     replies: () => replies,
+    evictions: () => evictions,
     runEnds: () => runEnds,
     mcpFailures: () => mcpFailures,
     mcpEvents: () => mcpMarked,

@@ -3,6 +3,14 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## Unreleased
+
+- **A prompt nobody answered, dropped.** OpenCode 2 puts a project away after an hour without
+  activity; a question or permission prompt left open goes with it and the session stops.
+  The monitor reads that from OpenCode's log: the session says "OpenCode stopped waiting"
+  where it said "Stopped by the user", and a notification is sent once (`"dropped"` in
+  `notify.on`, on by default).
+
 ## 11.3.1 - 2026-10-12
 
 A question nobody answered is not an answered one.

@@ -65,9 +65,9 @@ function sampleSession(kind, title, now) {
     id, parentId: null, state, since: now - 65_000, project: 'opencode-monitor', title,
     health: { hints: [], compactions: 0, compaction: null, compacting: false, ...health },
   });
-  return kind === 'compact_soon'
-    ? sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } })
-    : sample(`test-${kind}`, kind);
+  if (kind === 'compact_soon') return sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } });
+  if (kind === 'dropped') return { ...sample('test-dropped', 'idle'), reason: 'dropped' };
+  return sample(`test-${kind}`, kind);
 }
 
 /**
@@ -86,7 +86,12 @@ export async function testNotify(cfg, t, send = { desktop: desktopNotify, discor
   const notifier = createNotifier(cfg, t, send, { quiet: true });
   const now = Date.now();
   notifier([], now); // what is there at startup is never announced; start with nothing
-  for (const kind of cfg.on.length ? cfg.on : ['waiting']) notifier([sampleSession(kind, t('notify.test.body'), now)], now);
+  for (const kind of cfg.on.length ? cfg.on : ['waiting']) {
+    const session = sampleSession(kind, t('notify.test.body'), now);
+    // "dropped" is told of a session that was there before: first seen at work.
+    if (kind === 'dropped') notifier([{ ...session, state: 'working', reason: 'tool' }], now);
+    notifier([session], now);
+  }
 
   // Each channel reports back in its own time.
   const deadline = Date.now() + waitMs;
@@ -147,6 +152,11 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
     deliver(session.state, t(`notify.${session.state}`), lines, now, cfg.discord.includeDetail && detail ? '`' + detail.replaceAll('`', "'") + '`' : '');
   }
 
+  // Not a state you wait in: OpenCode gave up on a prompt nobody answered, and the session stopped.
+  function dropped(session, now) {
+    deliver('dropped', t('notify.dropped'), [`${session.project} — ${session.title}`, t('notify.dropped.body')], now);
+  }
+
   // Once per compaction: the session is close to the point where OpenCode compacts it.
   function compactSoon(session, now) {
     const c = session.health?.compaction;
@@ -186,7 +196,10 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   /** Tells about a session's state when it is one you asked for and it is new, or due again. */
   function onState(session, now) {
     const before = seen.get(session.id);
-    const entry = { state: session.state, notifiedAt: before?.notifiedAt ?? 0 };
+    const isDropped = session.state === 'idle' && session.reason === 'dropped';
+    const entry = { state: session.state, notifiedAt: before?.notifiedAt ?? 0, dropped: isDropped };
+    // Told once, when it happens: not for what was already so when the monitor started.
+    if (isDropped && before && !before.dropped && !baseline && cfg.on.includes('dropped')) dropped(session, now);
     const wanted = cfg.on.includes(session.state);
     const changed = before?.state !== session.state;
     const due = cfg.repeatMinutes > 0 && now - entry.notifiedAt >= cfg.repeatMinutes * 60_000;
