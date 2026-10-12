@@ -3,6 +3,17 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.3.1 - 2026-10-12
+
+A question nobody answered is not an answered one.
+
+- OpenCode 2 puts a project away after an hour without activity, and a question left open
+  goes with it: the call ends, interrupted, and the session stops. Stats counted that
+  question as answered after an hour. It is counted as never answered now, waiting until
+  the moment it was dropped; so is one you stopped yourself.
+- `npm run verify` reads OpenCode 2's rows again before each view. While OpenCode was
+  writing, a count made from rows read a minute before was reported as a difference.
+
 ## 11.3.0 - 2026-10-11
 
 OpenCode 2, read next to 1.x.
