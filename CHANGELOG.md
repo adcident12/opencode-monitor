@@ -25,6 +25,9 @@ OpenCode 2, read next to 1.x.
 - A session of OpenCode 2 that is compacting says so, and what the compaction cost is
   counted. An `execute` script that was interrupted, or is still running, is one call: no MCP
   call is counted for it unless OpenCode lists it.
+- The compaction point shown is 1.x's rule. OpenCode 2 compacts a little sooner about half
+  the time (18 of 33 automatic compactions before it, the earliest 5% before), so the notice
+  that 2.x is newer than the release the monitor was checked against stays.
 - Thinking and writing are an estimate for OpenCode 2: it times them as one, so the time is
   shared out by the length of what was written (on 1.x data, 106% of the thinking and 95% of
   the writing).
