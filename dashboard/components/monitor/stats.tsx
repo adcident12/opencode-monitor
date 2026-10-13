@@ -358,12 +358,10 @@ function Figures({ stats }: Readonly<{ stats: StatsData }>) {
               <li key={`${w.at}-${i}`} className="space-y-1 py-2.5">
                 <div className={ROW}>
                   <span className="font-medium tabular-nums text-waiting">{duration(w.waitMs)}</span>
-                  <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span className="text-sm">{w.kind === "question" ? t("stats.question") : t("stats.permission", { permission: w.permission ?? "" })}</span>
-                    {!w.answered && <span className="text-xs text-muted-foreground">{t(w.abandoned ? "stats.abandoned" : "stats.stillOpen")}</span>}
-                  </span>
+                  <span className="min-w-0 text-sm [overflow-wrap:anywhere]">{w.kind === "question" ? t("stats.question") : t("stats.permission", { permission: w.permission ?? "" })}</span>
                   <When at={w.at} project={w.project} />
                 </div>
+                {!w.answered && <p className="pl-[4.5rem] text-xs text-muted-foreground">{t(w.abandoned ? "stats.abandoned" : "stats.stillOpen")}</p>}
                 {w.detail && <Code className="pl-[4.5rem] text-muted-foreground">{w.detail}</Code>}
               </li>
             ))}

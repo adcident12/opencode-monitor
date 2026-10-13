@@ -19,12 +19,16 @@ export function loadTranslator(lang) {
   const read = code => JSON.parse(readFileSync(join(ROOT, 'i18n', `${code}.json`), 'utf8'));
   const fallback = read('en');
   let strings = fallback;
+  let own = fallback; // the language's own strings, for the forms only it has
   if (/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(lang) && lang !== 'en') {
     try {
-      strings = { ...fallback, ...read(lang) };
+      own = read(lang);
+      strings = { ...fallback, ...own };
     } catch {
       console.warn(`No i18n/${lang}.json; using English.`);
     }
   }
-  return (key, vars = {}) => (strings[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '');
+  // "key.one" is the form for exactly one, in a language that has one ("1 file", not "1 files").
+  const pick = (key, vars) => (vars.n === 1 && own[`${key}.one`] != null ? own[`${key}.one`] : strings[key]);
+  return (key, vars = {}) => (pick(key, vars) ?? key).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '');
 }

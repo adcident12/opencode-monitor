@@ -148,7 +148,8 @@ function live({ session, parts, messages, asks, now, thresholds, evictions }) {
 // Short text describing what a tool call is doing. Raw: redact before showing.
 export function describePart(p) {
   if (!p) return '';
-  return p.cmd ?? p.file ?? p.question ?? p.descr ?? p.input ?? '';
+  const input = p.input === '{}' ? null : p.input; // a call still being written has none yet
+  return p.cmd ?? p.file ?? p.question ?? p.descr ?? (p.tool === 'skill' ? p.skill : null) ?? p.code ?? input ?? '';
 }
 
 /**

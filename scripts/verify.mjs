@@ -92,6 +92,13 @@ const one = (sql, ...a) => db.prepare(sql).get(...a);
 const all = (sql, ...a) => db.prepare(sql).all(...a);
 const START = `coalesce(json_extract(data,'$.state.time.start'), time_created)`;
 const SENT = `coalesce(json_extract(data,'$.tokens.input'),0)+coalesce(json_extract(data,'$.tokens.cache.read'),0)+coalesce(json_extract(data,'$.tokens.cache.write'),0)`;
+// A path inside the session's project, as the project sees it: one file however it was written.
+const underRoot = (path, root) => {
+  const p = String(path).replaceAll('\\', '/');
+  const r = String(root ?? '').replaceAll('\\', '/').replace(/\/+$/, '');
+  const inside = r && (process.platform === 'win32' ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`));
+  return inside ? p.slice(r.length + 1) : p;
+};
 const fold = path => (process.platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path);
 const parse = text => {
   try {
@@ -137,7 +144,8 @@ function readV2() {
   // When a compaction ended: its row's last update, but never after the session's next row.
   v2Compactions = v2.map((r, i) => ({ r, next: v2[i + 1] })).filter(x => x.r.type === 'compaction').map(({ r, next }) => {
     const bound = next?.session_id === r.session_id ? next.time_created : Infinity;
-    return { ...r, ended: r.d.status === 'completed' ? Math.min(r.time_updated, bound) : r.time_created };
+    const going = r.d.status === 'running' || r.d.status === 'pending';
+    return { ...r, ended: going ? r.time_created : Math.min(r.time_updated, bound) };
   });
   sessions = [...all('select id, parent_id from session'), ...v2Sessions];
 }
@@ -337,7 +345,7 @@ for (const s of state.sessions.filter(x => !x.parentId).slice(0, 5)) {
     ...all(`select json_extract(data,'$.files') f from part where session_id = ? and json_extract(data,'$.type')='patch'`, s.id).flatMap(r => parse(r.f) ?? []),
     ...calls.filter(c => ['edit', 'write', 'multiedit', 'apply_patch'].includes(c.tool) && c.item.state?.status === 'completed').map(c => c.item.state.input?.path ?? c.item.state.input?.filePath).filter(Boolean),
     ...v2Replies.filter(r => r.session_id === s.id).flatMap(r => r.d.snapshot?.files ?? []),
-  ].map(fold));
+  ].map(f => fold(underRoot(f, s.directory))));
   compare(area, 'files touched', files.size, s.work.files.count);
 }
 

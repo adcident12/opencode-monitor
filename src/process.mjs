@@ -33,17 +33,26 @@ export function matchProcesses(output, names, platform = process.platform, ownPi
   return false;
 }
 
-/** running: true / false / null (not checked yet or the check itself failed). */
-export function createProcessProbe(names, { enabled = true, everyMs = 10_000 } = {}) {
+/**
+ * running: true / false / null (not checked yet or the check itself failed).
+ * Gone only when two lists in a row do not have it: one list without it, while OpenCode ran on,
+ * was seen once on a busy machine, and every working session was then shown as "OpenCode
+ * closed" for ten seconds and recorded so in the history.
+ */
+export function createProcessProbe(names, { enabled = true, everyMs = 10_000, run = list } = {}) {
   const probe = { running: enabled ? null : true, refresh: async () => {} };
   if (!enabled) return probe;
   let last = 0;
   let busy = false;
+  let missed = 0;
   probe.refresh = async () => {
     if (busy || Date.now() - last < everyMs) return;
     busy = true;
     try {
-      probe.running = matchProcesses(await list(), names);
+      const found = matchProcesses(await run(), names);
+      missed = found ? 0 : missed + 1;
+      if (found) probe.running = true;
+      else if (missed >= 2) probe.running = false;
     } catch {
       probe.running = null;
     } finally {

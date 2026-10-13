@@ -7,6 +7,7 @@ import { clip } from './redact.mjs';
 import { createServerMatcher, faultOf } from './mcp.mjs';
 import { compactionPoint } from './opencode-config.mjs';
 import { OUTPUT_TAIL_CHARS } from './db.mjs';
+import { fileKey, inProject } from './work.mjs';
 
 const SUMMARY_CHARS = 240;
 const OUTPUT_LINES = 6;
@@ -14,10 +15,11 @@ const REVIEW_GROUPS = 40;
 const REVIEW_EXAMPLES = 25;
 const FILE_TOOLS = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
 
-// The same file arrives from edit tools and from patches written differently (slashes, and on
-// Windows, letter case). One entry per file, shown as first seen, dated by the latest touch.
-function touch(files, path, at) {
-  const key = process.platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path;
+// The same file arrives from edit tools and from patches written differently (relative or
+// absolute, slashes, and on Windows, letter case). One entry per file, shown as first seen,
+// dated by the latest touch.
+function touch(files, path, at, directory) {
+  const key = fileKey(inProject(path, directory));
   const entry = files.get(key);
   files.set(key, { path: entry?.path ?? path, at: Math.max(at, entry?.at ?? 0) });
 }
@@ -88,15 +90,15 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
   // Per-session facts that only change when parts change: flagged calls, files touched,
   // and when each tool last worked or last found its server gone. Kept per tool name, not
   // per MCP server: which server a tool belongs to can change when a project config does.
-  function digestOf(sorted) {
+  function digestOf(sorted, directory) {
     const flagged = [];
     const files = new Map(); // path -> last touched
     const toolUse = new Map(); // tool name -> { okAt, connErrAt }
     for (const p of sorted) {
       if (p.type === 'patch' && p.fileList) {
-        for (const file of p.fileList) touch(files, file, p.time_created);
+        for (const file of p.fileList) touch(files, file, p.time_created, directory);
       } else if (p.type === 'tool') {
-        if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) touch(files, p.file, p.time_updated);
+        if (FILE_TOOLS.has(p.tool) && p.status === 'completed' && p.file) touch(files, p.file, p.time_updated, directory);
         if (p.flags.length) flagged.push(p);
         noteToolUse(toolUse, p);
       }
@@ -104,7 +106,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     return { flagged, files, toolUse };
   }
 
-  function loadParts(sessionId) {
+  function loadParts(sessionId, directory) {
     const stats = db.partStats(sessionId);
     let entry = cache.get(sessionId);
     const merge = (rows, into) => {
@@ -124,7 +126,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
         if (row.time_updated > into.maxUpdated) into.maxUpdated = row.time_updated;
       }
       into.sorted = [...into.byId.values()].sort((a, b) => a.time_created - b.time_created || (a.id < b.id ? -1 : 1));
-      into.digest = digestOf(into.sorted);
+      into.digest = digestOf(into.sorted, directory);
     };
     const full = () => {
       entry = { byId: new Map(), sorted: [], maxUpdated: 0, digest: null };
@@ -278,7 +280,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
   const runningV2 = new Set(); // sessions of this reading whose last reply has an OpenCode 2 call running
 
   function buildSession(session, now, asks) {
-    const { sorted: parts, maxUpdated, digest } = loadParts(session.id);
+    const { sorted: parts, maxUpdated, digest } = loadParts(session.id, session.directory);
     const messages = db.lastMessages(session.id);
     const lastId = messages.at(-1)?.id;
     if (probe.running !== false && parts.some(p => p.v2 && p.message_id === lastId && (p.status === 'running' || p.status === 'pending'))) runningV2.add(session.id);

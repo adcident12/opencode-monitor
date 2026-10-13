@@ -116,8 +116,9 @@ test('a compaction is a compaction and a reply of the compaction agent; an inter
   const running = normalizeV2([row('s', 'compaction', T, { status: 'running', reason: 'auto', summary: '' })]).messages[0];
   assert.deepEqual([running.compacting, running.completed, running.finish, running.model_id, running.tokens_input], [true, null, null, null, null]);
   // One that failed is not compacting, and has no end of its own.
-  const failed = normalizeV2([row('s', 'compaction', T, { status: 'error', reason: 'auto' })]).messages[0];
-  assert.deepEqual([failed.compacting, failed.completed], [false, null]);
+  const failed = normalizeV2([row('s', 'compaction', T, { status: 'failed', reason: 'auto', error: { type: 'compaction.interrupted', message: 'Compaction was interrupted' } })]).messages[0];
+  // It ended when its row last changed, interrupted: never drawn as compacting until now.
+  assert.deepEqual([failed.compacting, failed.completed, failed.finish], [false, T, 'error']);
   assert.equal(out.messages.filter(m => m.synthetic).length, 1);
   assert.equal(out.messages.at(-1).error_name, 'MessageAbortedError');
   // A reply still being written has no token count yet: nothing is said about the context.

@@ -3,7 +3,7 @@
 import { promptFits } from './audit.mjs';
 import { askIsFor } from './state.mjs';
 import { computeMcpStats } from './mcp.mjs';
-import { agentsOf, filesOf, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
+import { agentsOf, fileKey, filesOf, inProject, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
 const ASK_MATCH_MS = 2000;
 // An update to a tool call this soon after its prompt is the prompt being drawn, not answered.
@@ -333,7 +333,8 @@ function tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns
       b.prompts++;
       b.waitMs += p.waitMs;
     }
-    if (p.part) waitByPart.set(p.part.id, (waitByPart.get(p.part.id) ?? 0) + (p.answeredAt ? p.waitMs : 0));
+    // Answered or given up on, the time it waited was yours, not the call's.
+    if (p.part) waitByPart.set(p.part.id, (waitByPart.get(p.part.id) ?? 0) + (p.answeredAt != null || p.abandoned ? p.waitMs : 0));
   }
   return { prompts, all, waitByPart, deadAt };
 }
@@ -368,10 +369,16 @@ function countCall(day, entry, p, { left, runMs }, stuckMs) {
 const countOne = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
 
 /** What the call was for: exploring (with graft or without), reading a file, loading a skill. */
-function countUse(p, { explore, reads, skills }) {
+function countUse(p, { explore, reads, readNames, skills, dirOf }) {
   if (isGraft(p.tool)) explore.graft++;
   else if (isExploreTool(p.tool)) explore.other++;
-  if (p.tool === 'read' && p.file) countOne(reads, `${p.session_id}|${p.file}`);
+  if (p.tool === 'read' && p.file) {
+    // One file however its path was written: relative, absolute, either slash or case.
+    const name = inProject(p.file, dirOf(p.session_id));
+    const key = `${p.session_id}|${fileKey(name)}`;
+    if (!readNames.has(key)) readNames.set(key, name);
+    countOne(reads, key);
+  }
   if (p.tool === 'skill' && p.skill) countOne(skills, p.skill);
 }
 
@@ -379,7 +386,9 @@ function countUse(p, { explore, reads, skills }) {
 function tallyTools(ctx, tools, timing, stuckMs) {
   const perTool = new Map();
   const slow = [];
-  const reads = new Map(); // session|file -> count
+  const reads = new Map(); // session|file key -> count
+  const readNames = new Map(); // session|file key -> the path as first written
+  const dirOf = id => ctx.sessionById.get(id)?.directory;
   const skills = new Map();
   const explore = { graft: 0, other: 0 };
   const calls = []; // every call counted below, for the per-server figures
@@ -402,9 +411,9 @@ function tallyTools(ctx, tools, timing, stuckMs) {
     countCall(b, entry, p, run, stuckMs);
     if (run.runMs != null) slow.push({ p, runMs: run.runMs, running: run.unfinished });
     calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: run.unfinished ? null : run.runMs });
-    countUse(p, { explore, reads, skills });
+    countUse(p, { explore, reads, readNames, skills, dirOf });
   }
-  return { perTool, slow, reads, skills, explore, calls, perRoot };
+  return { perTool, slow, reads, readNames, skills, explore, calls, perRoot };
 }
 
 const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tokens: 0, cost: 0 });
@@ -459,7 +468,7 @@ function contextOfSession({ sessionId, own, compactions, tools, from, contextLim
   return contextTimeline({
     requests: own,
     compactions: compactions.filter(c => c.session_id === sessionId && c.time_created >= from).map(c => c.time_created).sort((a, b) => a - b),
-    reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: p.file })).sort((a, b) => a.t - b.t),
+    reads: tools.filter(p => p.session_id === sessionId && p.tool === 'read' && p.file && p.status === 'completed').map(p => ({ t: startOf(p), file: fileKey(inProject(p.file, directory)) })).sort((a, b) => a.t - b.t),
     limit: last ? contextLimit(last.provider, last.model) : null,
     compactAt: last ? compactAt(last.provider, last.model, directory, version) : null,
   });
@@ -513,7 +522,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const { usage, startSizes, timed, own } = tallyRequests(ctx, messages, steps);
   const movedOn = nextMessageFinder(messages);
   const { prompts, all: allPrompts, waitByPart, deadAt } = tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope });
-  const { perTool, slow, reads, skills, explore, calls, perRoot } = tallyTools(ctx, tools, { movedOn, deadAt, waitByPart }, stuckMs);
+  const { perTool, slow, reads, readNames, skills, explore, calls, perRoot } = tallyTools(ctx, tools, { movedOn, deadAt, waitByPart }, stuckMs);
 
   const sum = key => [...daily.values()].reduce((n, d) => n + d[key], 0);
   const answered = prompts.filter(p => p.answeredAt != null);
@@ -539,7 +548,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
 
   const effort = effortPerSession(ctx, { messages, compactions, prompts: allPrompts });
   // A path inside the session's own project is shown from the project root.
-  const relative = (file, root) => (root && file.startsWith(root) ? file.slice(root.length).replace(/^[\\/]+/, '') : file).replaceAll('\\', '/');
+  const relative = (file, root) => inProject(file, root);
   const work = {
     time: timeSplit(ctx, { spans, calls, messages, steps }),
     turns: turnsOf(ctx, { messages, where, show }),
@@ -589,8 +598,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
       .sort((a, b) => b[1] - a[1])
       .slice(0, MAX_REREADS)
       .map(([key, count]) => {
-        const [sessionId, file] = key.split('|');
-        return { file: show(file, 200), count, ...where(sessionId) };
+        const sessionId = key.slice(0, key.indexOf('|'));
+        return { file: show(readNames.get(key), 200), count, ...where(sessionId) };
       }),
     skills: [...skills].sort((a, b) => b[1] - a[1]).slice(0, TOP).map(([name, count]) => ({ name: show(name, 80), count })),
   };

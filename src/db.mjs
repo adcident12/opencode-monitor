@@ -40,6 +40,7 @@ const PART_COLUMNS = `
   substr(json_extract(data,'$.state.input.questions[0].question'),1,1000) question,
   substr(json_extract(data,'$.state.input.description'),1,1000) descr,
   substr(json_extract(data,'$.state.input.url'),1,500) url,
+  substr(json_extract(data,'$.state.input.name'),1,100) skill,
   json_extract(data,'$.files') files,
   substr(coalesce(json_extract(data,'$.state.metadata.output'), json_extract(data,'$.state.output')),1,${OUTPUT_SCAN_CHARS}) scan_out,
   substr(json_extract(data,'$.state.input'),1,1000) input,

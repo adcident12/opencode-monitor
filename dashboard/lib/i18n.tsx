@@ -80,7 +80,8 @@ export function I18nProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [])
 
   const t = useCallback<Translate>(
-    (key, vars = {}) => (strings[key] ?? (english as Strings)[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? "")),
+    // "key.one" is the form for exactly one, looked up in this language only ("1 file", not "1 files").
+    (key, vars = {}) => ((vars.n === 1 ? strings[`${key}.one`] : undefined) ?? strings[key] ?? (english as Strings)[key] ?? key).replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? "")),
     [strings],
   )
 

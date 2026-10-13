@@ -71,6 +71,8 @@ function toolRow(row, item) {
     started: num(time.ran) ?? (running ? null : num(time.created)),
     ended: running ? null : num(time.completed),
     cmd: text(input.command, 4000),
+    // An execute script is described by its code, as a command is.
+    code: item.name === 'execute' ? text(input.code, 4000) : null,
     // OpenCode 2's shell runs a command in the background when asked, with no `&` in it.
     background: input.background === true,
     file: text(input.path, 1000) ?? text(input.filePath, 1000),
@@ -112,6 +114,7 @@ export function toolRowsOf(row, item) {
       started: share == null ? started : Math.round(started + i * share),
       ended: share == null ? ended : Math.round(started + (i + 1) * share),
       url: text(call.input?.url, 500),
+      code: null,
       input: input.slice(0, 1000),
       input_len: input.length,
     };
@@ -292,16 +295,19 @@ function compaction(out, row, d, base) {
   const overflow = d.reason === 'overflow' || d.overflow === true ? 1 : 0;
   out.compactions.push({ session_id: row.session_id, time_created: row.time_created, auto, overflow });
   const done = d.status === 'completed';
+  // Still going: no end yet. Over, done or failed ("interrupted"): ended when its row last changed.
+  const going = d.status === 'running' || d.status === 'pending';
   const message = {
     ...base,
     role: 'assistant',
     agent: 'compaction',
     summary: true,
-    completed: done ? row.time_updated : null,
-    finish: done ? 'stop' : null,
+    completed: going ? null : row.time_updated,
+    finish: done ? 'stop' : going ? null : 'error',
+    error_name: done || going ? null : errorName(d.error) ?? 'Error',
     // Still summarising: OpenCode 2 does not set the session's time_compacting, as 1.x did.
     // Only a status that says so: one that failed, or is not known, is not taken for work.
-    compacting: d.status === 'running' || d.status === 'pending',
+    compacting: going,
     // A row of its own: 1.x wrote a user message before each compaction, OpenCode 2 does not,
     // so a prompt of yours just before one is yours.
     standalone: true,
@@ -311,6 +317,7 @@ function compaction(out, row, d, base) {
     ...tokensOf(d),
     cost: num(d.cost),
   };
+  message.error = message.error_name;
   out.messages.push(message);
   out.parts.push({ id: row.id, message_id: row.id, session_id: row.session_id, type: 'compaction', time_created: row.time_created, time_updated: row.time_updated, auto, overflow });
   return message;

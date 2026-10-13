@@ -105,3 +105,67 @@ test('told once when a prompt was dropped, and only if asked for', () => {
   off([s('idle', 'dropped')], T);
   assert.deepEqual(sent, []);
 });
+
+test('a question given up on is not counted as a slow tool call', async () => {
+  const { computeStats } = await import('../src/stats.mjs');
+  const { promptsFor } = await import('../src/pending.mjs');
+  const q = { id: 'q', v2: true, session_id: 's', tool: 'question', status: 'error', error: 'Tool execution interrupted', time_created: T - 3_618_100, started: T - 3_618_000, ended: T, time_updated: T };
+  const tools = [q, { id: 'r', v2: true, session_id: 's', tool: 'read', status: 'completed', time_created: T - 5000, started: T - 5000, ended: T - 4000, time_updated: T - 4000 }];
+  const prompts = promptsFor({ asks: () => [], replies: () => new Map() }, tools);
+  const stats = computeStats({ sessions: [{ id: 's', parent_id: null, directory: '/w', title: 'S', time_created: T - 7_200_000, time_updated: T }], tools, messages: [], compactions: [], asks: prompts.asks, replies: prompts.replies, eventTimes: new Map(), now: T + 60_000, days: 7, stuckMs: 600_000, show: x => String(x ?? '') });
+  assert.deepEqual(stats.slow.map(s => [s.tool, s.runMs]), [['read', 1000], ['question', 0]]);
+  assert.deepEqual(stats.waits.map(w => [w.kind, w.waitMs, w.answered, w.abandoned]), [['question', 3_618_000, false, true]]);
+});
+
+test('a skill call is described by its name; one file is "1 file"', async () => {
+  const { describePart } = await import('../src/state.mjs');
+  const { loadTranslator } = await import('../src/format.mjs');
+  assert.equal(describePart({ tool: 'skill', skill: 'executing-plans', input: '{"id":"executing-plans"}' }), 'executing-plans');
+  assert.equal(describePart({ tool: 'graft_find', skill: 'x', input: '{"name":"x"}' }), '{"name":"x"}');
+  const en = loadTranslator('en');
+  const th = loadTranslator('th');
+  assert.deepEqual([en('work.files', { n: 1 }), en('work.files', { n: 2 }), en('work.files', { n: 0 })], ['1 file touched', '2 files touched', '0 files touched']);
+  assert.ok(!/files/.test(th('work.files', { n: 1 })));
+});
+
+test('OpenCode is gone only when two process lists in a row do not have it', async () => {
+  const { createProcessProbe } = await import('../src/process.mjs');
+  const lists = ['"opencode.exe","1","Console","1","1 K"', '', '"opencode.exe","1","Console","1","1 K"', '', ''];
+  const probe = createProcessProbe(['opencode'], { everyMs: 0, run: async () => lists.shift() });
+  const seen = [];
+  for (let i = 0; i < 5; i++) {
+    await probe.refresh();
+    seen.push(probe.running);
+  }
+  if (process.platform === 'win32') assert.deepEqual(seen, [true, true, true, true, false]);
+  else assert.equal(seen.at(-1), false);
+});
+
+test('an execute script is described by its code, a call with no input yet by nothing', async () => {
+  const { describePart } = await import('../src/state.mjs');
+  const { normalizeV2 } = await import('../src/db-v2.mjs');
+  const code = 'await tools["chrome-devtools"].take_snapshot({ pageId: 2 })';
+  const row = { id: 'm', session_id: 's', type: 'assistant', time_created: T, time_updated: T, data: JSON.stringify({ time: { created: T }, content: [
+    { type: 'tool', id: 'a', name: 'execute', state: { status: 'running', input: { code } }, time: { created: T } },
+    { type: 'tool', id: 'b', name: 'execute', state: { status: 'running', input: {} }, time: { created: T } },
+    { type: 'tool', id: 'c', name: 'execute', state: { status: 'completed', input: { code }, metadata: { toolCalls: [{ tool: 'chrome-devtools.take_snapshot', status: 'completed', input: { pageId: 2 } }] } }, time: { created: T, ran: T, completed: T + 9 } },
+  ] }) };
+  assert.deepEqual(normalizeV2([row]).tools.map(describePart), [code, '', '{"pageId":2}']);
+});
+
+test('a file read by an absolute path and by a relative one is one file', async () => {
+  const { computeStats } = await import('../src/stats.mjs');
+  const { inProject } = await import('../src/work.mjs');
+  assert.equal(inProject('E:\\shop\\src\\a.ts', 'E:/shop', 'win32'), 'src/a.ts');
+  assert.equal(inProject('e:/Shop/src/a.ts', 'E:\\shop\\', 'win32'), 'src/a.ts');
+  assert.equal(inProject('/home/me/shop/src/a.ts', '/home/me/shop', 'linux'), 'src/a.ts');
+  assert.equal(inProject('/home/me/Shop/src/a.ts', '/home/me/shop', 'linux'), '/home/me/Shop/src/a.ts');
+  assert.equal(inProject('C:\\other\\b.ts', 'E:/shop', 'win32'), 'C:/other/b.ts');
+  const dir = process.platform === 'win32' ? 'E:/shop' : '/work/shop';
+  const abs = process.platform === 'win32' ? 'E:\\shop\\src\\a.ts' : '/work/shop/src/a.ts';
+  const read = (id, file, t) => ({ id, session_id: 's', tool: 'read', status: 'completed', file, time_created: t, started: t, ended: t + 5, time_updated: t + 5 });
+  const tools = [read('1', 'src/a.ts', T - 50_000), read('2', abs, T - 40_000), read('3', 'src/a.ts', T - 30_000)];
+  const stats = computeStats({ sessions: [{ id: 's', parent_id: null, directory: dir, title: 'S', time_created: T - 90_000, time_updated: T }], tools, messages: [], compactions: [], asks: [], replies: new Map(), eventTimes: new Map(), now: T + 60_000, days: 7, stuckMs: 600_000, show: x => String(x ?? '') });
+  assert.deepEqual(stats.rereads.map(r => [r.file, r.count]), [['src/a.ts', 3]]);
+  assert.equal(stats.totals.rereads, 1);
+});

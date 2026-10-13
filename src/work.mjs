@@ -139,6 +139,18 @@ export function permissionsOf(prompts, show) {
  */
 export const fileKey = (path, platform = process.platform) => (platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path);
 
+/**
+ * A path as it reads inside its session's project: "src/a.ts" whether the agent gave it so or
+ * as "E:\\project\\src\\a.ts". Forward slashes; a path outside the project stays whole.
+ */
+export function inProject(file, root, platform = process.platform) {
+  const path = String(file).replaceAll('\\', '/');
+  const base = String(root ?? '').replaceAll('\\', '/').replace(/\/+$/, '');
+  if (!base) return path;
+  const same = platform === 'win32' ? path.toLowerCase().startsWith(`${base.toLowerCase()}/`) : path.startsWith(`${base}/`);
+  return same ? path.slice(base.length + 1) : path;
+}
+
 /** Files the agent changed, from the patches OpenCode records after each edit. */
 export function filesOf(ctx, { patches, where, show, relative, platform = process.platform }) {
   const times = new Map(); // session|file key -> how many patches touched it

@@ -94,7 +94,7 @@ test('tool use: counts, errors, stuck calls, graft against plain search, re-read
   assert.equal(s.totals.stuck, 1);
   assert.deepEqual(s.slow[0], { at: t, tool: 'bash', text: 'npm run dev', runMs: 35 * MIN, status: 'completed', running: false, project: 'shop', title: 'Shop' });
   assert.deepEqual(s.explore, { graft: 1, other: 5 });
-  assert.deepEqual(s.rereads, [{ file: '/work/shop/a.ts', count: 4, project: 'shop', title: 'Shop' }]);
+  assert.deepEqual(s.rereads, [{ file: 'a.ts', count: 4, project: 'shop', title: 'Shop' }]);
   assert.deepEqual(s.skills, [{ name: 'tdd', count: 1 }]);
   assert.equal(s.totals.compactions, 1);
 });
