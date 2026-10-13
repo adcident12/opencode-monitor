@@ -51,6 +51,28 @@ test('interrupted at the moment its project was put away: dropped by OpenCode, n
   assert.deepEqual([state('E:/queue-appointment-management', evictions, messages('APIError')).state, state('E:/queue-appointment-management', evictions, messages('APIError')).reason], ['error', 'message_error']);
 });
 
+test('an error is told once it has lasted a minute; one OpenCode retries at once is not', () => {
+  const sent = [];
+  const send = { desktop: (title, body, done) => { sent.push(title); done(null); }, discord: async () => null };
+  const notify = createNotifier({ ...DEFAULTS.notify, desktop: true, repeatMinutes: 30 }, key => key, send, { quiet: true });
+  const s = (state, since) => ({ id: 's', parentId: null, state, reason: state === 'error' ? 'message_error' : 'tool', since, project: 'shop', title: 'Add checkout', health: { hints: [], compactions: 0 } });
+  notify([s('working', T - 9000)], T - 9000);
+  // bad allocation, and OpenCode asks again two seconds later
+  notify([s('error', T)], T);
+  notify([s('working', T + 2000)], T + 2000);
+  assert.deepEqual(sent, []);
+  // the server is down: still failed after a minute, told once, and again only when due
+  notify([s('error', T + 10_000)], T + 10_000);
+  notify([s('error', T + 10_000)], T + 40_000);
+  assert.deepEqual(sent, []);
+  notify([s('error', T + 10_000)], T + 72_000);
+  notify([s('error', T + 10_000)], T + 80_000);
+  notify([s('error', T + 10_000)], T + 600_000);
+  assert.deepEqual(sent, ['notify.error']);
+  notify([s('error', T + 10_000)], T + 72_000 + 30 * 60_000);
+  assert.deepEqual(sent, ['notify.error', 'notify.error']);
+});
+
 test('told once when a prompt was dropped, and only if asked for', () => {
   const sent = [];
   const send = { desktop: (title, body, done) => { sent.push([title, body]); done(null); }, discord: async () => null };
@@ -78,7 +100,7 @@ test('told once when a prompt was dropped, and only if asked for', () => {
   own([s('waiting', 'question')], T - 10_000);
   own([s('idle', 'aborted')], T);
   // Switched off.
-  const off = createNotifier({ ...cfg, on: ['waiting', 'stuck'] }, t, send, { quiet: true });
+  const off = createNotifier({ ...cfg, on: ['waiting', 'stuck', 'error'] }, t, send, { quiet: true });
   off([s('working', 'tool')], T - 10_000);
   off([s('idle', 'dropped')], T);
   assert.deepEqual(sent, []);

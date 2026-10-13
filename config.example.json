@@ -68,7 +68,7 @@
   },
 
   "notify": {
-    "on": ["waiting", "stuck", "dropped"],
+    "on": ["waiting", "stuck", "error", "dropped"],
     "environment": true,
     "repeatMinutes": 30,
     "desktop": true,

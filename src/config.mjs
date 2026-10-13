@@ -75,7 +75,7 @@ export const DEFAULTS = {
   review: { ignoreRules: [] },
   history: { enabled: true, file: 'data/history.jsonl', retentionDays: 30 },
   notify: {
-    on: ['waiting', 'stuck', 'dropped'],
+    on: ['waiting', 'stuck', 'error', 'dropped'],
     environment: true,
     repeatMinutes: 30,
     desktop: true,

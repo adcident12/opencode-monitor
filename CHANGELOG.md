@@ -5,6 +5,11 @@ on the page and printed at startup.
 
 ## Unreleased
 
+- **Told when OpenCode stops on an error**: `"error"` is in `notify.on` by default. A reply
+  that failed and stays failed for a minute, such as the model server going down, is told
+  once; one OpenCode retries by itself within the minute (llama.cpp's "bad allocation" three
+  times on this machine, each retried within two seconds) is not. Found when a server that
+  went down at 03:40 left a session stopped for four hours without a word.
 - **Read from OpenCode 2's own source** (2.0.26), and changed where the monitor had guessed:
   - A shell command OpenCode 2 runs in the background says so (`background: true`), with
     no `&` in it: such commands are flagged as background now, for the review and for the

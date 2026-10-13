@@ -39,6 +39,10 @@ export function desktopNotify(title, body, onDone) {
   }
 }
 
+// How long an error must last before it is told: OpenCode 2 retries a failed request by itself
+// within seconds ("The previous response was interrupted. Continue..."), and most are gone by then.
+const ERROR_GRACE_MS = 60_000;
+
 export async function discordNotify(webhookUrl, content, mention = '') {
   // Only the configured mention may ping; a session title containing @everyone must not.
   const allowed = { parse: [] };
@@ -204,9 +208,12 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
     const changed = before?.state !== session.state;
     const due = cfg.repeatMinutes > 0 && now - entry.notifiedAt >= cfg.repeatMinutes * 60_000;
     if (changed) entry.notifiedAt = 0;
+    // An error OpenCode gets over by itself (it asks the model again a moment later) is not
+    // news: told only once it has lasted. Until then nothing is marked as told.
+    const settling = session.state === 'error' && now - (session.since ?? now) < ERROR_GRACE_MS;
     // What was already on screen when the monitor started is not news.
-    if (wanted && !baseline && (changed || due)) dispatch(session, now);
-    if (wanted && (baseline || changed || due)) entry.notifiedAt = now;
+    if (wanted && !baseline && !settling && (changed || due)) dispatch(session, now);
+    if (wanted && (baseline || ((changed || due) && !settling))) entry.notifiedAt = now;
     seen.set(session.id, entry);
   }
 
