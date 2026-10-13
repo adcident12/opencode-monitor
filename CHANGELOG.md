@@ -5,6 +5,11 @@ on the page and printed at startup.
 
 ## Unreleased
 
+- **`mcp.timeout` is not an MCP server.** OpenCode 2 keeps settings beside the servers in the
+  `mcp` section (`timeout`), and the servers themselves may be under `mcp.servers`. The
+  monitor took every key for a server: a "timeout" server showed with no signal, and Stats
+  said it was switched on but never called.
+
 - **Told when OpenCode stops on an error**: `"error"` is in `notify.on` by default. A reply
   that failed and stays failed for a minute, such as the model server going down, is told
   once; one OpenCode retries by itself within the minute (llama.cpp's "bad allocation" three

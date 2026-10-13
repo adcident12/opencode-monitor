@@ -162,9 +162,23 @@ function readJson(path) {
   }
 }
 
+// Keys of the "mcp" section that are settings, not servers (OpenCode 2: Config.MCP).
+const MCP_SETTINGS = new Set(['timeout', 'servers']);
+
+/**
+ * The MCP servers a config names. OpenCode 2 keeps them under mcp.servers, beside settings such
+ * as mcp.timeout; 1.x, and a 2.x config written the old way, list them in mcp itself.
+ */
+function mcpServersOf(config) {
+  const mcp = config?.mcp;
+  if (!mcp || typeof mcp !== 'object') return [];
+  const nested = mcp.servers && typeof mcp.servers === 'object' ? Object.entries(mcp.servers) : [];
+  return [...Object.entries(mcp).filter(([name]) => !MCP_SETTINGS.has(name)), ...nested];
+}
+
 function mcpEntries(config) {
   const entries = [];
-  for (const [name, server] of Object.entries(config?.mcp ?? {})) {
+  for (const [name, server] of mcpServersOf(config)) {
     if (!server || typeof server !== 'object' || !name || name.length > MAX_NAME) continue;
     // A project entry that only flips "enabled" has no type of its own.
     const type = ['local', 'remote'].includes(server.type) ? server.type : null;

@@ -181,3 +181,20 @@ test('every kind of notification has its label on This machine, in both language
     }
   }
 });
+
+test('MCP servers: mcp.timeout is a setting, not a server; OpenCode 2 lists servers under mcp.servers', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { loadOpencodeConfig } = await import('../src/opencode-config.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-mcpcfg-'));
+  try {
+    writeFileSync(join(dir, 'opencode.json'), JSON.stringify({ mcp: {
+      timeout: { startup: 90000 },
+      graft: { type: 'local', command: ['graft'], enabled: true },
+      servers: { context7: { type: 'remote', url: 'https://x', enabled: true }, trivy: { type: 'local', command: ['t'], enabled: false } },
+    } }));
+    const names = loadOpencodeConfig(dir, { XDG_CACHE_HOME: join(dir, 'none') }).mcp.map(m => `${m.name}:${m.enabled}`).sort();
+    assert.deepEqual(names, ['context7:true', 'graft:true', 'trivy:false']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
