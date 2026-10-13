@@ -250,6 +250,7 @@
   "setup.on.finished": "finished",
   "setup.on.working": "working",
   "setup.on.idle": "idle",
+  "setup.on.dropped": "left unanswered and dropped by OpenCode",
   "setup.on.compact_soon": "about to be compacted",
   "setup.monitor": "The monitor",
   "setup.version": "Version",

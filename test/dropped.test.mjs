@@ -169,3 +169,15 @@ test('a file read by an absolute path and by a relative one is one file', async 
   assert.deepEqual(stats.rereads.map(r => [r.file, r.count]), [['src/a.ts', 3]]);
   assert.equal(stats.totals.rereads, 1);
 });
+
+test('every kind of notification has its label on This machine, in both languages', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kinds = [...new Set([...DEFAULTS.notify.on, 'compact_soon'])];
+  for (const lang of ['en', 'th']) {
+    const strings = JSON.parse(readFileSync(new URL(`../i18n/${lang}.json`, import.meta.url), 'utf8'));
+    for (const kind of kinds) {
+      assert.ok(strings[`setup.on.${kind}`], `${lang}: setup.on.${kind}`);
+      assert.ok(strings[`notify.${kind}`], `${lang}: notify.${kind}`);
+    }
+  }
+});
