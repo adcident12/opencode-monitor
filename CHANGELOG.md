@@ -3,7 +3,9 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
-## Unreleased
+## 11.4.0 - 2026-10-14
+
+OpenCode 2, by its own rules: where it compacts, what it gave up on, and what it runs in the background.
 
 - **`mcp.timeout` is not an MCP server.** OpenCode 2 keeps settings beside the servers in the
   `mcp` section (`timeout`), and the servers themselves may be under `mcp.servers`. The
