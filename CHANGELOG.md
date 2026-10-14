@@ -3,6 +3,35 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.5.0 - 2026-10-14
+
+What a change did, read off the figures: before and after it, one model at a time.
+
+- **Before and after a change** (`opencode_compare`, for an assistant over MCP). The same
+  figures for the hours before a moment, by default the newest change to the config, and
+  the hours after it, each per hour of agent time: compactions and how long they took, files
+  read again after a compaction (whole or a range, and whether an edit followed), calls over
+  two minutes with the longest of them and what they ran, interrupted turns, failures per
+  tool, the share of time thinking, permission waits. `model` counts one model's work on
+  both sides; without it, a comparison across a change of model says it is not reliable.
+- **Rates since the newest change.** A takeaway about a rate (a tool failing, where the time
+  went, the prompt cache) is read from the figures since the newest change of the config or
+  of the model that has an hour of work after it, and says so. A tool that failed often
+  before a change and no longer does is said as fixed. An `execute` script that looped (more
+  than 50 calls) is its own line, out of the tool's failure rate.
+- **Time spent compacting**, in all and per session, the models each session used, and two
+  takeaways: when summarising takes a real share of the agent's time, and a session that
+  went on through 20 compactions or more.
+- **How long each model's replies are** (p50, p95, p99, longest) in `opencode_settings`,
+  with a note when `compaction.buffer` is shorter than the longest reply or far longer than
+  needed, and which model the config uses now.
+- **An MCP server OpenCode 2 failed to connect**, in a folder, is not tried again by
+  OpenCode. `opencode_settings` lists where it is down, with the command that connects it.
+- **A permission rule already in the config** is not suggested again: the prompt it would
+  have answered says it is allowed now.
+- **A second monitor** that cannot have the port no longer reads anything: it had recorded
+  each config change a second time.
+
 ## 11.4.0 - 2026-10-14
 
 OpenCode 2, by its own rules: where it compacts, what it gave up on, and what it runs in the background.
