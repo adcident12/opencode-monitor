@@ -17,6 +17,9 @@ const MCP = /^timestamp=(\S+) level=\S+ run=(\S+) message="(server unavailable|M
 // service status`) writes this line under a run id of its own and nothing more: it is not an
 // OpenCode that holds sessions. A run counts from its second line on.
 const CLI_START = /^timestamp=\S+ level=\S+ run=\S+ message="cli starting" /;
+// Each OpenCode that starts says its version: the one installed and running now. A session's
+// own version is of the OpenCode that created it, which a 1.x session carried on in 2 keeps.
+const CLI_VERSION = / version=(\d+\.\d+\.\d+[^\s]*)/;
 
 // OpenCode 2 connects each MCP server once per folder it has loaded, and says how it went. A
 // server that failed (a timeout after a network blip) is not tried again by itself.
@@ -138,6 +141,7 @@ export function createLogTail(path) {
   let asks = [];
   let mcpEvents = []; // every MCP failure line read, oldest first
   let evictions = []; // projects OpenCode 2 put away, oldest first
+  let version = null; // of the OpenCode that started last
   let connections = new Map(); // "server|folder" -> its latest OpenCode 2 connection line
   let mcpMarked = []; // the same, each marked as a shutdown or not
   let mcpFailures = new Map(); // server name -> its latest failure in a live run that was not a shutdown
@@ -155,6 +159,7 @@ export function createLogTail(path) {
     asks = [];
     mcpEvents = [];
     evictions = [];
+    version = null;
     connections = new Map();
     mcpMarked = [];
     mcpFailures = new Map();
@@ -182,7 +187,10 @@ export function createLogTail(path) {
   function take(line) {
     const prefix = PREFIX.exec(line);
     if (!prefix) return;
-    if (CLI_START.test(line)) return;
+    if (CLI_START.test(line)) {
+      version = CLI_VERSION.exec(line)?.[1] ?? version;
+      return;
+    }
     noteRun(line, prefix[2], Date.parse(prefix[1]));
     if (line.includes('message=asking')) {
       const ask = parseAskLine(line);
@@ -249,6 +257,8 @@ export function createLogTail(path) {
     asks: () => asks,
     replies: () => replies,
     evictions: () => evictions,
+    /** The version of the OpenCode that started last, as its log says; null before any. */
+    opencodeVersion: () => version,
     /** OpenCode 2: each server and folder whose latest connection failed, in a run still going. */
     mcpDisconnected: () => [...connections.values()].filter(c => !c.ok && live.has(c.run)),
     runEnds: () => runEnds,

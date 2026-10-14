@@ -55,8 +55,12 @@ export async function mcpMain(argv) {
     readOnly: true,
   });
 
-  // The OpenCode that wrote the newest session: whose compaction rule applies.
-  const opencodeVersion = () => db.recentSessions(0, 1)[0]?.version ?? null;
+  // The OpenCode in use now, whose compaction rule applies: as its log says, or else the
+  // version that created the newest session.
+  const opencodeVersion = () => {
+    log.poll();
+    return log.opencodeVersion() ?? db.recentSessions(0, 1)[0]?.version ?? null;
+  };
   const mcpDisconnected = () => {
     log.poll();
     return log.mcpDisconnected();

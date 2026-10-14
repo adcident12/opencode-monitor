@@ -91,7 +91,9 @@ function runDoctor(cfg) {
   const found = existsSync(join(cfg.dataDir, 'opencode.db'));
   const doctorDb = found ? openDb(cfg.dataDir) : null;
   const oc = loadOpencodeConfig(cfg.opencodeConfigDir);
-  const opencodeVersion = doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
+  const log = createLogTail(join(cfg.dataDir, 'log', 'opencode.log'));
+  log.poll();
+  const opencodeVersion = log.opencodeVersion() ?? doctorDb?.recentSessions(0, 1)[0]?.version ?? null;
   console.log(formatSetupReport(buildSetupReport({ cfg, opencode: oc, db: doctorDb, opencodeVersion }), loadTranslator(cfg.lang), cfg.lang));
   doctorDb?.close();
 }

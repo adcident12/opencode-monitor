@@ -158,7 +158,9 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     // What OpenCode itself uses for this session: the project's config over the global one.
     const opencodeLimit = project?.limits.get(key) ?? modelLimits.get(key) ?? null;
     const reserve = project?.reserves.get(key) ?? modelReserves.get(key);
-    const settings = { ...compactionSettings, ...project?.compaction, outputTokenMax, version: session.version ?? null };
+    // The rule of the OpenCode running it now: a 1.x session carried on in OpenCode 2 is
+    // compacted by OpenCode 2, though it keeps the version that created it.
+    const settings = { ...compactionSettings, ...project?.compaction, outputTokenMax, version: log.opencodeVersion?.() ?? session.version ?? null };
     // config.json can name a window the monitor could not read; OpenCode's own value wins
     // for the compaction point, because that is the one OpenCode compacts by.
     const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? opencodeLimit ?? cfg.contextLimit.default;
@@ -354,8 +356,9 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
 
       const projectServers = projectMcp?.forDirs(directories) ?? [];
       const serverOf = createServerMatcher([...mcpNames, ...projectServers.map(s => s.name)]);
-      // The newest session says which OpenCode wrote it: the one in use now.
-      const opencodeVersion = rows.find(r => r.version)?.version ?? previous.opencodeVersion;
+      // The OpenCode in use now: as its log says when it started. Without a log, the version
+      // that created the newest session, which is older for a session carried on.
+      const opencodeVersion = log.opencodeVersion?.() ?? rows.find(r => r.version)?.version ?? previous.opencodeVersion;
       previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers) ?? null, opencodeVersion };
       return { ...base, stale: false, ...previous };
     } catch (err) {
