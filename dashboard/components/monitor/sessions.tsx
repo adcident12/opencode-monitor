@@ -203,6 +203,8 @@ export function QuietRow({ session, now, history = false }: Readonly<{ session: 
         <Project session={session} />
         <SessionLinks session={session} history={history} />
       </div>
+      {/* A plan left part done: where it stopped is the first thing to know when coming back. */}
+      {session.progress.todos && session.progress.todos.done < session.progress.todos.total && <Todos todos={session.progress.todos} />}
       {(session.review.total > 0 || session.work.warnProtected || (session.work.running?.items.length ?? 0) > 0) && (
         <div className="space-y-1">
           <Work session={session} />

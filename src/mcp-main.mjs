@@ -11,8 +11,9 @@ import { createLogTail } from './logtail.mjs';
 import { createPending, withPending } from './pending.mjs';
 import { buildTools, createMcpServer, serve } from './mcp-server.mjs';
 import { createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './opencode-config.mjs';
-import { createRedactor } from './redact.mjs';
+import { clip, createRedactor } from './redact.mjs';
 import { createStatsSource } from './stats-source.mjs';
+import { createTasksSource } from './tasks.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
 
@@ -62,7 +63,8 @@ export async function mcpMain(argv) {
   };
   // Read again each time: the model is the setting changed most often.
   const currentModel = () => loadOpencodeConfig(cfg.opencodeConfigDir).model;
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel });
+  const tasks = createTasksSource({ db, show: (text, max) => clip(redact(String(text ?? '')), max) });
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();

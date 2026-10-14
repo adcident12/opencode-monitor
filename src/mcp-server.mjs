@@ -41,7 +41,7 @@ function bufferAdvice(written, buffer) {
   return null;
 }
 
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: (k.since ? t('takeaways.since', k.vars) : '') + t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
@@ -71,6 +71,24 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
       run: ({ days }) => {
         const s = stats(days);
         return { period: period(s), sessions: s.sessions.map(x => ({ ...x, lastAt: new Date(x.lastAt).toISOString() })) };
+      },
+    },
+    {
+      name: 'opencode_tasks',
+      description: 'What the user set the agent to do and how far each got: every top-level session of a period by project, most recent first, unfinished ones first within a project. Each with its title (the summary OpenCode made of the first prompt; the prompts themselves are not read), how its last turn ended (working, waiting for the user, stuck, interrupted, error, or stopped: handed back), its plan as done/total, and the plan items still open. `open` marks a session with items left or that ended interrupted or on an error. A session whose agent wrote no plan says only how it ended.',
+      inputSchema: { type: 'object', properties: { days: { type: 'integer', enum: [7, 14, 30], description: 'How many days back, ending now. Default 7.' }, openOnly: { type: 'boolean', description: 'Only the unfinished sessions. Default false.' } } },
+      run: ({ days, openOnly }) => {
+        if (!tasks) return { error: 'Not available.' };
+        const value = tasks(days ?? 7);
+        const iso = t => new Date(t).toISOString();
+        return {
+          period: { from: iso(value.range.from), to: iso(value.range.to), days: value.range.days },
+          total: value.total,
+          open: value.open,
+          projects: value.projects
+            .map(p => ({ ...p, lastAt: iso(p.lastAt), sessions: p.sessions.filter(s => !openOnly || s.open).map(s => ({ ...s, createdAt: iso(s.createdAt), lastAt: iso(s.lastAt) })) }))
+            .filter(p => p.sessions.length),
+        };
       },
     },
     {

@@ -8,12 +8,13 @@ import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
 import { ASK_CSP, askPage, createAccess, lanAddresses, loadAccessKey } from './access.mjs';
 import { createStatsSource } from './stats-source.mjs';
+import { createTasksSource, TASK_DAYS } from './tasks.mjs';
 import { createHistory } from './history.mjs';
 import { ROOT, HELP, VERSION, TESTED_OPENCODE, isUntestedOpencode, UserError, parseArgs, loadConfig } from './config.mjs';
 import { openDb } from './db.mjs';
 import { createLogTail } from './logtail.mjs';
 import { createPending, withPending } from './pending.mjs';
-import { createRedactor } from './redact.mjs';
+import { clip, createRedactor } from './redact.mjs';
 import { configFiles, createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './opencode-config.mjs';
 import { createEnvironment } from './environment.mjs';
 import { createGitProbe } from './git.mjs';
@@ -205,6 +206,9 @@ export async function main(argv) {
   const historyCount = () => (cfg.history.enabled ? history.count : null);
 
   let latest = '{}';
+  let liveStates = new Map(); // session id -> its state on the Now tab, from the latest reading
+  const redactTasks = createRedactor(cfg.redact);
+  const tasks = createTasksSource({ db, show: (text, max) => clip(redactTasks(String(text ?? '')), max), liveState: id => liveStates.get(id) ?? null });
   const clients = new Set();
   await probe.refresh();
   const lookup = createStatic(ROOT);
@@ -215,6 +219,7 @@ export async function main(argv) {
     git.refresh(monitor.directories());
     leftovers.refresh(monitor.backgroundCalls());
     const snap = monitor();
+    liveStates = new Map(snap.sessions.map(s => [s.id, s.state]));
     configWatch.check(snap.now);
     digest?.check(snap.now);
     if (!snap.stale) {
@@ -267,6 +272,11 @@ export async function main(argv) {
     '/api/replay/bridge': {
       body: query => JSON.stringify(bridge.bridge(query.get('day'))),
       unavailable: ['Bridge replay failed', 'The replay is not available right now.'],
+    },
+    // Every top-level session of a period by project, how it ended, and its plan.
+    '/api/tasks': {
+      body: query => JSON.stringify(tasks(TASK_DAYS.includes(Number(query.get('days'))) ? Number(query.get('days')) : 7)),
+      unavailable: ['Tasks failed', 'The list of tasks is not available right now.'],
     },
     '/api/config-changes': {
       body: query => {

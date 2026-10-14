@@ -373,3 +373,27 @@ export interface ConfigChange {
   /** Changes beyond those listed. */
   more: number
 }
+
+/** How a session's last turn ended, as the Tasks tab says it. */
+export type TaskEnd = "working" | "waiting" | "stuck" | "error" | "interrupted" | "stopped"
+
+/** One top-level session: what it was for, how it ended, and what of its plan is left. */
+export interface TaskSession {
+  id: string
+  title: string
+  createdAt: number
+  lastAt: number
+  ended: TaskEnd
+  /** Items left, or ended interrupted, on an error, waiting or stuck. */
+  open: boolean
+  plan: { done: number; total: number } | null
+  left: { content: string; status: string }[]
+  more: number
+}
+
+export interface Tasks {
+  range: { from: number; to: number; days: number }
+  total: number
+  open: number
+  projects: { project: string; directory: string; lastAt: number; open: number; sessions: TaskSession[] }[]
+}

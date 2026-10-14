@@ -1,6 +1,6 @@
 "use client"
 
-import { ChartColumnIcon, HistoryIcon, LayoutListIcon, RadioIcon, RocketIcon, RotateCcwIcon, SettingsIcon } from "lucide-react"
+import { ChartColumnIcon, HistoryIcon, LayoutListIcon, ListTodoIcon, RadioIcon, RocketIcon, RotateCcwIcon, SettingsIcon } from "lucide-react"
 import { useEffect, useState } from "react"
 import { UpdateBanner } from "@/components/monitor/update-banner"
 import { Environment } from "@/components/monitor/environment"
@@ -14,6 +14,7 @@ import { Replay } from "@/components/monitor/replay"
 import { Setup } from "@/components/monitor/setup"
 import { Ship } from "@/components/monitor/ship"
 import { Stats } from "@/components/monitor/stats"
+import { Tasks } from "@/components/monitor/tasks"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { childrenOf, groupByUrgency } from "@/lib/format"
@@ -21,7 +22,7 @@ import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { useHash, useNow, useSnapshot } from "@/lib/live"
 
-type Tab = "now" | "history" | "replay" | "stats" | "setup"
+type Tab = "now" | "tasks" | "history" | "replay" | "stats" | "setup"
 type View = "cards" | "ship"
 
 /** Cards or the bridge, remembered in this browser only. Cards until you choose otherwise. */
@@ -57,7 +58,7 @@ export default function Page() {
   const now = useNow(skew)
   const [hash, setHash] = useHash()
   // #stats or #history, optionally narrowed to one session: #stats/<session id>.
-  const [, hashTab, hashSession] = /^#(history|replay|stats|setup)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
+  const [, hashTab, hashSession] = /^#(tasks|history|replay|stats|setup)(?:\/([A-Za-z0-9_-]+))?$/.exec(hash) ?? []
   const tab: Tab = (hashTab as Tab | undefined) ?? "now"
   const session = hashSession ?? null
   const changeTab = (value: Tab) => setHash(value === "now" ? "" : value)
@@ -96,6 +97,10 @@ export default function Page() {
             {t("tab.now")}
             {/* From another tab, still show that something needs you. */}
             {tab !== "now" && attention.length > 0 && <span className="rounded-full bg-waiting px-1.5 text-xs font-semibold tabular-nums text-background">{attention.length}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="tasks" className={TAB}>
+            <ListTodoIcon aria-hidden />
+            {t("tab.tasks")}
           </TabsTrigger>
           {historyEnabled && (
             <TabsTrigger value="history" className={TAB}>
@@ -180,6 +185,8 @@ export default function Page() {
             <History count={snapshot?.historyCount ?? null} active={tab === "history"} session={session} onSession={changeSession} />
           </TabsContent>
         )}
+
+        <TabsContent value="tasks">{tab === "tasks" && <Tasks />}</TabsContent>
 
         <TabsContent value="replay">{tab === "replay" && <Replay session={session} onSession={changeSession} />}</TabsContent>
 

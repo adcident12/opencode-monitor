@@ -220,6 +220,12 @@ The size of each MCP server's tool list is not shown: OpenCode does not record t
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
 
+## Tasks
+
+With many sessions going, it is easy to lose track of what you set the agent to do and how far each got. The **Tasks** tab lists every session of the last 7, 14 or 30 days by project: its title (the summary OpenCode makes of your first prompt; your prompts are not read), how its last turn ended (working, waiting for you, probably stuck, interrupted, stopped on an error, or handed back to you), and the plan the agent was working through, as done of total with the items still to do. Unfinished sessions come first in each project; "Unfinished only" hides the rest. A session whose agent wrote no plan, as for a small job, says only how it ended.
+
+The plan is the agent's own todo list: OpenCode 1.x keeps it in its database, OpenCode 2 only in the agent's latest `todowrite` call, and both are read. On the **Now** tab, a finished session whose plan was left part done shows how far it got.
+
 ## History
 
 The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Above the list, **What each session took** ranks the sessions of the last 30 days by agent working time, with time spent waiting for you, compactions, and tokens, subagents included and taken from OpenCode's own records. Click a session to follow it in the list below. "Download as CSV" saves that table; in Stats, "Download days as CSV" saves the figures per day. The files are built in the page from what it already shows, with titles that look like spreadsheet formulas escaped.
@@ -265,12 +271,13 @@ Then, in Claude Code: *use opencode-monitor and tell me what to change*. `--data
 | `opencode_sessions` | The sessions of a period and what each took |
 | `opencode_settings` | Limits of the models you used and where OpenCode compacts each, the compaction settings, MCP servers and whether each is on (with OpenCode 2, where one failed to connect and the command that connects it), how long each model's replies are, which config files exist |
 | `opencode_config_changes` | The recorded changes of OpenCode's config |
+| `opencode_tasks` | Every session of a period by project, how it ended, and what is left of its plan |
 | `opencode_compare` | The same figures before and after a moment (by default the newest config change), per hour of agent time, and whether the model was the same on both sides |
 
 What to know before you connect it:
 
 - **It is read-only.** Every tool is declared read-only and none changes anything; the process writes no file, not even the monitor's own. If Claude suggests a change to `opencode.json`, it is Claude Code that edits the file, under its own permission prompt, and you who approve it. The monitor never does.
-- **What you ask for is sent to the assistant.** Until you run the command above, nothing leaves your machine. After it, the answers to the tools Claude calls go to Claude like anything else in that conversation: figures, and with them what the Stats tab shows beside them: session titles, project folder names, file paths, permission patterns, the command of each of the slowest tool calls, the questions the agent asked you, model and MCP server names. They pass through the same redaction as the page. Keys, model server addresses, the commands that start MCP servers, and the text of your prompts and of the model's replies are never in them.
+- **What you ask for is sent to the assistant.** Until you run the command above, nothing leaves your machine. After it, the answers to the tools Claude calls go to Claude like anything else in that conversation: figures, and with them what the Stats tab shows beside them: session titles, project folder names, file paths, permission patterns, the command of each of the slowest tool calls, the questions the agent asked you, the items of the agent's plans, model and MCP server names. They pass through the same redaction as the page. Keys, model server addresses, the commands that start MCP servers, and the text of your prompts and of the model's replies are never in them.
 - **It runs on its own.** It reads OpenCode's data itself (the database read-only), so the monitor does not have to be running, and a monitor that is running is not touched. Only the config changes come from what the monitor recorded.
 - To disconnect: `claude mcp remove opencode-monitor`.
 

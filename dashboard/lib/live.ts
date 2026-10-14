@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 import type { Bridge } from "./bridge"
 import type { Replay } from "./replay"
-import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats } from "./types"
+import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats, Tasks } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -266,6 +266,28 @@ export function useStats(days: number, session: string | null, split: string | n
   }, [days, session, split, key, enabled])
   // Figures for another range or session are not shown as if they were for this one.
   return { stats: state.key === key ? state.stats : null, failed: state.failed }
+}
+
+/** Every session of a period by project, with its plan. Read again each minute while shown. */
+export function useTasks(days: number, enabled: boolean) {
+  const [state, setState] = useState<{ days: number; tasks: Tasks | null; failed: boolean }>({ days, tasks: null, failed: false })
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    const load = () =>
+      fetch(`/api/tasks?days=${days}`)
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(tasks => live && setState({ days, tasks, failed: false }))
+        .catch(() => live && setState(s => ({ ...s, failed: true })))
+    load()
+    const timer = setInterval(load, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [days, enabled])
+  // A list for another period is not shown as if it were for this one.
+  return { tasks: state.days === days ? state.tasks : null, failed: state.failed }
 }
 
 /** Days on which an OpenCode config file changed, newest first. Empty until loaded, or when none. */

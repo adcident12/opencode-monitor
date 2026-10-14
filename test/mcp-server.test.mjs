@@ -143,7 +143,7 @@ test('mcp.mjs: a real process speaks only the protocol on stdout, on sample data
   assert.equal(code, 0, err);
   const replies = out.trim().split('\n').map(line => JSON.parse(line));
   assert.deepEqual(replies.map(r => r.id), [1, 2, 3, 4, 5, 6, 7, 8]);
-  assert.equal(replies[1].result.tools.length, 6);
+  assert.equal(replies[1].result.tools.length, 7);
   for (const reply of replies.slice(2)) assert.equal(reply.result.isError, undefined, reply.result.content[0].text);
   const figures = JSON.parse(replies[2].result.content[0].text);
   assert.ok(figures.totals.toolCalls > 0);

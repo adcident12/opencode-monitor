@@ -8,6 +8,7 @@ import { createServerMatcher, faultOf } from './mcp.mjs';
 import { compactionPoint } from './opencode-config.mjs';
 import { OUTPUT_TAIL_CHARS } from './db.mjs';
 import { fileKey, inProject } from './work.mjs';
+import { latestPlanOf } from './tasks.mjs';
 
 const SUMMARY_CHARS = 240;
 const OUTPUT_LINES = 6;
@@ -287,7 +288,9 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running, evictions: log.evictions?.() ?? [] });
     const { model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
     const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt, autoCompact });
-    const progress = deriveProgress({ parts, messages, todos: db.todos(session.id) });
+    // OpenCode 2 keeps no todo table: its plan is the latest todowrite call.
+    const table = db.todos(session.id);
+    const progress = deriveProgress({ parts, messages, todos: table.length ? table : latestPlanOf(parts) });
 
     return {
       id: session.id,
