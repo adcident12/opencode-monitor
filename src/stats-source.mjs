@@ -4,7 +4,7 @@ import { computeStats, summarize } from './stats.mjs';
 import { takeawaysOf } from './takeaways.mjs';
 import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
-import { compactionPoint } from './opencode-config.mjs';
+import { allowedByRules, compactionPoint } from './opencode-config.mjs';
 import { promptsFor } from './pending.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
@@ -85,7 +85,7 @@ export function limitsFor({ cfg, projectMcp = null, modelLimits = new Map(), mod
  * @param {object} [deps.projectMcp]    from createProjectMcp
  * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
  */
-export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null }) {
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, permissionRules = [] }) {
   const { compactAt, contextLimit } = limitsFor({ cfg, projectMcp, modelLimits, modelReserves, compactionSettings, outputTokenMax });
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
@@ -104,6 +104,9 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
   };
 
   function compute(days, sessionId, split, now) {
+    // The rules as the config says now: read again with each figure, so a rule added since
+    // the monitor started counts.
+    const rules = typeof permissionRules === 'function' ? permissionRules() : permissionRules;
     const since = now - (days + 1) * 86_400_000;
     log.poll();
     const tools = db.stats.tools(since);
@@ -139,6 +142,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       days,
       stuckMs: cfg.thresholds.stuckToolMinutes * 60_000,
       show,
+      allowedNow: (permission, patterns) => allowedByRules(rules, permission, patterns),
     };
     const value = computeStats(input);
     value.compare = compareAround(split, value, input);

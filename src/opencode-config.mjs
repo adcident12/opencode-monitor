@@ -162,6 +162,53 @@ function readJson(path) {
   }
 }
 
+/**
+ * OpenCode's own wildcard (packages/core/src/util/wildcard.ts): `*` is anything, separators
+ * included, `?` one character, either slash the same, and on Windows any letter case.
+ */
+export function wildcardMatch(input, pattern, platform = process.platform) {
+  let escaped = String(pattern)
+    .replaceAll('\\', '/')
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*')
+    .replace(/\?/g, '.');
+  if (escaped.endsWith(' .*')) escaped = `${escaped.slice(0, -3)}( .*)?`;
+  return new RegExp(`^${escaped}$`, platform === 'win32' ? 'si' : 's').test(String(input).replaceAll('\\', '/'));
+}
+
+/**
+ * The permission rules of a config, in order: OpenCode 2's "permissions" list of
+ * { action, resource, effect }, and 1.x's "permission" object (an action set to an effect, or
+ * to { pattern: effect }). Only actions and patterns are kept: they are what a rule matches.
+ */
+function permissionRulesOf(config) {
+  const rules = [];
+  const effectOf = value => (['allow', 'ask', 'deny'].includes(value) ? value : null);
+  for (const r of Array.isArray(config?.permissions) ? config.permissions : []) {
+    if (typeof r?.action === 'string' && typeof r.resource === 'string' && effectOf(r.effect)) rules.push({ action: r.action, resource: r.resource, effect: r.effect });
+  }
+  const old = config?.permission;
+  if (old && typeof old === 'object' && !Array.isArray(old)) {
+    for (const [action, value] of Object.entries(old)) {
+      if (effectOf(value)) rules.push({ action, resource: '*', effect: value });
+      else if (value && typeof value === 'object') for (const [resource, effect] of Object.entries(value)) if (effectOf(effect)) rules.push({ action, resource, effect });
+    }
+  } else if (effectOf(old)) rules.push({ action: '*', resource: '*', effect: old });
+  return rules;
+}
+
+/**
+ * Whether these rules would let a prompt through now without asking: each of its patterns
+ * allowed by the last rule that matches it, as OpenCode decides (Permission.evaluate).
+ * @param {string} patterns  as a prompt names them, " , " between several
+ */
+export function allowedByRules(rules, permission, patterns, platform = process.platform) {
+  if (!rules?.length || !permission) return false;
+  const list = String(patterns ?? '').split(' , ').map(p => p.trim()).filter(Boolean);
+  if (!list.length) return false;
+  return list.every(resource => rules.findLast(r => wildcardMatch(permission, r.action, platform) && wildcardMatch(resource, r.resource, platform))?.effect === 'allow');
+}
+
 // Keys of the "mcp" section that are settings, not servers (OpenCode 2: Config.MCP).
 const MCP_SETTINGS = new Set(['timeout', 'servers']);
 
@@ -270,6 +317,7 @@ export function loadOpencodeConfig(configDir, env = process.env) {
   let compaction = {}; // { auto, reserved } as the user set them
   const mcp = new Map();
   const providers = new Map();
+  const permissions = []; // rules in the order OpenCode reads them; the last that matches wins
 
   // Catalogue OpenCode caches for built-in providers; user config below overrides it.
   const cacheDir = env.XDG_CACHE_HOME ? join(env.XDG_CACHE_HOME, 'opencode') : join(homedir(), '.cache', 'opencode');
@@ -285,6 +333,7 @@ export function loadOpencodeConfig(configDir, env = process.env) {
       if (typeof baseURL === 'string' && /^https?:\/\//i.test(baseURL)) providers.set(id, { id, baseURL });
     }
     for (const entry of mcpEntries(config)) mcp.set(entry.name, { ...entry, type: entry.type ?? 'local' });
+    permissions.push(...permissionRulesOf(config));
   }
-  return { limits, reserves, compaction, mcp: [...mcp.values()], providers: [...providers.values()] };
+  return { limits, reserves, compaction, mcp: [...mcp.values()], providers: [...providers.values()], permissions };
 }

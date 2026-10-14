@@ -42,6 +42,7 @@ export async function mcpMain(argv) {
     modelReserves: opencode.reserves,
     compactionSettings: opencode.compaction,
     outputTokenMax,
+    permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions,
   });
   // What the monitor recorded, read and never written: this process changes nothing.
   const configChanges = createConfigWatch({

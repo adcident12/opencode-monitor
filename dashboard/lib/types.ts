@@ -301,7 +301,7 @@ export interface Stats {
       longestMs: number | null
       cut: { at: number; model: string | null; project: string; title: string }[]
     }
-    permissions: { asked: number; top: { permission: string; pattern: string; count: number; waitMs: number; lastAt: number }[] }
+    permissions: { asked: number; top: { permission: string; pattern: string; count: number; waitMs: number; lastAt: number; allowedNow?: boolean }[] }
     files: { edits: number; files: number; top: { file: string; count: number; project: string; title: string }[] }
     agents: { agent: string; requests: number; activeMs: number; tokens: number; cost: number; subagent: boolean }[]
     /** Rebuilt from every task list the agent wrote; "dropped" left a list without being done. */

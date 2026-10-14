@@ -491,7 +491,7 @@ function contextOfSession({ sessionId, own, compactions, tools, from, contextLim
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set() }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, allowedNow = () => false, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set() }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0, readingMs: 0, thinkingMs: 0, writingMs: 0, toolMs: 0, files: 0 }]));
@@ -552,7 +552,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   const work = {
     time: timeSplit(ctx, { spans, calls, messages, steps }),
     turns: turnsOf(ctx, { messages, where, show }),
-    permissions: permissionsOf(prompts, show),
+    permissions: permissionsOf(prompts, show, allowedNow),
     files: filesOf(ctx, { patches, where, show, relative }),
     agents: agentsOf(ctx, messages),
     plans: plansOf(ctx, { todos, todoWrites, todoWriters, where }),

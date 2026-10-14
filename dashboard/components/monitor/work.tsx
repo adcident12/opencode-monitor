@@ -183,7 +183,10 @@ export function Permissions({ work }: Readonly<{ work: Work }>) {
           <li key={`${p.permission}|${p.pattern}`} className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-3 py-2.5">
             <span className="font-medium tabular-nums">×{p.count}</span>
             <span className="min-w-0 space-y-1">
-              <span className="block text-sm">{p.permission}</span>
+              <span className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                {p.permission}
+                {p.allowedNow && <span className="text-xs text-finished">{t("work.permissionAllowedNow")}</span>}
+              </span>
               {p.pattern && <code className="block font-mono text-code break-words whitespace-pre-wrap text-muted-foreground">{p.pattern}</code>}
               {p.waitMs > 0 && <span className="block text-xs text-muted-foreground">{t("work.permissionWait", { t: duration(p.waitMs) })}</span>}
             </span>

@@ -31,7 +31,8 @@ const RULES = [
   },
   // The same permission asked again and again is a rule waiting to be written.
   s => {
-    const top = s.work.permissions.top[0];
+    // One a rule in the config lets through now is fixed already.
+    const top = s.work.permissions.top.find(g => !g.allowedNow);
     if (!top || top.count < 3) return null;
     return { id: 'permission_repeat', tone: 'act', vars: { n: top.count, permission: top.permission, pattern: top.pattern }, anchor: 'stats-you' };
   },

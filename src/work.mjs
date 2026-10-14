@@ -117,13 +117,17 @@ export function turnsOf(ctx, { messages, where, show }) {
   };
 }
 
-/** Which permission prompts interrupted you most, by what they asked to run. */
-export function permissionsOf(prompts, show) {
+/**
+ * Which permission prompts interrupted you most, by what they asked to run.
+ * @param {(permission: string, patterns: string) => boolean} [allowedNow] whether the config as
+ *   it is now lets such a prompt through: one that is fixed is not worth acting on again
+ */
+export function permissionsOf(prompts, show, allowedNow = () => false) {
   const groups = new Map();
   for (const p of prompts) {
     if (p.kind !== 'permission' || !p.permission) continue;
     const key = `${p.permission}|${p.patterns ?? ''}`;
-    const g = groups.get(key) ?? { permission: show(p.permission, 60), pattern: show(p.patterns ?? '', 200), count: 0, waitMs: 0, lastAt: 0 };
+    const g = groups.get(key) ?? { permission: show(p.permission, 60), pattern: show(p.patterns ?? '', 200), count: 0, waitMs: 0, lastAt: 0, allowedNow: allowedNow(p.permission, p.patterns ?? '') };
     g.count++;
     if (p.answeredAt != null) g.waitMs += p.waitMs;
     g.lastAt = Math.max(g.lastAt, p.t);

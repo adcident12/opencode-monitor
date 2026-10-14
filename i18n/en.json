@@ -476,6 +476,7 @@
   "work.permissionsNote": "{n} permission prompts in this period, most frequent first.",
   "work.permissionsNote.one": "{n} permission prompt in this period.",
   "work.permissionWait": "waited {t} in all",
+  "work.permissionAllowedNow": "allowed by a rule in your config now",
   "work.permissionsHow": "To stop being asked for one of these, allow it in the permission section of opencode.json, for example \"permission\": { \"external_directory\": { \"C:\\\\temp\\\\*\": \"allow\" } }. Only allow what you would always say yes to: the monitor never changes this for you.",
   "work.filesChanged": "Files changed",
   "work.filesNote": "{edits} edits to {files} files. The ones changed most often are below; lines added and removed are not recorded by OpenCode.",

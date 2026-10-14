@@ -49,7 +49,7 @@ async function testDigest(cfg) {
   const db = openDb(cfg.dataDir);
   try {
     const opencode = loadOpencodeConfig(cfg.opencodeConfigDir);
-    const stats = createStatsSource({ db, log: createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp: createProjectMcp(), modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+    const stats = createStatsSource({ db, log: createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp: createProjectMcp(), modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions });
     const t = loadTranslator(cfg.lang);
     const notifier = createNotifier(cfg.notify, t, undefined, { quiet: true });
     createDigest({ cfg: cfg.notify, stats, send: notifier.send, t }).sendNow();
@@ -197,7 +197,7 @@ export async function main(argv) {
     retentionDays: cfg.history.retentionDays,
   });
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions });
   const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const bridge = createBridgeSource({ db, replay });
   // Not for --sample: a summary of fake sessions has no business in a real channel.
@@ -225,8 +225,7 @@ export async function main(argv) {
     latest = JSON.stringify({ ...snap, historyCount: historyCount(), build: lookup.buildId(), version: VERSION, opencodeTested: TESTED_OPENCODE, opencodeUntested: isUntestedOpencode(snap.opencodeVersion) === true });
     for (const res of clients) res.write(`data: ${latest}\n\n`);
   };
-  tick();
-  const timer = setInterval(tick, cfg.pollMs);
+  let timer = null;
 
   const shown = { redact: createRedactor(cfg.redact), configDir: cfg.opencodeConfigDir };
   // What each address answers with, as JSON text. `unavailable`: said instead when it throws.
@@ -328,6 +327,11 @@ export async function main(argv) {
       : err));
     server.listen(cfg.port, cfg.lan ? EVERY_INTERFACE : HOST, resolve);
   });
+  // Only now, with the port ours: a second monitor that cannot have it must not have sent
+  // notifications, recorded history or config changes before finding out (a change was
+  // recorded twice so, by a monitor started while another ran).
+  tick();
+  timer = setInterval(tick, cfg.pollMs);
   announce(cfg, db, args.sample);
 
   return {
