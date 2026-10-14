@@ -34,7 +34,7 @@ export function digestLines(stats, t, { includeDetail = false } = {}) {
   const takeaways = stats.takeaways ?? takeawaysOf(stats);
   for (const k of takeaways) {
     const key = k.id === 'permission_repeat' && !includeDetail ? 'digest.permission_repeat' : `takeaways.${k.id}`;
-    lines.push(`• ${t(key, k.vars)}`);
+    lines.push(`• ${k.since ? t('takeaways.since', k.vars) : ''}${t(key, k.vars)}`);
   }
   if (!takeaways.length) lines.push(t('digest.none'));
   return lines;

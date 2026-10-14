@@ -43,6 +43,8 @@ export async function mcpMain(argv) {
     compactionSettings: opencode.compaction,
     outputTokenMax,
     permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions,
+    // Read when a figure is asked for, after configChanges below is made.
+    configChangedAt: since => configChanges.list(since).map(c => c.t),
   });
   // What the monitor recorded, read and never written: this process changes nothing.
   const configChanges = createConfigWatch({
@@ -58,7 +60,9 @@ export async function mcpMain(argv) {
     log.poll();
     return log.mcpDisconnected();
   };
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected });
+  // Read again each time: the model is the setting changed most often.
+  const currentModel = () => loadOpencodeConfig(cfg.opencodeConfigDir).model;
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();

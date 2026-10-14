@@ -397,9 +397,13 @@ function countUse(p, { explore, reads, readNames, skills, dirOf }) {
   if (p.tool === 'skill' && p.skill) countOne(skills, p.skill);
 }
 
+// An OpenCode 2 script that made more calls than this was a loop, not the agent's own steps.
+export const LOOP_SCRIPT_CALLS = 50;
+
 /** Tool calls: counts, errors, and how long each ran. */
 function tallyTools(ctx, tools, timing, stuckMs) {
   const perTool = new Map();
+  const loopScripts = new Set();
   const slow = [];
   const reads = new Map(); // session|file key -> count
   const readNames = new Map(); // session|file key -> the path as first written
@@ -424,6 +428,13 @@ function tallyTools(ctx, tools, timing, stuckMs) {
     perTool.set(p.tool, entry);
     const run = runOf(p, t, ctx, timing);
     countCall(b, entry, p, run, stuckMs);
+    if ((p.script_calls ?? 0) > LOOP_SCRIPT_CALLS) {
+      entry.loop ??= { scripts: 0, calls: 0, errors: 0 };
+      if (!loopScripts.has(p.script)) entry.loop.scripts++;
+      loopScripts.add(p.script);
+      entry.loop.calls++;
+      if (p.status === 'error') entry.loop.errors++;
+    }
     if (run.runMs != null) slow.push({ p, runMs: run.runMs, running: run.unfinished });
     calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: run.unfinished ? null : run.runMs });
     countUse(p, { explore, reads, readNames, skills, dirOf });

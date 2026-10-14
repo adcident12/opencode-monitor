@@ -7,6 +7,7 @@ import { mergeServers } from './mcp.mjs';
 import { allowedByRules, compactionPoint } from './opencode-config.mjs';
 import { promptsFor } from './pending.mjs';
 import { compareAt } from './compare.mjs';
+import { recentOf } from './recent.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
 const CACHE_MS = 60_000;
@@ -85,8 +86,9 @@ export function limitsFor({ cfg, projectMcp = null, modelLimits = new Map(), mod
  * @param {object[]} [deps.mcpServers]  MCP servers from the global config
  * @param {object} [deps.projectMcp]    from createProjectMcp
  * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
+ * @param {(since: number) => number[]} [deps.configChangedAt]  when the config was changed
  */
-export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, permissionRules = [] }) {
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, permissionRules = [], configChangedAt = () => [] }) {
   const { compactAt, contextLimit } = limitsFor({ cfg, projectMcp, modelLimits, modelReserves, compactionSettings, outputTokenMax });
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
@@ -108,8 +110,9 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
    * The same figures before and after a moment, per hour of agent time: what a change did.
    * @param {number} at     milliseconds
    * @param {number} hours  each way, 1 to 168
+   * @param {string|null} model  "provider/model": only its work, on both sides
    */
-  stats.compareAt = (at, hours = 24, askedSession = null, now = Date.now()) => {
+  stats.compareAt = (at, hours = 24, askedSession = null, now = Date.now(), model = null) => {
     const sessionId = matching(askedSession, SESSION_ID);
     const each = Math.min(168, Math.max(1, Number(hours) || 24));
     if (!Number.isFinite(at) || at > now) return { error: 'at must be a time in the past' };
@@ -122,7 +125,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
         for (const s of input.sessions) if (s.parent_id && scope.has(s.parent_id) && !scope.has(s.id)) grew = scope.add(s.id) && true;
       }
     }
-    return compareAt(input, at, each, scope);
+    return compareAt(input, at, each, scope, typeof model === 'string' && model.length <= 200 ? model : null);
   };
   return stats;
 
@@ -130,7 +133,8 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     const input = inputFor(days, sessionId, now);
     const value = computeStats(input);
     value.compare = compareAround(split, value, input);
-    value.takeaways = takeawaysOf(value);
+    // Rates since the newest change of the config or the model, not over both setups.
+    value.takeaways = takeawaysOf(value, recentOf(input, value, configChangedAt(value.range.from)));
     return value;
   }
 

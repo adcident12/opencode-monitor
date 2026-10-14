@@ -197,7 +197,7 @@ export async function main(argv) {
     retentionDays: cfg.history.retentionDays,
   });
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions, configChangedAt: since => configWatch.list(since).map(c => c.t) });
   const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const bridge = createBridgeSource({ db, replay });
   // Not for --sample: a summary of fake sessions has no business in a real channel.

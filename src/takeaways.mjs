@@ -7,6 +7,22 @@
 
 const MAX = 5;
 const HOUR = 3_600_000;
+// A tool counts as failing often from this share of its calls.
+const FAILING_PCT = 15;
+
+/** A tool's calls and failures, leaving out scripts that looped: they are their own line. */
+const ownCalls = t => ({ count: t.count - (t.loop?.calls ?? 0), errors: t.errors - (t.loop?.errors ?? 0) });
+const worstTool = tools => tools
+  .map(t => ({ ...t, ...ownCalls(t) }))
+  .filter(t => t.count >= 20)
+  .sort((a, b) => b.errors / b.count - a.errors / a.count)[0];
+
+/** A moment as this machine's clock reads it, to the minute: 2026-10-12 16:19. */
+export function shortTime(t) {
+  const d = new Date(t);
+  const two = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
 
 /**
  * Each rule returns null, or { id, tone, vars, anchor }:
@@ -58,7 +74,7 @@ const RULES = [
     return { id: 'mcp_no_answer', tone: 'act', vars: { name: worst.name, n: worst.faults, calls: worst.calls }, anchor: 'stats-mcp' };
   },
   // Where the agent's time goes, when one part clearly dominates.
-  s => {
+  Object.assign(s => {
     const t = s.work.time;
     const total = t.readingMs + t.thinkingMs + t.writingMs + t.toolMs;
     if (total < HOUR) return null;
@@ -66,7 +82,7 @@ const RULES = [
     const pct = Math.round((ms / total) * 100);
     if (pct < 50) return null;
     return { id: `time_${key}`, tone: 'note', vars: { pct, hours: Math.round((ms / HOUR) * 10) / 10 }, anchor: 'stats-agent' };
-  },
+  }, { rate: 'time' }),
   // Many compactions per session: details are being lost, and files read again.
   s => {
     const { sessions, compactions, rereads } = s.totals;
@@ -78,18 +94,37 @@ const RULES = [
     return { id, tone: 'act', vars: { per: Math.round(per * 10) / 10, sessions, rereads }, anchor: 'stats-model' };
   },
   // A prompt cache that is barely reused makes every request read everything again.
-  s => {
+  Object.assign(s => {
     const pct = s.usage.cachedPct;
     if (pct == null || s.usage.requests < 50 || pct >= 50) return null;
     return { id: 'cache_low', tone: 'act', vars: { pct, requests: s.usage.requests }, anchor: 'stats-model' };
-  },
+  }, { rate: 'cache_low' }),
   // A tool that fails often costs a retry each time.
-  s => {
-    const worst = [...s.tools].filter(t => t.count >= 20).sort((a, b) => b.errors / b.count - a.errors / a.count)[0];
+  Object.assign(s => {
+    const worst = worstTool(s.tools);
     if (!worst) return null;
     const pct = Math.round((worst.errors / worst.count) * 100);
-    if (pct < 15) return null;
+    if (pct < FAILING_PCT) return null;
     return { id: 'tool_failures', tone: 'note', vars: { tool: worst.tool, pct, n: worst.errors, calls: worst.count }, anchor: 'stats-agent' };
+  }, { rate: 'tool_failures' }),
+  // Rates (marked `rate`) are read from the figures since the newest change when there are
+// enough of them: before it they describe a setup that is gone. Such a takeaway carries
+// `since`, and its sentence is said as from then.
+// A tool that failed often over the period and no longer does since the change: fixed, not failing.
+  (s, recent) => {
+    if (!recent) return null;
+    const was = worstTool(s.tools);
+    if (!was || (was.errors / was.count) * 100 < FAILING_PCT) return null;
+    const now = recent.stats.tools.find(t => t.tool === was.tool);
+    const own = now && ownCalls(now);
+    if (!own || own.count < 20 || (own.errors / own.count) * 100 >= FAILING_PCT) return null;
+    return { id: 'tool_failures_better', tone: 'note', vars: { tool: was.tool, was: Math.round((was.errors / was.count) * 100), pct: Math.round((own.errors / own.count) * 100), n: own.errors, calls: own.count, since: shortTime(recent.since) }, anchor: 'stats-agent' };
+  },
+  // A script that looped: one line for it, not a failure rate for the tool it called.
+  s => {
+    const looped = s.tools.filter(t => t.loop).sort((a, b) => b.loop.calls - a.loop.calls)[0];
+    if (!looped) return null;
+    return { id: 'script_loop', tone: 'note', vars: { tool: looped.tool, scripts: looped.loop.scripts, calls: looped.loop.calls, n: looped.loop.errors }, anchor: 'stats-agent' };
   },
   // You waited a long time, in all.
   s => {
@@ -105,11 +140,21 @@ const RULES = [
   },
 ];
 
-/** @param {object} stats  a result of computeStats */
-export function takeawaysOf(stats) {
+/**
+ * @param {object} stats   a result of computeStats
+ * @param {{since: number, why: string, stats: object}|null} [recent]  the figures since the
+ *   newest change of the config or the model (see recent.mjs): rates are read from them
+ */
+export function takeawaysOf(stats, recent = null) {
   const out = [];
   for (const rule of RULES) {
-    const t = rule(stats);
+    let t;
+    if (rule.rate && recent) {
+      t = rule(recent.stats);
+      if (t) Object.assign(t, { since: recent.since, vars: { ...t.vars, since: shortTime(recent.since) } });
+    } else {
+      t = rule(stats, recent);
+    }
     if (t) out.push(t);
     if (out.length === MAX) break;
   }

@@ -470,6 +470,7 @@ function Takeaways({ items }: Readonly<{ items: Takeaway[] }>) {
           <li key={item.id} className="flex flex-col gap-x-4 gap-y-1 py-2.5 sm:flex-row sm:items-baseline">
             <p className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
               {item.tone === "act" && <span className="mr-2 inline-block rounded-full border border-waiting/50 px-1.5 text-2xs leading-5 whitespace-nowrap text-waiting">{t("takeaways.act")}</span>}
+              {item.since != null && t("takeaways.since", item.vars)}
               {t(`takeaways.${item.id}`, item.vars)}
             </p>
             <button type="button" onClick={() => goTo(item.anchor)} className="self-start rounded-sm text-sm whitespace-nowrap sm:self-auto text-muted-foreground underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">

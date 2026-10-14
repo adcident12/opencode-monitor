@@ -264,6 +264,8 @@ export interface Takeaway {
   vars: Record<string, string | number>
   /** The chapter with the details. */
   anchor: string
+  /** Read from the figures since this moment: a change of the config or the model. */
+  since?: number
 }
 
 export interface Stats {

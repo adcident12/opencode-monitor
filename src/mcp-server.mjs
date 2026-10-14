@@ -30,14 +30,19 @@ const SESSION = { type: 'string', description: 'Only this session: an id from op
  * @param {(text: string) => string} deps.redact
  */
 /** What a model's reply lengths say about compaction.buffer; null when nothing stands out. */
-export function bufferNote(written, buffer) {
+export function bufferNote(written, buffer, current = true) {
+  const note = text => (current || text == null ? text : `Not the model the global config uses now. ${text}`);
+  return note(bufferAdvice(written, buffer));
+}
+
+function bufferAdvice(written, buffer) {
   if (written.max >= buffer) return `A reply was ${written.max} tokens, as long as the buffer (${buffer}) or longer: a request near the compaction point could be refused as too long. A larger buffer leaves room for it.`;
   if (written.replies >= 200 && written.max < buffer / 2) return `The longest of ${written.replies} replies was ${written.max} tokens (p99 ${written.p99}), under half the buffer (${buffer}). A smaller buffer would compact later and keep more of the session, with room still to spare.`;
   return null;
 }
 
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], now = () => Date.now() }) {
-  const told = list => list.map(k => ({ what: t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
+  const told = list => list.map(k => ({ what: (k.since ? t('takeaways.since', k.vars) : '') + t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
   return [
@@ -76,21 +81,25 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
         // Only the models used in the last 30 days: OpenCode's catalogue has thousands.
         const used = stats(30).speed.models;
         const buffer = opencode.compaction.buffer ?? null;
+        const current = currentModel();
         const models = used.map(({ model, output: written }) => {
           const context = opencode.limits.get(model) ?? null;
           const reserve = opencode.reserves.get(model);
           return {
-            model, context, input: reserve?.input ?? null, output: reserve?.output ?? null,
+            model,
+            // The model the global config starts sessions with; a project or a session may pick another.
+            ...(current ? { current: model === current } : {}),
+            context, input: reserve?.input ?? null, output: reserve?.output ?? null,
             compactsAt: compactionPoint(context, reserve, { ...opencode.compaction, outputTokenMax, version: opencodeVersion() }),
             // How long its replies were (tokens written, thinking included), and what that says
             // about compaction.buffer, the room OpenCode 2 keeps free for the next one.
             replyTokens: written ?? null,
-            ...(buffer != null && written ? { bufferNote: bufferNote(written, buffer) } : {}),
+            ...(buffer != null && written ? { bufferNote: bufferNote(written, buffer, current == null || model === current) } : {}),
           };
         });
         return {
           models,
-          modelsNote: 'The models used in the last 30 days, most used first. compactsAt is OpenCode\'s own rule, of the version that wrote the newest session, applied to the global config (a project\'s config may differ); null means the limits are not known or it never compacts on its own.',
+          modelsNote: 'The models used in the last 30 days, most used first; `current` marks the one the global config starts sessions with. compactsAt is OpenCode\'s own rule, of the version that wrote the newest session, applied to the global config (a project\'s config may differ); null means the limits are not known or it never compacts on its own.',
           compaction: { auto: opencode.compaction.auto ?? true, reserved: opencode.compaction.reserved ?? null, buffer: opencode.compaction.buffer ?? null, outputTokenMax, opencodeVersion: opencodeVersion() },
           mcpServers: opencode.mcp.map(m => {
             // OpenCode 2 does not try a failed server again by itself: where it is down, and the
@@ -108,13 +117,14 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
     },
     {
       name: 'opencode_compare',
-      description: 'What a change did: the same figures for the hours before a moment and the hours after it, each per hour of agent time so stretches of different amounts of work compare. Compactions and how long they took, files read again after a compaction (whole or a range, and whether an edit followed), tool calls over 120 s, interrupted turns, failures per tool, thinking share, permission waits, and the models used. `reliable` is false when the model was not the same on both sides or a side has under an hour of agent time. By default the moment is the newest change in opencode_config_changes.',
+      description: 'What a change did: the same figures for the hours before a moment and the hours after it, each per hour of agent time so stretches of different amounts of work compare. Compactions and how long they took, files read again after a compaction (whole or a range, and whether an edit followed), tool calls over 120 s, interrupted turns, failures per tool, thinking share, permission waits, and the models used. `reliable` is false when the model was not the same on both sides or a side has under an hour of agent time; give `model` to count only the work of one model on both sides. A file read again after a compaction counts once per file and compaction: the first read after it of a file read at any time before it; `thenEdited` when an edit of that file came within the next 5 calls. Calls over 120 s (questions to the user left out) come with the tools they were and the longest three, so a wait on a build is told from a hang. By default the moment is the newest change in opencode_config_changes.',
       inputSchema: { type: 'object', properties: {
         at: { type: 'string', description: 'The moment, as an ISO date and time. Default: the newest recorded config change.' },
         hours: { type: 'integer', minimum: 1, maximum: 168, description: 'How far to look each way. Default 24; cut short by the 30 days read and by now, each side on its own.' },
         session: SESSION,
+        model: { type: 'string', description: 'Only the work of this model ("provider/model", as in opencode_stats), on both sides: its replies, the calls made in them, and the compactions of its sessions.' },
       } },
-      run: ({ at, hours, session }) => {
+      run: ({ at, hours, session, model }) => {
         let when = at ? Date.parse(at) : null;
         let change = null;
         if (when == null) {
@@ -123,7 +133,7 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
           when = change.t;
         }
         if (typeof stats.compareAt !== 'function') return { error: 'Not available.' };
-        const result = stats.compareAt(when, hours ?? 24, session ?? null, now());
+        const result = stats.compareAt(when, hours ?? 24, session ?? null, now(), model ?? null);
         return change ? { change: { ...change, at: new Date(change.t).toISOString() }, ...result } : result;
       },
     },

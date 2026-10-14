@@ -133,3 +133,48 @@ test('the buffer note speaks only when the replies say something', () => {
   assert.match(bufferNote({ replies: 500, p99: 4000, max: 6000 }, 24576), /smaller buffer/);
   assert.equal(bufferNote({ replies: 50, p99: 4000, max: 6000 }, 24576), null);
 });
+
+test('with a model asked for, only its replies and the calls made in them count, on both sides', () => {
+  const rows = day();
+  // Another model worked after the moment too, with a long call of its own.
+  rows.messages.push(reply('y1', AT + 4 * HOUR, AT + 6 * HOUR, { model_id: 'y' }));
+  rows.tools.push(call('b2', 'bash', AT + 4 * HOUR, AT + 4 * HOUR + 10 * MIN, { message_id: 'y1', cmd: 'npm run build' }));
+  for (const p of rows.tools) p.message_id ??= startOf(p) < AT ? 'm1' : 'm2';
+  const mixed = compareAt(rows, AT, 24);
+  assert.equal(mixed.reliable, false);
+  assert.match(mixed.note, /Give `model`/);
+  const one = compareAt(rows, AT, 24, null, 'a/x');
+  assert.equal(one.reliable, true);
+  assert.deepEqual(one.after.models, [{ model: 'a/x', replies: 2 }]);
+  assert.equal(one.after.agentHours, 2.02);
+  assert.equal(one.after.longCalls.count, 1);
+  // The compaction counts for the model that was answering before it.
+  assert.equal(one.before.compactions.count, 1);
+  assert.equal(compareAt(rows, AT, 24, null, 'a/y').before.agentHours, 0);
+});
+
+const startOf = p => p.started ?? p.time_created;
+
+test('calls over 120 s come by tool, with the longest and what they ran', () => {
+  const rows = day();
+  rows.tools.push(call('b2', 'bash', AT + 4 * HOUR, AT + 4 * HOUR + 10 * MIN, { cmd: 'npm run build' }));
+  // A question waits for you: not a long call.
+  rows.tools.push(call('q1', 'question', AT + 5 * HOUR, AT + 6 * HOUR));
+  const { longCalls } = compareAt(rows, AT, 24).after;
+  assert.deepEqual(longCalls.byTool, { bash: 2 });
+  assert.deepEqual(longCalls.longest.map(c => [c.tool, c.ms, c.what]), [['bash', 10 * MIN, 'npm run build'], ['bash', 3 * MIN, '']]);
+});
+
+test('a file read again after a compaction counts once for that compaction, however often it is read', () => {
+  const rows = day();
+  rows.tools.push(call('r4', 'read', AT - 50 * MIN, AT - 50 * MIN + 100, { file: '/work/shop/a.js', read_offset: 10 }));
+  assert.equal(compareAt(rows, AT, 24).before.rereadsAfterCompaction.total, 1);
+  // A V1 row says its range in columns, not in its input.
+  rows.tools[1].read_limit = 40;
+  assert.equal(compareAt(rows, AT, 24).before.rereadsAfterCompaction.ranged, 1);
+});
+
+test('the buffer note says when the model is not the one the config uses now', () => {
+  assert.match(bufferNote({ replies: 500, p99: 9000, max: 26000 }, 24576, false), /^Not the model the global config uses now\. /);
+  assert.equal(bufferNote({ replies: 500, p99: 9000, max: 15074 }, 24576, false), null);
+});

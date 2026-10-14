@@ -309,6 +309,7 @@ export function createProjectMcp({ everyMs = 60_000, now = () => Date.now() } = 
  *   limits: Map<string, number>,                        "provider/model" -> context window
  *   mcp: {name: string, type: string, enabled: boolean}[],
  *   providers: {id: string, baseURL: string}[]           only providers with their own address
+ *   model: string|null                                   "provider/model" new sessions start with
  * }}
  */
 export function loadOpencodeConfig(configDir, env = process.env) {
@@ -318,6 +319,7 @@ export function loadOpencodeConfig(configDir, env = process.env) {
   const mcp = new Map();
   const providers = new Map();
   const permissions = []; // rules in the order OpenCode reads them; the last that matches wins
+  let model = null;
 
   // Catalogue OpenCode caches for built-in providers; user config below overrides it.
   const cacheDir = env.XDG_CACHE_HOME ? join(env.XDG_CACHE_HOME, 'opencode') : join(homedir(), '.cache', 'opencode');
@@ -334,6 +336,7 @@ export function loadOpencodeConfig(configDir, env = process.env) {
     }
     for (const entry of mcpEntries(config)) mcp.set(entry.name, { ...entry, type: entry.type ?? 'local' });
     permissions.push(...permissionRulesOf(config));
+    if (typeof config.model === 'string') model = config.model;
   }
-  return { limits, reserves, compaction, mcp: [...mcp.values()], providers: [...providers.values()], permissions };
+  return { limits, reserves, compaction, mcp: [...mcp.values()], providers: [...providers.values()], permissions, model };
 }

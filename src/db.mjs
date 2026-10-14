@@ -239,7 +239,7 @@ export function openDb(dataDir) {
   // For the stats page: everything in a time range, with only the fields it counts.
   const statsStmt = {
     sessions: db.prepare(`select id, parent_id, directory, title, time_created, time_updated, ${columns.session.has('version') ? 'version' : 'null as version'} from session where time_updated >= ?`),
-    tools: db.prepare(`select id, session_id, time_created, time_updated,
+    tools: db.prepare(`select id, message_id, session_id, time_created, time_updated,
         json_extract(data,'$.tool') tool,
         json_extract(data,'$.state.status') status,
         json_extract(data,'$.state.time.start') started,
@@ -249,7 +249,9 @@ export function openDb(dataDir) {
         substr(json_extract(data,'$.state.input.questions[0].question'),1,300) question,
         substr(json_extract(data,'$.state.input.description'),1,300) descr,
         substr(json_extract(data,'$.state.input.name'),1,100) skill,
-        substr(json_extract(data,'$.state.error'),1,200) error
+        substr(json_extract(data,'$.state.error'),1,200) error,
+        json_extract(data,'$.state.input.offset') read_offset,
+        json_extract(data,'$.state.input.limit') read_limit
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
     messages: db.prepare(`select id, session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
         json_extract(data,'$.summary') summary,

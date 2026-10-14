@@ -83,6 +83,9 @@ function toolRow(row, item) {
     scan_out: output.slice(0, OUTPUT_SCAN_CHARS) || null,
     input: inputJson.slice(0, 1000),
     input_len: inputJson.length,
+    // A read of part of a file: where it started and how many lines.
+    read_offset: num(input.offset),
+    read_limit: num(input.limit),
     error: text(typeof error === 'string' ? error : error?.message, 500),
     out_len: output.length || null,
     out_tail: running ? output.slice(-OUTPUT_TAIL_CHARS) : null,
@@ -110,6 +113,10 @@ export function toolRowsOf(row, item) {
       ...base,
       id: `${base.id}:${i}`,
       tool: toolPrefix(call.server) + call.tool,
+      // The script it came from, and how many calls that script made: one that looped is told
+      // apart from calls the agent made one by one.
+      script: base.id,
+      script_calls: calls.length,
       status: base.status === 'running' || base.status === 'pending' ? base.status : (call.status ?? base.status),
       started: share == null ? started : Math.round(started + i * share),
       ended: share == null ? ended : Math.round(started + (i + 1) * share),
