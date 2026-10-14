@@ -36,6 +36,20 @@ const RULES = [
     if (!top || top.count < 3) return null;
     return { id: 'permission_repeat', tone: 'act', vars: { n: top.count, permission: top.permission, pattern: top.pattern }, anchor: 'stats-you' };
   },
+  // Summarising took a real share of the agent's time.
+  s => {
+    const { compactingMs, activeMs, compactions } = s.totals;
+    if (!(compactingMs >= 30 * 60_000) || !activeMs || compactingMs / activeMs < 0.1) return null;
+    return { id: 'compacting_time', tone: 'note', vars: { pct: Math.round((compactingMs / activeMs) * 100), hours: Math.round((compactingMs / 3_600_000) * 10) / 10, n: compactions }, anchor: 'stats-agent' };
+  },
+  // One session that went on through many compactions: each costs the detail of what came before.
+  s => {
+    // With one session picked, only that one.
+    const pool = s.session ? (s.sessions ?? []).filter(x => x.id === s.session.id) : (s.sessions ?? []);
+    const long = pool.filter(x => x.compactions >= 20).sort((a, b) => b.compactions - a.compactions)[0];
+    if (!long) return null;
+    return { id: 'long_session', tone: 'act', vars: { n: long.compactions, hours: Math.round((long.activeMs / 3_600_000) * 10) / 10 }, anchor: 'stats-model' };
+  },
   // An MCP server that often did not answer is broken, not merely slow. Three in hundreds of
   // calls is a hiccup, so it takes a share of the calls as well as a count.
   s => {

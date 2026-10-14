@@ -263,8 +263,9 @@ Then, in Claude Code: *use opencode-monitor and tell me what to change*. `--data
 | `opencode_takeaways` | The sentences from "Worth knowing", with the figures each is based on |
 | `opencode_stats` | The figures of the Stats tab for 7, 14 or 30 days, or for one session |
 | `opencode_sessions` | The sessions of a period and what each took |
-| `opencode_settings` | Limits of the models you used and where OpenCode compacts each, the compaction settings, MCP servers and whether each is on, which config files exist |
+| `opencode_settings` | Limits of the models you used and where OpenCode compacts each, the compaction settings, MCP servers and whether each is on (with OpenCode 2, where one failed to connect and the command that connects it), how long each model's replies are, which config files exist |
 | `opencode_config_changes` | The recorded changes of OpenCode's config |
+| `opencode_compare` | The same figures before and after a moment (by default the newest config change), per hour of agent time, and whether the model was the same on both sides |
 
 What to know before you connect it:
 

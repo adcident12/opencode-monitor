@@ -111,8 +111,8 @@ test('the tools: figures from the stats source, takeaways as sentences, settings
 
   const settings = run('opencode_settings');
   assert.deepEqual(settings.models, [
-    { model: 'a/x', context: 100_000, input: null, output: 8000, compactsAt: 92_000 },
-    { model: 'b/unknown', context: null, input: null, output: null, compactsAt: null },
+    { model: 'a/x', context: 100_000, input: null, output: 8000, compactsAt: 92_000, replyTokens: null },
+    { model: 'b/unknown', context: null, input: null, output: null, compactsAt: null, replyTokens: null },
   ]);
   assert.deepEqual(settings.mcpServers, [{ name: 'trivy', type: 'local', enabled: true }]);
   assert.doesNotMatch(JSON.stringify(settings), /SECRET|10\.0\.0\.5|token/);
@@ -137,12 +137,13 @@ test('mcp.mjs: a real process speaks only the protocol on stdout, on sample data
   send({ id: 5, method: 'tools/call', params: { name: 'opencode_takeaways', arguments: {} } });
   send({ id: 6, method: 'tools/call', params: { name: 'opencode_sessions', arguments: { days: 30 } } });
   send({ id: 7, method: 'tools/call', params: { name: 'opencode_config_changes', arguments: {} } });
+  send({ id: 8, method: 'tools/call', params: { name: 'opencode_compare', arguments: { at: new Date(Date.now() - 3_600_000).toISOString(), hours: 2 } } });
   child.stdin.end();
   const code = await new Promise(done => child.on('close', done));
   assert.equal(code, 0, err);
   const replies = out.trim().split('\n').map(line => JSON.parse(line));
-  assert.deepEqual(replies.map(r => r.id), [1, 2, 3, 4, 5, 6, 7]);
-  assert.equal(replies[1].result.tools.length, 5);
+  assert.deepEqual(replies.map(r => r.id), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(replies[1].result.tools.length, 6);
   for (const reply of replies.slice(2)) assert.equal(reply.result.isError, undefined, reply.result.content[0].text);
   const figures = JSON.parse(replies[2].result.content[0].text);
   assert.ok(figures.totals.toolCalls > 0);

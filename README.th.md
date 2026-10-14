@@ -263,8 +263,9 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 | `opencode_takeaways` | ประโยคจาก "สิ่งที่ควรรู้" พร้อมตัวเลขที่แต่ละข้ออ้างอิง |
 | `opencode_stats` | ตัวเลขของแท็บสถิติสำหรับ 7, 14 หรือ 30 วัน หรือสำหรับ session เดียว |
 | `opencode_sessions` | session ของช่วงเวลาหนึ่ง และแต่ละ session ใช้ไปเท่าไร |
-| `opencode_settings` | limit ของโมเดลที่คุณใช้ และจุดที่ OpenCode compact แต่ละตัว การตั้งค่า compaction, MCP server และแต่ละตัวเปิดอยู่หรือไม่ และมีไฟล์ config ใดอยู่บ้าง |
+| `opencode_settings` | limit ของโมเดลที่คุณใช้ และจุดที่ OpenCode compact แต่ละตัว การตั้งค่า compaction, MCP server และแต่ละตัวเปิดอยู่หรือไม่ (กับ OpenCode 2 บอกโฟลเดอร์ที่เชื่อมต่อไม่สำเร็จ พร้อมคำสั่งที่เชื่อมต่อใหม่) ความยาวคำตอบของแต่ละโมเดล และมีไฟล์ config ใดอยู่บ้าง |
 | `opencode_config_changes` | การเปลี่ยน config ของ OpenCode ที่ถูกบันทึกไว้ |
+| `opencode_compare` | ตัวเลขชุดเดียวกันก่อนและหลังช่วงเวลาหนึ่ง (ค่าเริ่มต้นคือการเปลี่ยน config ล่าสุด) ต่อชั่วโมงที่ agent ทำงาน และบอกว่าทั้งสองฝั่งใช้โมเดลเดียวกันหรือไม่ |
 
 สิ่งที่ควรรู้ก่อนเชื่อมต่อ:
 

@@ -6,6 +6,7 @@ import { clip } from './redact.mjs';
 import { mergeServers } from './mcp.mjs';
 import { allowedByRules, compactionPoint } from './opencode-config.mjs';
 import { promptsFor } from './pending.mjs';
+import { compareAt } from './compare.mjs';
 
 export const STATS_DAYS = [7, 14, 30];
 const CACHE_MS = 60_000;
@@ -94,7 +95,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
    * @param {string|null} [split] a day (YYYY-MM-DD) inside the range: also summarise the days
    *   before it and the days from it on, to see what a change made on that day did
    */
-  return function stats(askedDays, askedSession = null, askedSplit = null, now = Date.now()) {
+  const stats = function stats(askedDays, askedSession = null, askedSplit = null, now = Date.now()) {
     // What was asked comes from a URL or an assistant: anything unexpected becomes the default.
     const days = STATS_DAYS.includes(askedDays) ? askedDays : 14;
     const sessionId = matching(askedSession, SESSION_ID);
@@ -103,7 +104,38 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
     return remembered(cache, key, now, () => compute(days, sessionId, split, now));
   };
 
+  /**
+   * The same figures before and after a moment, per hour of agent time: what a change did.
+   * @param {number} at     milliseconds
+   * @param {number} hours  each way, 1 to 168
+   */
+  stats.compareAt = (at, hours = 24, askedSession = null, now = Date.now()) => {
+    const sessionId = matching(askedSession, SESSION_ID);
+    const each = Math.min(168, Math.max(1, Number(hours) || 24));
+    if (!Number.isFinite(at) || at > now) return { error: 'at must be a time in the past' };
+    const input = inputFor(30, sessionId, now);
+    let scope = null;
+    if (sessionId) {
+      scope = new Set([sessionId]);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const s of input.sessions) if (s.parent_id && scope.has(s.parent_id) && !scope.has(s.id)) grew = scope.add(s.id) && true;
+      }
+    }
+    return compareAt(input, at, each, scope);
+  };
+  return stats;
+
   function compute(days, sessionId, split, now) {
+    const input = inputFor(days, sessionId, now);
+    const value = computeStats(input);
+    value.compare = compareAround(split, value, input);
+    value.takeaways = takeawaysOf(value);
+    return value;
+  }
+
+  /** Every row the figures of a period are counted from. */
+  function inputFor(days, sessionId, now) {
     // The rules as the config says now: read again with each figure, so a rule added since
     // the monitor started counts.
     const rules = typeof permissionRules === 'function' ? permissionRules() : permissionRules;
@@ -144,9 +176,6 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       show,
       allowedNow: (permission, patterns) => allowedByRules(rules, permission, patterns),
     };
-    const value = computeStats(input);
-    value.compare = compareAround(split, value, input);
-    value.takeaways = takeawaysOf(value);
-    return value;
+    return input;
   }
 }

@@ -119,7 +119,10 @@ function nearest(sorted, t, fits) {
  *   read speed   - new (uncached) prompt tokens per second, over the wait for the first token.
  * Totals over totals rather than an average of rates, so one tiny request cannot skew it.
  */
-function computeSpeed({ requests, keys, show }) {
+/** The value at a share of the way through sorted values (0.5 the median), or null. */
+const quantile = (sorted, q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : null);
+
+function computeSpeed({ requests, keys, show, outputs = new Map() }) {
   const perModel = new Map();
   for (const r of requests) {
     const m = perModel.get(r.model) ?? { model: r.model, requests: 0, outTokens: 0, writeMs: 0, promptTokens: 0, readMs: 0, waits: [], days: new Map() };
@@ -148,6 +151,12 @@ function computeSpeed({ requests, keys, show }) {
       writeTps: rate(m.outTokens, m.writeMs),
       readTps: rate(m.promptTokens, m.readMs),
       firstTokenMs: median(m.waits),
+      // How long a reply is, in tokens written (thinking included): what compaction.buffer must
+      // leave room for. Every reply with a count, timed or not.
+      output: (() => {
+        const all = (outputs.get(m.model) ?? []).toSorted((a, b) => a - b);
+        return all.length ? { replies: all.length, p50: quantile(all, 0.5), p95: quantile(all, 0.95), p99: quantile(all, 0.99), max: all.at(-1) } : null;
+      })(),
       // One value per day of the range, null on days the model was not used.
       daily: keys.map(k => (m.days.has(k) ? rate(m.days.get(k).tokens, m.days.get(k).ms) : null)),
     })),
@@ -289,6 +298,7 @@ function tallyRequests(ctx, messages, steps) {
   const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
   const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
   const timed = []; // requests whose first token and last written token are both known
+  const outputs = new Map(); // model -> tokens written per reply
   const own = []; // the selected session's own requests, for its context timeline
   for (const m of messages) {
     if (m.role !== 'assistant' || !ctx.inScope(m.session_id)) continue;
@@ -301,6 +311,11 @@ function tallyRequests(ctx, messages, steps) {
     addUsage(usage, b, m, sent);
     const timing = timingOf(m, steps.get(m.id));
     if (timing) timed.push(timing);
+    if (m.model_id && !m.summary && (m.tokens_output ?? 0) > 0) {
+      const model = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
+      if (!outputs.has(model)) outputs.set(model, []);
+      outputs.get(model).push((m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0));
+    }
     const first = firstRequest.get(m.session_id);
     if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
   }
@@ -314,7 +329,7 @@ function tallyRequests(ctx, messages, steps) {
     })
     .map(([, first]) => first.tokens);
   own.sort((a, b) => a.t - b.t);
-  return { usage, startSizes, timed, own };
+  return { usage, startSizes, timed, own, outputs };
 }
 
 /** Prompts: how long each one waited for an answer. */
@@ -416,7 +431,7 @@ function tallyTools(ctx, tools, timing, stuckMs) {
   return { perTool, slow, reads, readNames, skills, explore, calls, perRoot };
 }
 
-const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tokens: 0, cost: 0 });
+const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, compactingMs: 0, tokens: 0, cost: 0 });
 
 /**
  * What each top-level session cost in the range, subagents included, whatever the filter:
@@ -424,6 +439,7 @@ const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, tok
  */
 function effortPerSession(ctx, { messages, compactions, prompts }) {
   const effort = new Map();
+  const models = new Map(); // top-level session -> model -> replies
   const bump = (id, key, n) => {
     const root = ctx.rootOf(id);
     const e = effort.get(root) ?? { ...EMPTY_EFFORT };
@@ -434,12 +450,26 @@ function effortPerSession(ctx, { messages, compactions, prompts }) {
     if (m.role !== 'assistant' || m.time_created < ctx.from || m.time_created > ctx.now) continue;
     const end = Math.min(m.completed ?? m.time_created, ctx.now);
     if (end > m.time_created) bump(m.session_id, 'activeMs', end - m.time_created);
+    if (end > m.time_created && m.agent === 'compaction') bump(m.session_id, 'compactingMs', end - m.time_created);
+    // Which models did the work: figures from different models are not to be mixed.
+    if (m.model_id && m.agent !== 'compaction') {
+      const root = ctx.rootOf(m.session_id);
+      const used = models.get(root) ?? new Map();
+      const name = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
+      used.set(name, (used.get(name) ?? 0) + 1);
+      models.set(root, used);
+    }
     const tokens = tokensSent(m) + (m.tokens_output ?? 0);
     if (tokens > 0) bump(m.session_id, 'tokens', tokens);
     if (m.cost > 0) bump(m.session_id, 'cost', m.cost);
   }
   for (const c of compactions) if (c.time_created >= ctx.from) bump(c.session_id, 'compactions', 1);
   for (const p of prompts) if (p.part) bump(p.part.session_id, 'waitMs', p.waitMs);
+  for (const [root, used] of models) {
+    const e = effort.get(root) ?? { ...EMPTY_EFFORT };
+    e.models = [...used].sort((a, b) => b[1] - a[1]).map(([model, replies]) => ({ model, replies }));
+    effort.set(root, e);
+  }
   return effort;
 }
 
@@ -519,7 +549,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
   for (const s of sessions) if (inScope(s.id) && s.time_created >= from && !s.parent_id) countOn(s.time_created, 'sessions');
   for (const c of compactions) if (inScope(c.session_id)) countOn(c.time_created, 'compactions');
 
-  const { usage, startSizes, timed, own } = tallyRequests(ctx, messages, steps);
+  const { usage, startSizes, timed, own, outputs } = tallyRequests(ctx, messages, steps);
   const movedOn = nextMessageFinder(messages);
   const { prompts, all: allPrompts, waitByPart, deadAt } = tallyPrompts(ctx, { asks, replies, tools, eventTimes, movedOn, liveRuns, runEnds, scope });
   const { perTool, slow, reads, readNames, skills, explore, calls, perRoot } = tallyTools(ctx, tools, { movedOn, deadAt, waitByPart }, stuckMs);
@@ -539,6 +569,13 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     toolCalls: sum('toolCalls'),
     toolErrors: sum('toolErrors'),
     compactions: sum('compactions'),
+    // Time spent summarising for compactions: agent time, but none of it on the task.
+    compactingMs: messages.reduce((n, m) => {
+      if (m.role !== 'assistant' || m.agent !== 'compaction' || !inScope(m.session_id)) return n;
+      const start = Math.max(m.time_created, from);
+      const end = Math.min(m.completed ?? m.time_created, now);
+      return end > start ? n + end - start : n;
+    }, 0),
     // Compactions OpenCode did because the model server refused a request as too long.
     serverLimitCompactions: compactions.filter(c => c.overflow && c.time_created >= from && inScope(c.session_id)).length,
     // Files read three or more times within one session.
@@ -576,7 +613,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // Only for one session: a context window belongs to a session, not to a period.
     context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory, version: sessionById.get(sessionId)?.version ?? null }) : null,
     work,
-    speed: computeSpeed({ requests: timed, keys, show }),
+    speed: computeSpeed({ requests: timed, keys, show, outputs }),
     usage: {
       ...usage,
       // Share of what was sent that the model server could reuse from its cache.

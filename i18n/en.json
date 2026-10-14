@@ -411,6 +411,8 @@
   "takeaways.cut_off.one": "{n} reply was cut off at the output limit ({models}). Raise limit.output for that model in opencode.json, or ask for smaller steps.",
   "takeaways.mcp_unused": "Switched on but never called in {sessions} sessions: {names}. Each MCP server adds its tools to every prompt.",
   "takeaways.permission_repeat": "You were asked {n} times to allow {permission}: {pattern}. A permission rule in opencode.json would stop asking.",
+  "takeaways.compacting_time": "{pct}% of the agent's time ({hours} h) went on summarising for {n} compactions, none of it on the task. Fewer compactions (shorter sessions, a smaller start) give it back.",
+  "takeaways.long_session": "One session went on through {n} compactions over {hours} h of agent time. A new session for each large piece of work keeps more of the detail.",
   "takeaways.mcp_no_answer": "MCP server {name} did not answer {n} of {calls} calls. Check that it starts, or switch it off.",
   "takeaways.time_readingMs": "{pct}% of the agent's time ({hours} h) was the model reading the prompt. A smaller start or a better cached prompt shortens it.",
   "takeaways.time_thinkingMs": "{pct}% of the agent's time ({hours} h) was thinking. A lower reasoning effort shortens it, if the answers stay good.",

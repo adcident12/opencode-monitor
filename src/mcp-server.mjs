@@ -29,6 +29,13 @@ const SESSION = { type: 'string', description: 'Only this session: an id from op
  * @param {{list: (since?: number) => object[]}} deps.configChanges
  * @param {(text: string) => string} deps.redact
  */
+/** What a model's reply lengths say about compaction.buffer; null when nothing stands out. */
+export function bufferNote(written, buffer) {
+  if (written.max >= buffer) return `A reply was ${written.max} tokens, as long as the buffer (${buffer}) or longer: a request near the compaction point could be refused as too long. A larger buffer leaves room for it.`;
+  if (written.replies >= 200 && written.max < buffer / 2) return `The longest of ${written.replies} replies was ${written.max} tokens (p99 ${written.p99}), under half the buffer (${buffer}). A smaller buffer would compact later and keep more of the session, with room still to spare.`;
+  return null;
+}
+
 export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
@@ -45,7 +52,7 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
     },
     {
       name: 'opencode_stats',
-      description: 'The figures for a period: time waiting for the user and time the agent worked, how that time split (reading the prompt, thinking, writing, tools), how prompts ended, permissions asked most, files changed, plans, tools and their failures, MCP servers, model speed, tokens and cost. Times are milliseconds. With `session`, also how that session\'s context filled and where it was compacted.',
+      description: 'The figures for a period: time waiting for the user and time the agent worked, how that time split (reading the prompt, thinking, writing, tools), how prompts ended, permissions asked most, files changed, plans, tools and their failures, MCP servers, model speed, tokens and cost. Times are milliseconds. With `session`, also how that session\'s context filled and where it was compacted. An MCP call made inside an OpenCode 2 `execute` script counts once each, as OpenCode lists it: a script that looped counts every call it made.',
       inputSchema: { type: 'object', properties: { days: PERIOD, session: SESSION, daily: { type: 'boolean', description: 'Also the figures per day. Default false.' } } },
       run: ({ days, session, daily }) => {
         const { range, sessions, takeaways, compare, daily: perDay, ...rest } = stats(days, session);
@@ -67,11 +74,19 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
       inputSchema: { type: 'object', properties: {} },
       run: () => {
         // Only the models used in the last 30 days: OpenCode's catalogue has thousands.
-        const used = stats(30).speed.models.map(m => m.model);
-        const models = used.map(model => {
+        const used = stats(30).speed.models;
+        const buffer = opencode.compaction.buffer ?? null;
+        const models = used.map(({ model, output: written }) => {
           const context = opencode.limits.get(model) ?? null;
           const reserve = opencode.reserves.get(model);
-          return { model, context, input: reserve?.input ?? null, output: reserve?.output ?? null, compactsAt: compactionPoint(context, reserve, { ...opencode.compaction, outputTokenMax, version: opencodeVersion() }) };
+          return {
+            model, context, input: reserve?.input ?? null, output: reserve?.output ?? null,
+            compactsAt: compactionPoint(context, reserve, { ...opencode.compaction, outputTokenMax, version: opencodeVersion() }),
+            // How long its replies were (tokens written, thinking included), and what that says
+            // about compaction.buffer, the room OpenCode 2 keeps free for the next one.
+            replyTokens: written ?? null,
+            ...(buffer != null && written ? { bufferNote: bufferNote(written, buffer) } : {}),
+          };
         });
         return {
           models,
@@ -89,6 +104,27 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
           configFiles: configFiles(cfg.opencodeConfigDir).filter(f => existsSync(f)).map(f => f.replaceAll('\\', '/')),
           configFilesNote: 'Global. A project may have its own opencode.json or .opencode/opencode.json, which is applied over these.',
         };
+      },
+    },
+    {
+      name: 'opencode_compare',
+      description: 'What a change did: the same figures for the hours before a moment and the hours after it, each per hour of agent time so stretches of different amounts of work compare. Compactions and how long they took, files read again after a compaction (whole or a range, and whether an edit followed), tool calls over 120 s, interrupted turns, failures per tool, thinking share, permission waits, and the models used. `reliable` is false when the model was not the same on both sides or a side has under an hour of agent time. By default the moment is the newest change in opencode_config_changes.',
+      inputSchema: { type: 'object', properties: {
+        at: { type: 'string', description: 'The moment, as an ISO date and time. Default: the newest recorded config change.' },
+        hours: { type: 'integer', minimum: 1, maximum: 168, description: 'How far to look each way. Default 24; cut short by the 30 days read and by now, each side on its own.' },
+        session: SESSION,
+      } },
+      run: ({ at, hours, session }) => {
+        let when = at ? Date.parse(at) : null;
+        let change = null;
+        if (when == null) {
+          change = shownChanges(configChanges.list(now() - 30 * 86_400_000), { redact, configDir: cfg.opencodeConfigDir })[0] ?? null;
+          if (!change) return { error: 'No config change recorded in the last 30 days: give `at`.' };
+          when = change.t;
+        }
+        if (typeof stats.compareAt !== 'function') return { error: 'Not available.' };
+        const result = stats.compareAt(when, hours ?? 24, session ?? null, now());
+        return change ? { change: { ...change, at: new Date(change.t).toISOString() }, ...result } : result;
       },
     },
     {
