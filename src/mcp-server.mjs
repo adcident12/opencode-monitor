@@ -29,7 +29,7 @@ const SESSION = { type: 'string', description: 'Only this session: an id from op
  * @param {{list: (since?: number) => object[]}} deps.configChanges
  * @param {(text: string) => string} deps.redact
  */
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
@@ -63,7 +63,7 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
     },
     {
       name: 'opencode_settings',
-      description: 'What OpenCode is set to, as far as it matters for the figures: each model\'s context, input and output limits and the size at which OpenCode compacts a session of it, the compaction settings, the MCP servers and whether each is switched on, and which config files exist. No keys, addresses or commands.',
+      description: 'What OpenCode is set to, as far as it matters for the figures: each model\'s context, input and output limits and the size at which OpenCode compacts a session of it, the compaction settings, the MCP servers and whether each is switched on (with OpenCode 2, also the folders where one failed to connect and was not tried again, with the command that connects it), and which config files exist. No keys, addresses or commands.',
       inputSchema: { type: 'object', properties: {} },
       run: () => {
         // Only the models used in the last 30 days: OpenCode's catalogue has thousands.
@@ -77,7 +77,15 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
           models,
           modelsNote: 'The models used in the last 30 days, most used first. compactsAt is OpenCode\'s own rule, of the version that wrote the newest session, applied to the global config (a project\'s config may differ); null means the limits are not known or it never compacts on its own.',
           compaction: { auto: opencode.compaction.auto ?? true, reserved: opencode.compaction.reserved ?? null, buffer: opencode.compaction.buffer ?? null, outputTokenMax, opencodeVersion: opencodeVersion() },
-          mcpServers: opencode.mcp.map(m => ({ name: m.name, type: m.type, enabled: m.enabled })),
+          mcpServers: opencode.mcp.map(m => {
+            // OpenCode 2 does not try a failed server again by itself: where it is down, and the
+            // command that connects it (it changes nothing else).
+            const down = mcpDisconnected().filter(c => c.name === m.name).map(c => ({
+              folder: redact(c.directory), since: new Date(c.t).toISOString(), error: redact(c.error ?? ''),
+              reconnect: `opencode api experimental.mcp.connect --param server=${m.name} --param "location[directory]=${c.directory}"`,
+            }));
+            return { name: m.name, type: m.type, enabled: m.enabled, ...(down.length ? { disconnected: down } : {}) };
+          }),
           configFiles: configFiles(cfg.opencodeConfigDir).filter(f => existsSync(f)).map(f => f.replaceAll('\\', '/')),
           configFilesNote: 'Global. A project may have its own opencode.json or .opencode/opencode.json, which is applied over these.',
         };

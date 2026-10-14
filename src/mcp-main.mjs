@@ -54,7 +54,11 @@ export async function mcpMain(argv) {
 
   // The OpenCode that wrote the newest session: whose compaction rule applies.
   const opencodeVersion = () => db.recentSessions(0, 1)[0]?.version ?? null;
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion });
+  const mcpDisconnected = () => {
+    log.poll();
+    return log.mcpDisconnected();
+  };
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();

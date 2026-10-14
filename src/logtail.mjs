@@ -18,6 +18,32 @@ const MCP = /^timestamp=(\S+) level=\S+ run=(\S+) message="(server unavailable|M
 // OpenCode that holds sessions. A run counts from its second line on.
 const CLI_START = /^timestamp=\S+ level=\S+ run=\S+ message="cli starting" /;
 
+// OpenCode 2 connects each MCP server once per folder it has loaded, and says how it went. A
+// server that failed (a timeout after a network blip) is not tried again by itself.
+const MCP_V2 = /^timestamp=(\S+) level=\S+ run=(\S+) message="(mcp connect failed|mcp connected)" server=(\S+)/;
+const QUOTED_OR_WORD = '("(?:[^"\\\\]|\\\\.)*"|\\S+)';
+const DIRECTORY = new RegExp(` directory=${QUOTED_OR_WORD}`);
+const STATUS_ERROR = new RegExp(` status\\.error=${QUOTED_OR_WORD}`);
+const unquote = text => {
+  if (!text?.startsWith('"')) return text ?? null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+};
+
+/** { t, run, name, directory, ok, error } of an OpenCode 2 MCP connection line, or null. */
+export function parseMcpConnectLine(line) {
+  const m = MCP_V2.exec(line);
+  const t = m ? Date.parse(m[1]) : Number.NaN;
+  if (Number.isNaN(t)) return null;
+  const directory = unquote(DIRECTORY.exec(line)?.[1]);
+  if (!directory) return null;
+  const ok = m[3] === 'mcp connected';
+  return { t, run: m[2], name: m[4], directory, ok, error: ok ? null : String(unquote(STATUS_ERROR.exec(line)?.[1]) ?? '').slice(0, 200) };
+}
+
 // OpenCode 2 puts a project away after an hour without activity. A question or a permission
 // prompt left open goes with it: its call is interrupted and the session stops.
 const EVICTED = /^timestamp=(\S+) level=\S+ run=\S+ message="location services evicted" directory=("(?:[^"\\]|\\.)*"|\S+)/;
@@ -112,6 +138,7 @@ export function createLogTail(path) {
   let asks = [];
   let mcpEvents = []; // every MCP failure line read, oldest first
   let evictions = []; // projects OpenCode 2 put away, oldest first
+  let connections = new Map(); // "server|folder" -> its latest OpenCode 2 connection line
   let mcpMarked = []; // the same, each marked as a shutdown or not
   let mcpFailures = new Map(); // server name -> its latest failure in a live run that was not a shutdown
   let firstAt = null; // time of the oldest line read: nothing is known from before it
@@ -128,6 +155,7 @@ export function createLogTail(path) {
     asks = [];
     mcpEvents = [];
     evictions = [];
+    connections = new Map();
     mcpMarked = [];
     mcpFailures = new Map();
     firstAt = null;
@@ -165,6 +193,9 @@ export function createLogTail(path) {
     } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
       const failure = parseMcpLine(line);
       if (failure) mcpEvents.push(failure);
+    } else if (line.includes('message="mcp connect')) {
+      const c = parseMcpConnectLine(line);
+      if (c) connections.set(`${c.name}|${c.directory}`, c);
     } else if (line.includes('message="location services evicted"')) {
       const evicted = parseEvictedLine(line);
       if (evicted) evictions.push(evicted);
@@ -199,6 +230,13 @@ export function createLogTail(path) {
       live = liveRuns(runs);
       mcpMarked = markShutdowns(mcpEvents, runEnds, live);
       mcpFailures = latestFailures(mcpMarked.filter(e => live.has(e.run)));
+      // OpenCode 2: a server whose latest connection in some folder failed, in a run still going,
+      // and not connected there since. Newer than what 1.x lines said, it is what counts.
+      for (const c of connections.values()) {
+        if (c.ok || !live.has(c.run)) continue;
+        const known = mcpFailures.get(c.name);
+        if (!known || c.t > known.t) mcpFailures.set(c.name, { t: c.t, run: c.run, kind: 'unavailable', name: c.name, directory: c.directory, error: c.error });
+      }
       if (asks.length > MAX_ASKS) asks = asks.slice(-MAX_ASKS);
       if (replies.size > MAX_ASKS) replies = new Map([...replies].slice(-MAX_ASKS));
     } finally {
@@ -211,6 +249,8 @@ export function createLogTail(path) {
     asks: () => asks,
     replies: () => replies,
     evictions: () => evictions,
+    /** OpenCode 2: each server and folder whose latest connection failed, in a run still going. */
+    mcpDisconnected: () => [...connections.values()].filter(c => !c.ok && live.has(c.run)),
     runEnds: () => runEnds,
     mcpFailures: () => mcpFailures,
     mcpEvents: () => mcpMarked,
