@@ -3,6 +3,26 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.6.0 - 2026-10-15
+
+What you set the agent to do, and how far each got.
+
+- **Tasks.** With many sessions going, it is easy to lose track of what was asked and where
+  each stands. The new Tasks tab (and `opencode_tasks` over MCP) lists every session of the
+  last 7, 14 or 30 days by project: its title, how its last turn ended (working, waiting for
+  you, probably stuck, interrupted, stopped on an error, or handed back to you), and the
+  agent's plan as done of total with the items still to do. Unfinished sessions first;
+  "Unfinished only" hides the rest. Your prompts are not read: the title is OpenCode's
+  summary of the first one.
+- **OpenCode 2's plans on the Now tab.** OpenCode 2 keeps no todo table: its plan is only in
+  the agent's latest `todowrite` call. The monitor read the table alone, so no OpenCode 2
+  session showed its plan. It does now, and a finished session whose plan was left part
+  done shows how far it got.
+- **The OpenCode in use** is the one its log says started last. A 1.x session carried on in
+  OpenCode 2 keeps the version that created it; the monitor took that as the version in
+  use, so This machine said 1.18.35 while 2.0.28 was running, and that session was held to
+  the 1.x compaction rule on the Now tab.
+
 ## 11.5.0 - 2026-10-14
 
 What a change did, read off the figures: before and after it, one model at a time.
