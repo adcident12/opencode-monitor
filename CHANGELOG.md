@@ -3,6 +3,17 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.7.0 - 2026-10-15
+
+The MCP tools from another machine of the network.
+
+- **MCP at `/mcp`.** Claude Code on another machine, such as the server that runs your
+  models, can use the monitor's MCP tools over HTTP (MCP's Streamable HTTP transport, plain
+  JSON). Only with `--lan`, and only with the page's access key, sent as an
+  `Authorization: Bearer` header. A browser page from any other origin is refused, and the
+  tools are read-only as over stdio. `node server.mjs --access-key` prints the
+  `claude mcp add` command for each address of this machine.
+
 ## 11.6.0 - 2026-10-15
 
 What you set the agent to do, and how far each got.
