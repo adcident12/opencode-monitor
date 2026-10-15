@@ -70,3 +70,10 @@ test('access: the page that asks says where the key is, never what it is; addres
   assert.equal(isLoopback('192.168.1.5'), false);
   assert.deepEqual(lanAddresses({ lo: [{ family: 'IPv4', internal: true, address: '127.0.0.1' }], eth: [{ family: 'IPv6', internal: false, address: 'fe80::1' }, { family: 'IPv4', internal: false, address: '10.0.0.7' }] }), ['10.0.0.7']);
 });
+
+test('access: a program may send the key as a Bearer header, each time, with nothing remembered', () => {
+  const access = lan();
+  assert.deepEqual(access.check(from('192.168.1.9', { authorization: `Bearer ${KEY}` }), at('/mcp')), { pass: true });
+  assert.deepEqual(access.check(from('192.168.1.9', { authorization: 'Bearer wrong' }), at('/mcp')), { ask: true, wrong: true });
+  assert.deepEqual(access.check(from('192.168.1.9'), at('/mcp')), { ask: true, wrong: false });
+});

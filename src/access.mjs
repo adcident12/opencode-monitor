@@ -58,6 +58,9 @@ export function createAccess({ lan, port, key, addresses = lanAddresses(), name 
 
   function check(req, url) {
     if (!lan || isLoopback(req.socket.remoteAddress)) return { pass: true };
+    // A program (an MCP client) sends the key in a header, each time; nothing is remembered.
+    const bearer = /^Bearer (\S+)$/i.exec(String(req.headers.authorization ?? ''))?.[1];
+    if (bearer != null) return same(bearer, key) ? { pass: true } : { ask: true, wrong: true };
     const given = url.searchParams.get('key');
     if (given != null) {
       if (!same(given, key)) return { ask: true, wrong: true };

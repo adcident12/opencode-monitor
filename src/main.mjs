@@ -7,6 +7,8 @@ import { createReplaySource } from './replay-source.mjs';
 import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
 import { ASK_CSP, askPage, createAccess, lanAddresses, loadAccessKey } from './access.mjs';
+import { buildTools, createMcpServer } from './mcp-server.mjs';
+import { answerMcp } from './mcp-http.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createTasksSource, TASK_DAYS } from './tasks.mjs';
 import { createHistory } from './history.mjs';
@@ -40,6 +42,11 @@ function runAccessKey(cfg) {
   if (!cfg.lan) console.log('The monitor answers this machine only. Start it with --lan (or set "lan": true in config.json) to open it to your local network.');
   if (!addresses.length) console.log('This machine has no address on a local network right now.');
   for (const address of addresses) console.log(`http://${address}:${cfg.port}/?key=${key}`);
+  // The same key lets an assistant on another machine use the MCP tools at /mcp.
+  if (addresses.length) {
+    console.log('\nFor Claude Code on another machine of the network (the MCP tools, read-only):');
+    for (const address of addresses) console.log(`claude mcp add --transport http opencode-monitor http://${address}:${cfg.port}/mcp --header "Authorization: Bearer ${key}"`);
+  }
   console.log(`The key is kept in ${accessKeyFile(cfg)}. Delete that file and start the monitor again for a new one; devices that had the old one must ask again.`);
 }
 
@@ -300,10 +307,25 @@ export async function main(argv) {
     res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end(body);
   };
 
+  // The MCP tools at /mcp, for an assistant on another machine: the same tools as mcp.mjs, the
+  // same key as the page. Read-only, like everything here.
+  const mcp = createMcpServer({
+    version: VERSION ?? '0',
+    tools: buildTools({
+      stats, opencode, cfg, t: loadTranslator('en'), configChanges: configWatch, redact: createRedactor(cfg.redact), outputTokenMax: outputTokenMaxFrom(),
+      opencodeVersion: () => monitor.opencodeVersion(),
+      mcpDisconnected: () => log.mcpDisconnected(),
+      currentModel: () => loadOpencodeConfig(cfg.opencodeConfigDir).model,
+      tasks,
+    }),
+  });
   const access = createAccess({ lan: cfg.lan, port: cfg.port, key: cfg.lan ? loadAccessKey(accessKeyFile(cfg)) : undefined });
+  // The monitor's own page may call /mcp from a browser; a page anywhere else may not.
+  const origins = new Set([...access.hosts].map(host => `http://${host}`));
   const server = createServer(async (req, res) => {
     // Refuse requests that reached us under another name (DNS rebinding from a web page).
-    if (!access.hosts.has(String(req.headers.host).toLowerCase()) || req.method !== 'GET') {
+    const toMcp = req.url === '/mcp' || req.url.startsWith('/mcp?');
+    if (!access.hosts.has(String(req.headers.host).toLowerCase()) || (req.method !== 'GET' && !toMcp)) {
       res.writeHead(403).end();
       return;
     }
@@ -321,7 +343,9 @@ export async function main(argv) {
         .end(page ? askPage(who.wrong) : 'The access key is needed.');
       return;
     }
-    if (path === '/api/events') {
+    if (toMcp) {
+      await answerMcp(req, res, mcp, origins);
+    } else if (path === '/api/events') {
       res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'text/event-stream; charset=utf-8', connection: 'keep-alive' });
       res.write(`data: ${latest}\n\n`);
       clients.add(res);

@@ -283,6 +283,18 @@ What to know before you connect it:
 
 Plain JSON-RPC over stdio, no dependencies; `node mcp.mjs --sample` answers from generated fake data.
 
+### From another machine
+
+Claude Code on another machine of the network, such as the server that runs your models, can use the same tools from the monitor itself, at `/mcp`. The monitor must be running and open to the network (`--lan`, as in "Open it to your local network" above), and it asks for the same access key as the page, sent as a header. `node server.mjs --access-key` prints the command to run on the other machine, with this machine's address and the key in it:
+
+```sh
+claude mcp add --transport http opencode-monitor http://192.168.0.100:4317/mcp --header "Authorization: Bearer <key>"
+```
+
+- Without the key, or with a wrong one, nothing is answered. The key is the page's: whoever has it can read the page as well, so give it only to machines of your own.
+- The connection is plain `http` on your network, as the page is. It is read-only like everything here.
+- Your firewall must let Node accept connections on the port; Windows asks the first time the monitor is opened to the network.
+
 ## Settings
 
 Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ignored. Every key is optional.
