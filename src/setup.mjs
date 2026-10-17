@@ -174,7 +174,10 @@ export function formatSetupReport(report, t, lang = 'en') {
   row('setup.desktop', yes(t, notify.desktop));
   row('setup.discord', yes(t, notify.discord));
   row('setup.notifyOn', notify.on.join(', ') || t('setup.none'));
-  if (notify.notOn?.length) lines.push(`    ${t('setup.notOn', { kinds: notify.notOn.map(k => `"${k}"`).join(', ') })}`);
+  if (notify.notOn?.length) {
+    const kinds = notify.notOn.map(k => JSON.stringify(k)).join(', ');
+    lines.push(`    ${t('setup.notOn', { kinds })}`);
+  }
   row('setup.weekly', weeklyText(notify, t, lang));
 
   head('setup.history');

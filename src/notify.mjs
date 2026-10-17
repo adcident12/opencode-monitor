@@ -65,6 +65,9 @@ export async function discordNotify(webhookUrl, content, mention = '') {
   }
 }
 
+// How notifications go out: replaced in tests.
+const SENDERS = { desktop: desktopNotify, discord: discordNotify };
+
 /** A made-up session in the state that sets off one kind of notification. */
 function sampleSession(kind, title, now) {
   const sample = (id, state, health = {}) => ({
@@ -96,7 +99,7 @@ function sendSample(notifier, kind, t, now) {
  * the channel is reachable.
  * @returns {Promise<[string, string][]>} [what, outcome] pairs
  */
-export async function testNotify(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, waitMs = 25_000) {
+export async function testNotify(cfg, t, send = SENDERS, waitMs = 25_000) {
   const results = [];
   if (!cfg.desktop) results.push(['desktop', 'off in config']);
   if (!cfg.discord.webhookUrl) results.push(['Discord', 'no webhookUrl in config']);
@@ -147,7 +150,7 @@ function writeBudgetTold(file, told) {
  * @param {{quiet?: boolean, budgetFile?: string|null}} [options] quiet: do not print a line per
  *   notification; budgetFile: remembers what was told of the budget, across restarts
  */
-export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, { quiet = false, budgetFile = null } = {}) {
+export function createNotifier(cfg, t, send = SENDERS, { quiet = false, budgetFile = null } = {}) {
   const seen = new Map(); // session id -> { state, notifiedAt }
   // session id -> how many times it had been compacted when it was last close to the next
   // one. Told once per compaction: the estimate of "requests left" wobbles, the count does not.
