@@ -452,6 +452,12 @@
   "replay.subagent": "subagent",
   "replay.legend": "สีหมายถึงอะไร",
   "replay.compactLine": "จุด compact",
+  "replay.event.loop_repeating": "วนซ้ำอยู่ที่เดิม: เรียกแบบเดิม {n} ครั้งติดกัน ({tool})",
+  "replay.event.loop_failing": "วนซ้ำอยู่ที่เดิม: {tool} ล้มเหลว {n} ครั้งติดกัน",
+  "replay.event.loop_plan_stalled": "แผนไม่ขยับ: ทำงาน {t} โดยที่แผนไม่เปลี่ยน",
+  "replay.event.cache": "prompt cache หาย: อ่านใหม่ {tokens} tokens · {cause}",
+  "replay.loopMark": "วนซ้ำอยู่ที่เดิม",
+  "replay.cacheMark": "prompt cache หาย",
 
   "stats.range": "{n} วันล่าสุด",
   "stats.rangeLabel": "ช่วงเวลา",

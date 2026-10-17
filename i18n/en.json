@@ -452,6 +452,12 @@
   "replay.subagent": "subagent",
   "replay.legend": "What the colours mean",
   "replay.compactLine": "compaction",
+  "replay.event.loop_repeating": "Going round in circles: the same calls {n} times in a row ({tool})",
+  "replay.event.loop_failing": "Going round in circles: {tool} failed {n} times in a row",
+  "replay.event.loop_plan_stalled": "The plan stood still: {t} of work without it changing",
+  "replay.event.cache": "Prompt cache lost: {tokens} tokens read again · {cause}",
+  "replay.loopMark": "going round in circles",
+  "replay.cacheMark": "prompt cache lost",
 
   "stats.range": "Last {n} days",
   "stats.rangeLabel": "Period",

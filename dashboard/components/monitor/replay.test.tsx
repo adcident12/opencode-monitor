@@ -140,3 +140,29 @@ describe("The Replay tab", () => {
     expect(screen.queryByRole("option", { name: "All sessions" })).not.toBeInTheDocument()
   })
 })
+
+describe("Marks on the replay", () => {
+  it("lists where a row went round in circles and where its cache was lost, and keys them under the timeline", async () => {
+    const marked: ReplayData = {
+      ...replay,
+      loops: [{ row: "ses_2", kind: "failing", at: s(25), to: s(38), times: 4, tool: "wait_for", workMs: null }],
+      cacheLost: [{ row: "ses_1", at: s(1100), lost: 40_000, cause: "new_turn" }],
+    }
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url === "/api/replay/sessions") return Response.json([{ id: "ses_1", title: "Checkout flow", project: "shop" }])
+      if (url.startsWith("/api/replay?")) return Response.json(marked)
+      return new Response(readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8"))
+    })
+    renderTab("ses_1")
+    await screen.findByRole("heading", { name: "Checkout flow" })
+    const legend = screen.getByRole("list", { name: "What the colours mean" })
+    expect(within(legend).getByText("going round in circles")).toBeInTheDocument()
+    expect(within(legend).getByText("prompt cache lost")).toBeInTheDocument()
+    // An event is listed once the playhead has passed it: step on to the end.
+    const on = screen.getByRole("button", { name: "On to what happens next" })
+    while (!(on as HTMLButtonElement).disabled) await userEvent.click(on)
+    const story = screen.getByRole("region", { name: "The plan and what happened" })
+    expect(within(story).getByText("Going round in circles: wait_for failed 4 times in a row")).toBeInTheDocument()
+    expect(within(story).getByText("Prompt cache lost: 40.0k tokens read again · At a new turn")).toBeInTheDocument()
+  })
+})

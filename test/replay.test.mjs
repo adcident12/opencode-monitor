@@ -98,3 +98,16 @@ test('a call still running lasts until now; no session, no replay', () => {
   assert.equal(r.end, s(400));
   assert.equal(buildReplay({ ...base, tree: [] }), null);
 });
+
+test('marks where a row went round in circles, and where its cache was lost and why', () => {
+  const base = input();
+  // The subagent's wait_for failed four times in a row.
+  const fails = Array.from({ length: 4 }, (_, i) => ({ id: `f${i}`, session_id: 'kid', tool: 'wait_for', status: 'error', input: '{"text":"Done"}', input_len: 15, started: s(120 + i * 5), time_created: s(120 + i * 5), time_updated: s(121 + i * 5) }));
+  // A reply that had 32,000 cached, then one at a new turn that read 40,000 again.
+  const r = buildReplay({ ...base, tools: [...base.tools, ...fails], messages: base.messages.map(m => (m.id === 'a1' ? { ...m, finish: 'stop' } : m)) });
+  assert.deepEqual(r.loops, [{ row: 'kid', kind: 'failing', at: s(120), to: s(135), times: 4, tool: 'wait_for', workMs: null }]);
+  assert.deepEqual(r.cacheLost.map(c => [c.row, c.at, c.cause]), [['root', s(200), 'compaction']]);
+  // Without the compaction in between, the loss is told as what it was.
+  const plain = buildReplay({ ...base, messages: base.messages.filter(m => m.id !== 'c1').map(m => (m.id === 'a1' ? { ...m, finish: 'stop', completed: s(195) } : m)) });
+  assert.deepEqual(plain.cacheLost.map(c => c.cause), ['new_turn']);
+});

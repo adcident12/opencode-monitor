@@ -38,9 +38,12 @@ export function createReplaySource({ db, log, cfg, redact, projectMcp = null, mo
     const asks = prompts.asks.filter(a => a.t >= from - 1000 && a.t <= to + 60_000);
     // Other sessions' calls in the same hours, so a prompt is matched to the call it was for.
     const allTools = asks.length ? db.stats.tools(from).filter(p => (p.started ?? p.time_created) <= to + 60_000) : tools;
+    const messages = db.replay.messages(ids);
     return buildReplay({
       tree,
-      messages: db.replay.messages(ids),
+      messages,
+      // Other sessions' replies in the same hours: one in between takes the cache away.
+      allMessages: db.stats.messages(from).filter(m => m.time_created <= to),
       tools,
       allTools,
       spans: db.replay.spans(ids),

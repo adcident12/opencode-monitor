@@ -2,7 +2,7 @@
 
 import { ChartColumnIcon, HistoryIcon, RocketIcon, UserIcon } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { duration, kilo } from "@/lib/format"
+import { compact, duration, kilo } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { useReplay, useReplaySessions } from "@/lib/live"
 import { eventsOf, figuresAt, screenAt, segAt, stateAt, type Replay as ReplayData, type ReplayEvent, type ReplayState, type Seg } from "@/lib/replay"
@@ -159,7 +159,7 @@ function Player({ replay }: Readonly<{ replay: ReplayData }>) {
         </div>
       </div>
 
-      <Timeline rows={replay.rows} compactions={replay.compactions} clock={clock} play={play} onSeek={player.setPlay} at={at} />
+      <Timeline rows={replay.rows} compactions={replay.compactions} loops={replay.loops} cacheLost={replay.cacheLost} clock={clock} play={play} onSeek={player.setPlay} at={at} />
     </>
   )
 }
@@ -375,7 +375,7 @@ function Story({ replay, events, now, figures, at, onSeek }: Readonly<{ replay: 
               <span className="flex min-w-0 items-baseline gap-1.5">
                 <span className="shrink-0">
                   {e.row && <span className="mr-1.5 text-muted-foreground">{e.row}:</span>}
-                  {t(`replay.event.${e.kind}`, { ending: t(`replay.ending.${e.text}`) })}
+                  {t(`replay.event.${e.kind}`, eventVars(e, t))}
                 </span>
                 {e.text && (e.kind === "tool" || e.kind === "waiting") && (
                   <Hint label={<span className="font-mono">{e.text}</span>} onlyWhenCut className="min-w-0 truncate font-mono text-code text-muted-foreground">
@@ -390,6 +390,19 @@ function Story({ replay, events, now, figures, at, onSeek }: Readonly<{ replay: 
       </div>
     </section>
   )
+}
+
+/** The figures an event's sentence names, each in the words and units the page uses. */
+function eventVars(e: ReplayEvent, t: ReturnType<typeof useI18n>["t"]) {
+  const v = e.vars ?? {}
+  return {
+    ending: t(`replay.ending.${e.text}`),
+    tool: v.tool ?? "",
+    n: v.n ?? 0,
+    t: duration(Number(v.ms ?? 0)),
+    tokens: compact(Number(v.tokens ?? 0)),
+    cause: v.cause ? t(`stats.cacheCause.${v.cause}`) : "",
+  }
 }
 
 /** The height of n lines of small text (1.4rem each) with a gap between them, in rem. */

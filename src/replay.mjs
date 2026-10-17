@@ -4,6 +4,8 @@
 //
 // Read from OpenCode's own records, with the same rules as the Now tab and Stats, so a session
 // can be played back even if the monitor was not running at the time.
+import { loopsInPeriod } from './loops.mjs';
+import { cacheDropsOf } from './cache-drops.mjs';
 import { matchPrompts } from './stats.mjs';
 import { endingOf, turnsOfSession } from './work.mjs';
 
@@ -80,7 +82,11 @@ function plansIn(todoWrites, show) {
  * @param {object[]} input.allTools  tool calls of every session in the same hours: a prompt
  *   is matched against all of them, so it is never pinned on this session by mistake
  */
-export function buildReplay({ tree, messages, tools, allTools = tools, spans, steps, compactions, todoWrites, asks, replies, eventTimes, now, stuckMs, show, contextLimit = () => null, compactAt = () => null }) {
+/**
+ * @param {object[]} [input.allMessages]  every session's messages in the same hours, so a cache
+ *   lost to another session in between is said so; the tree's own when not given
+ */
+export function buildReplay({ tree, messages, allMessages = messages, tools, allTools = tools, spans, steps, compactions, todoWrites, asks, replies, eventTimes, now, stuckMs, show, contextLimit = () => null, compactAt = () => null }) {
   const root = tree[0];
   if (!root) return null;
   const ids = new Set(tree.map(s => s.id));
@@ -130,5 +136,19 @@ export function buildReplay({ tree, messages, tools, allTools = tools, spans, st
     compactAt: lastModel ? compactAt(lastModel.provider_id, lastModel.model_id, root.directory, root.version ?? null) : null,
     compactions: by(compactions, root.id).map(c => c.time_created).sort((a, b) => a - b),
     plans: plansIn(by(todoWrites, root.id), show),
+    ...marksOf({ ids, start, end, now, tools, todoWrites, allMessages }),
+  };
+}
+
+/** Where a row went round in circles, and where its model read again what it had cached. */
+function marksOf({ ids, start, end, now, tools, todoWrites, allMessages }) {
+  const inScope = id => ids.has(id);
+  const { episodes } = loopsInPeriod({ tools, todoWrites, from: start, now, inScope });
+  const lost = cacheDropsOf(allMessages, { from: start, to: end, inScope, each: true }).each;
+  return {
+    loops: episodes
+      .toSorted((a, b) => a.at - b.at)
+      .map(e => ({ row: e.session_id, kind: e.kind, at: e.at, to: e.to, times: e.times ?? null, tool: e.tool ?? e.tools?.join(' → ') ?? null, workMs: e.workMs ?? null })),
+    cacheLost: lost.map(d => ({ row: d.session_id, at: d.t, lost: d.lost, cause: d.cause })),
   };
 }

@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { duration, stopwatch } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
-import { clockOf, segAt, toolOf, type Replay as ReplayData, type ReplayRow, type ReplayState, type Seg } from "@/lib/replay"
+import { clockOf, segAt, toolOf, type Replay as ReplayData, type ReplayCacheLost, type ReplayLoop, type ReplayRow, type ReplayState, type Seg } from "@/lib/replay"
 import { cn } from "@/lib/utils"
 import { Hint } from "./hint"
 import { H3, SUB } from "./section"
@@ -216,7 +216,7 @@ function anchorOf(p: number, length: number) {
 export type TimelineRow = ReplayRow & { caption?: string }
 
 /** Every row over time, at playback scale, with the skipped silences marked. Click to go there. */
-export function Timeline({ rows, compactions, clock, play, onSeek, at }: Readonly<{ rows: TimelineRow[]; compactions: number[]; clock: Clock; play: number; onSeek: (ms: number) => void; at: (ms: number) => string }>) {
+export function Timeline({ rows, compactions, loops = [], cacheLost = [], clock, play, onSeek, at }: Readonly<{ rows: TimelineRow[]; compactions: number[]; loops?: ReplayLoop[]; cacheLost?: ReplayCacheLost[]; clock: Clock; play: number; onSeek: (ms: number) => void; at: (ms: number) => string }>) {
   const { t } = useI18n()
   const [hover, setHover] = useState<string | null>(null)
   const svg = useRef<SVGSVGElement>(null)
@@ -225,6 +225,8 @@ export function Timeline({ rows, compactions, clock, play, onSeek, at }: Readonl
   const TOP = 22
   const ROW = 34
   const BAR = 18
+  // How far above its row's bar a mark (a loop, a cache lost) sits.
+  const MARK = 6
   const bottom = TOP + ROW * rows.length
   const x = (real: number) => L + (clock.toPlay(real) / clock.length) * (R - L)
   const ticks = Array.from({ length: 6 }, (_, i) => (clock.length * i) / 5)
@@ -315,6 +317,19 @@ export function Timeline({ rows, compactions, clock, play, onSeek, at }: Readonl
           {compactions.map(c => (
             <line key={c} x1={x(c)} x2={x(c)} y1={TOP - 2} y2={bottom} stroke="var(--color-foreground)" strokeWidth={1.2} strokeDasharray="3 3" />
           ))}
+          {/* Above a row's bar: where it went round in circles, and where its cache was lost. */}
+          {loops.map(l => {
+            const i = rows.findIndex(r => r.id === l.row)
+            if (i < 0) return null
+            const y = TOP + i * ROW + (ROW - BAR) / 2 - MARK
+            return <rect key={`loop-${l.row}-${l.at}`} x={x(l.at)} y={y} width={Math.max(3, x(l.to) - x(l.at))} height={3} rx={1.5} fill="var(--color-stuck)" />
+          })}
+          {cacheLost.map(c => {
+            const i = rows.findIndex(r => r.id === c.row)
+            if (i < 0) return null
+            const y = TOP + i * ROW + (ROW - BAR) / 2 - MARK + 1.5
+            return <circle key={`cache-${c.row}-${c.at}`} cx={x(c.at)} cy={y} r={2.5} fill="var(--color-foreground)" opacity={0.7} />
+          })}
           <line x1={L + (play / clock.length) * (R - L)} x2={L + (play / clock.length) * (R - L)} y1={TOP - 12} y2={bottom + 2} stroke="var(--color-foreground)" strokeWidth={2} />
         </svg>
       </div>
@@ -334,6 +349,22 @@ export function Timeline({ rows, compactions, clock, play, onSeek, at }: Readonl
           </svg>
           {t("replay.compactLine")}
         </li>
+        {loops.length > 0 && (
+          <li className="inline-flex items-center gap-1.5">
+            <svg width="10" height="10" aria-hidden className="shrink-0">
+              <rect y="3.5" width="10" height="3" rx="1.5" fill="var(--color-stuck)" />
+            </svg>
+            {t("replay.loopMark")}
+          </li>
+        )}
+        {cacheLost.length > 0 && (
+          <li className="inline-flex items-center gap-1.5">
+            <svg width="10" height="10" aria-hidden className="shrink-0">
+              <circle cx="5" cy="5" r="2.5" fill="currentColor" opacity="0.7" />
+            </svg>
+            {t("replay.cacheMark")}
+          </li>
+        )}
       </ul>
     </section>
   )

@@ -50,8 +50,9 @@ export const EXPECTED = new Set(['compaction', 'model_changed']);
  * @param {number} options.from
  * @param {number} options.to
  * @param {(id: string) => boolean} [options.inScope]
+ * @param {boolean} [options.each]  also every loss, oldest first (a replay marks each one)
  */
-export function cacheDropsOf(messages, { from, to, inScope = () => true, readTps = () => null }) {
+export function cacheDropsOf(messages, { from, to, inScope = () => true, readTps = () => null, each = false }) {
   const requests = messages.filter(m => m.role === 'assistant' && m.model_id && sent(m) > 0).sort((a, b) => a.time_created - b.time_created);
   // A model whose server never reported a cached token: every request would look like a loss.
   const reports = new Set(requests.filter(m => (m.tokens_cache_read ?? 0) > 0).map(modelOf));
@@ -74,7 +75,8 @@ export function cacheDropsOf(messages, { from, to, inScope = () => true, readTps
       if (drop) drops.push(drop);
     }
   }
-  return summaryOf(drops, checked);
+  const summary = summaryOf(drops, checked);
+  return each ? { ...summary, each: drops.toSorted((a, b) => a.t - b.t) } : summary;
 }
 
 // The prompt `request` read again of what `prev` had cached, and why; null when it kept it.

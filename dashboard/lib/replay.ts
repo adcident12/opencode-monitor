@@ -28,6 +28,27 @@ export interface Replay {
   compactAt: number | null
   compactions: number[]
   plans: [number, [string, string][]][]
+  /** Where a row went round in circles (see src/loops.mjs). */
+  loops?: ReplayLoop[]
+  /** Where a row's model read again what its server had cached (see src/cache-drops.mjs). */
+  cacheLost?: ReplayCacheLost[]
+}
+
+export interface ReplayLoop {
+  row: string
+  kind: "repeating" | "failing" | "plan_stalled"
+  at: number
+  to: number
+  times: number | null
+  tool: string | null
+  workMs: number | null
+}
+
+export interface ReplayCacheLost {
+  row: string
+  at: number
+  lost: number
+  cause: string
 }
 
 /** A stretch where nothing at all happened, longer than this, is skipped… */
@@ -148,7 +169,14 @@ export function figuresAt(r: Replay, t: number) {
   }
 }
 
-export type ReplayEvent = { at: number; kind: "prompt" | "tool" | "plan" | "waiting" | "answered" | "compact" | "ended"; text: string; row: string }
+export type ReplayEvent = {
+  at: number
+  kind: "prompt" | "tool" | "plan" | "waiting" | "answered" | "compact" | "ended" | "loop_repeating" | "loop_failing" | "loop_plan_stalled" | "cache"
+  text: string
+  row: string
+  /** For a sentence with figures in it: a loop's count, a cache lost's tokens and cause. */
+  vars?: Record<string, string | number>
+}
 
 /** The agent writing its task list is a change of plan, not work with a tool. */
 export const isPlanCall = (seg: Seg) => seg[2] === "tool" && toolOf(seg) === "todowrite"
@@ -158,6 +186,12 @@ export function eventsOf(r: Replay): ReplayEvent[] {
   const events: ReplayEvent[] = []
   for (const row of r.rows) events.push(...rowEvents(row, r.now))
   for (const t of r.compactions) events.push({ at: t, kind: "compact", text: "", row: "" })
+  const who = (id: string) => {
+    const row = r.rows.find(x => x.id === id)
+    return row?.sub ? row.name : ""
+  }
+  for (const l of r.loops ?? []) events.push({ at: l.at, kind: `loop_${l.kind}`, text: "", row: who(l.row), vars: { tool: l.tool ?? "", n: l.times ?? 0, ms: l.workMs ?? 0 } })
+  for (const c of r.cacheLost ?? []) events.push({ at: c.at, kind: "cache", text: "", row: who(c.row), vars: { tokens: c.lost, cause: c.cause } })
   for (const turn of r.turns) {
     events.push({ at: turn.at, kind: "prompt", text: "", row: "" })
     // A prompt still going, or followed by another before it ended, has no end to tell.
