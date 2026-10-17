@@ -70,3 +70,45 @@ export function mismatchesOf(server, asked, contextOf) {
   }
   return out;
 }
+
+/** Where a server says what each of its slots is doing. */
+export const slotsUrl = baseURL => propsUrl(baseURL).replace(/\/props$/, '/slots');
+
+/**
+ * Each slot of a llama.cpp server, from its /slots: whether it is working on a request, and
+ * how far: the prompt read (from its cache, then processed) and the tokens written. No text.
+ * @returns {object[]|null}  null when it is not such an answer
+ */
+export function parseSlots(json) {
+  if (!Array.isArray(json)) return null;
+  const n = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return json.filter(s => s && typeof s === 'object').map(s => ({
+    id: n(s.id),
+    busy: s.is_processing === true,
+    task: s.id_task ?? null,
+    prompt: n(s.n_prompt_tokens),
+    cached: n(s.n_prompt_tokens_cache),
+    processed: n(s.n_prompt_tokens_processed),
+    written: n(s.next_token?.[0]?.n_decoded ?? s.n_decoded),
+  }));
+}
+
+/**
+ * What a busy slot is doing, from now and the reading before:
+ *   reading  the prompt: tokens processed so far (and reused from its cache), and how fast
+ *   writing  the answer: tokens so far, and how fast
+ * llama.cpp does not say how long the prompt is until it has read it all (its count grows a
+ * batch at a time), so no share and no time left is given for reading: they would be guesses.
+ * A rate needs two readings of the same request; without them it is null.
+ */
+export function slotProgress(slot, before = null, ms = 0) {
+  if (!slot?.busy) return null;
+  const same = before?.busy && before.task === slot.task && ms > 0;
+  const per = (now, then) => (same && now > then ? ((now - then) / ms) * 1000 : null);
+  if (slot.written > 0) {
+    const rate = per(slot.written, before?.written);
+    return { phase: 'writing', written: slot.written, rate: rate && Math.round(rate * 10) / 10 };
+  }
+  const rate = per(slot.processed, before?.processed);
+  return { phase: 'reading', read: slot.processed, cached: slot.cached, rate: rate && Math.round(rate) };
+}

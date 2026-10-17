@@ -53,6 +53,11 @@
   "output.last": "Last output",
   "output.none": "No output yet",
 
+  "modelProgress.reading": "The model is reading the prompt: {n} tokens so far",
+  "modelProgress.cached": "{n} from its cache",
+  "modelProgress.writing": "The model is writing: {n} tokens",
+  "modelProgress.rate": "{n} tokens/s",
+  "modelProgress.idle": "The model server has not been working on any request for {t}: it may have dropped this one.",
   "progress.steps": "Latest steps this turn",
   "progress.todos": "Plan {done}/{total}",
   "progress.lastActivity": "Last activity",

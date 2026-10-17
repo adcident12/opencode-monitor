@@ -45,6 +45,27 @@ function exampleOf(group, text, p) {
   return example;
 }
 
+// A session waits on its model while it is asked for the next output.
+const WAITS_ON_MODEL = new Set(['thinking', 'generating']);
+// Waited on and not working for this long: the server has dropped or never got the request.
+const SERVER_IDLE_MS = 60_000;
+
+/**
+ * What its model server is doing for a session that waits on it: reading the prompt, writing,
+ * or nothing at all for a minute. Only when one session waits on that server: with more, which
+ * slot serves which is not known, and it is not guessed.
+ */
+export function attachModelProgress(sessions, waiting, environment) {
+  for (const [provider, ids] of waiting) {
+    if (ids.length !== 1) continue;
+    const live = environment?.models.find(m => m.name === provider)?.live;
+    const session = sessions.find(s => s.id === ids[0]);
+    if (!live || !session) continue;
+    if (live.progress.length === 1) session.modelProgress = live.progress[0];
+    else if (!live.progress.length && live.idleMs >= SERVER_IDLE_MS) session.modelProgress = { phase: 'idle', idleMs: live.idleMs };
+  }
+}
+
 export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, probe, mcpNames = [], projectMcp = null, environment = null, git = null, leftovers = null, pending = null }) {
   const cache = new Map(); // session id -> { byId, sorted, maxUpdated, digest }
   const show = (text, max = SUMMARY_CHARS) => clip(redact(String(text ?? '').slice(0, 4000)), max);
@@ -360,10 +381,19 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
       // The OpenCode in use now: as its log says when it started. Without a log, the version
       // that created the newest session, which is older for a session carried on.
       const opencodeVersion = log.opencodeVersion?.() ?? rows.find(r => r.version)?.version ?? previous.opencodeVersion;
-      // The models OpenCode asks each model server for now: of the sessions working.
+      // The models OpenCode asks each model server for now: of the sessions working; and the
+      // sessions waiting on a model's answer, whose server is asked what it is doing.
       const asked = new Map();
-      for (const s of sessions) if (s.state === 'working' && s.provider && s.model) asked.set(s.provider, [...(asked.get(s.provider) ?? []), s.model]);
-      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers, asked) ?? null, opencodeVersion };
+      const waiting = new Map();
+      const add = (map, key, value) => map.set(key, [...(map.get(key) ?? []), value]);
+      for (const s of sessions) {
+        if (s.state !== 'working' || !s.provider) continue;
+        if (s.model) add(asked, s.provider, s.model);
+        if (WAITS_ON_MODEL.has(s.reason)) add(waiting, s.provider, s.id);
+      }
+      const env = environment?.view(mcpUseOf(serverOf), projectServers, asked, waiting, now) ?? null;
+      attachModelProgress(sessions, waiting, env);
+      previous = { sessions, environment: env, opencodeVersion };
       return { ...base, stale: false, ...previous };
     } catch (err) {
       // Usually a brief lock while OpenCode writes. Keep showing the last good data, marked stale.

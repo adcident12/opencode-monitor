@@ -32,6 +32,12 @@ export interface ReviewItem {
   hiddenExamples: number
 }
 
+/** What its model server is doing for a session waiting on it (llama.cpp's /slots). */
+export type ModelProgress =
+  | { phase: "reading"; read: number; cached: number; rate: number | null }
+  | { phase: "writing"; written: number; rate: number | null }
+  | { phase: "idle"; idleMs: number }
+
 export interface Session {
   id: string
   parentId: string | null
@@ -53,6 +59,7 @@ export interface Session {
     output: { lines: string[]; chars: number; at: number } | null
   } | null
   prompt: { kind: "permission" | "question"; permission: string | null; detail: string } | null
+  modelProgress?: ModelProgress
   progress: {
     lastActivityAt: number | null
     steps: Step[]

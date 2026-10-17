@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/lib/i18n"
 import { NOW, waiting } from "@/lib/fixtures"
-import { AttentionCard } from "./sessions"
+import type { Session } from "@/lib/types"
+import { AttentionCard, WorkingCard } from "./sessions"
 
 // Serve the real string files to the I18nProvider.
 beforeEach(() => {
@@ -87,5 +88,31 @@ describe("AttentionCard", () => {
     )
     // A subagent points at its parent: that is where its entries are recorded.
     expect(await screen.findByRole("link", { name: "History" })).toHaveAttribute("href", "#history/s1")
+  })
+})
+
+describe("WorkingCard: what the model server is doing", () => {
+  const card = (modelProgress: Session["modelProgress"]) =>
+    render(
+      <I18nProvider>
+        <TooltipProvider>
+          <WorkingCard session={{ ...waiting, state: "working", reason: "thinking", prompt: null, modelProgress }} subagents={[]} now={NOW} />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+
+  it("says how much of the prompt it has read and how fast, with no guessed total", async () => {
+    card({ phase: "reading", read: 26807, cached: 0, rate: 1365 })
+    expect(await screen.findByText("The model is reading the prompt: 26,807 tokens so far · 1,365 tokens/s")).toBeInTheDocument()
+  })
+
+  it("says how much it has written", async () => {
+    card({ phase: "writing", written: 6029, rate: null })
+    expect(await screen.findByText("The model is writing: 6,029 tokens")).toBeInTheDocument()
+  })
+
+  it("says when the server has not been working for a while", async () => {
+    card({ phase: "idle", idleMs: 90_000 })
+    expect(await screen.findByText("The model server has not been working on any request for 1m 30s: it may have dropped this one.")).toBeInTheDocument()
   })
 })

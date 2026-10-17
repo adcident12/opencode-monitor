@@ -53,6 +53,11 @@
   "output.last": "Output ล่าสุด",
   "output.none": "ยังไม่มี output",
 
+  "modelProgress.reading": "โมเดลกำลังอ่าน prompt: อ่านไปแล้ว {n} tokens",
+  "modelProgress.cached": "จาก cache {n}",
+  "modelProgress.writing": "โมเดลกำลังเขียนคำตอบ: {n} tokens",
+  "modelProgress.rate": "{n} tokens/s",
+  "modelProgress.idle": "model server ไม่ได้ทำงานกับ request ใดเลยมา {t} แล้ว: อาจทำ request นี้หลุดไป",
   "progress.steps": "ขั้นตอนล่าสุดในรอบนี้",
   "progress.todos": "แผนงาน {done}/{total}",
   "progress.lastActivity": "ความเคลื่อนไหวล่าสุด",

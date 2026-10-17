@@ -54,6 +54,23 @@ function SessionLinks({ session, history, footer = false }: Readonly<{ session: 
   )
 }
 
+/**
+ * What the model server is doing while the session waits on it: reading the prompt (how much,
+ * how fast), writing, or nothing at all for a while, which is the server, not the agent.
+ */
+function ModelProgressLine({ progress }: Readonly<{ progress: Session["modelProgress"] }>) {
+  const { t, lang } = useI18n()
+  if (!progress) return null
+  const n = (value: number) => value.toLocaleString(lang)
+  if (progress.phase === "idle") return <p className="text-sm text-stuck">{t("modelProgress.idle", { t: duration(progress.idleMs) })}</p>
+  const parts =
+    progress.phase === "reading"
+      ? [t("modelProgress.reading", { n: n(progress.read) }), progress.cached > 0 && t("modelProgress.cached", { n: n(progress.cached) })]
+      : [t("modelProgress.writing", { n: n(progress.written) })]
+  if (progress.rate != null) parts.push(t("modelProgress.rate", { n: n(progress.rate) }))
+  return <p className="text-sm tabular-nums text-muted-foreground">{parts.filter(Boolean).join(" · ")}</p>
+}
+
 /** The command or tool call in progress, with its output when it is a shell command. */
 function Current({ session, now }: Readonly<{ session: Session; now: number }>) {
   const { t } = useI18n()
@@ -172,6 +189,7 @@ export function WorkingCard({ session, subagents, now, history = false }: Readon
         <div className="space-y-0.5">
           <h3 className="text-base font-medium break-words">{session.title || session.id}</h3>
           <p className="text-sm text-muted-foreground">{reason(session)}</p>
+          <ModelProgressLine progress={session.modelProgress} />
         </div>
         <Current session={session} now={now} />
         <Todos todos={todos} />

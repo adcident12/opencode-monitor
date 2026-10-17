@@ -4,12 +4,15 @@ import { connect } from 'node:net';
 import { isLocalHost } from './audit.mjs';
 import { mergeServers } from './mcp.mjs';
 import { trimEndOf } from './text.mjs';
-import { mismatchesOf, parseProps, propsUrl, resolveKey } from './model-server.mjs';
+import { mismatchesOf, parseProps, parseSlots, propsUrl, resolveKey, slotProgress, slotsUrl } from './model-server.mjs';
 
 const TIMEOUT_MS = 4000;
 // A server's settings change only when it is restarted: asked again every few minutes, and
 // at once when it comes back after being down.
 const PROPS_MS = 5 * 60_000;
+// What its slots are doing is asked while a session waits on it: often enough to show reading
+// and writing as they go, no more.
+const SLOTS_MS = 3000;
 
 /**
  * MCP status is inferred, because OpenCode only logs failures:
@@ -113,6 +116,22 @@ async function propsCheck(baseURL, keySpec) {
   }
 }
 
+/** What each slot of a llama.cpp server is doing; null when it cannot be read. */
+async function slotsCheck(baseURL, keySpec) {
+  const { key, problem } = resolveKey(keySpec);
+  if (problem) return null;
+  try {
+    const res = await fetch(slotsUrl(baseURL), { redirect: 'manual', headers: key ? { authorization: `Bearer ${key}` } : {}, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    return parseSlots(await res.json().catch(() => null));
+  } catch {
+    return null;
+  }
+}
+
 function tcpCheck(host, port) {
   return new Promise(resolve => {
     const t0 = performance.now();
@@ -138,7 +157,7 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
   const mode = cfg.environment.modelServers;
   const modelTargets = opencode.providers
     .filter(p => mode === 'all' || (mode === 'local' && isLocalHost(targetOf(p.baseURL))))
-    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(healthUrl(p.baseURL)), props: () => propsCheck(p.baseURL, cfg.modelServerKeys?.[p.id]) }));
+    .map(p => ({ name: p.id, target: targetOf(p.baseURL), run: () => httpCheck(healthUrl(p.baseURL)), props: () => propsCheck(p.baseURL, cfg.modelServerKeys?.[p.id]), slots: () => slotsCheck(p.baseURL, cfg.modelServerKeys?.[p.id]) }));
   const serviceTargets = (cfg.services ?? [])
     .filter(s => s?.name && (s.url || (s.host && s.port)))
     .map(s => (s.url
@@ -151,10 +170,40 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
   let last = 0;
   let busy = false;
   const settings = new Map(); // provider -> { at, status, server? } from its /props
+  const live = new Map(); // provider -> { at, slots, progress, idleSince } from its /slots
+  let waiting = new Map(); // provider -> sessions waiting on its model, as the last view saw
+  let slotsBusy = false;
 
   const runAll = targets => Promise.all(targets.map(async t => ({ name: t.name, target: t.target, ...(await t.run()) })));
 
+  /**
+   * The slots of each server a session waits on, every few seconds: what it is reading or
+   * writing, and how fast. Only of a server whose settings could be read, so not one that
+   * wants a key it was not given.
+   */
+  async function refreshSlots(now = Date.now()) {
+    if (slotsBusy) return;
+    const due = modelTargets.filter(t => waiting.get(t.name)?.length && settings.get(t.name)?.status === 'ok' && now - (live.get(t.name)?.at ?? 0) >= SLOTS_MS);
+    if (!due.length) return;
+    slotsBusy = true;
+    try {
+      await Promise.all(due.map(async target => {
+        const slots = await target.slots();
+        const at = Date.now();
+        const before = live.get(target.name);
+        if (!slots) return live.delete(target.name);
+        const progress = slots.map(slot => slotProgress(slot, before?.slots.find(b => b.id === slot.id), before ? at - before.at : 0)).filter(Boolean);
+        // Waited on, and not one slot working: from when that was first seen.
+        const idleSince = progress.length ? null : (before?.idleSince ?? at);
+        live.set(target.name, { at, slots, progress, idleSince });
+      }));
+    } finally {
+      slotsBusy = false;
+    }
+  }
+
   async function refresh() {
+    refreshSlots();
     if (busy || Date.now() - last < cfg.environment.checkSeconds * 1000) return;
     busy = true;
     try {
@@ -182,8 +231,12 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
    * @param {Map<string, {okAt: number|null, connErrAt: number|null}>} mcpUse per MCP server
    * @param {object[]} [projectServers] what the project configs of the sessions on screen add
    * @param {Map<string, string[]>} [asked] provider -> the models sessions working now ask it for
+   * @param {Map<string, string[]>} [waitingNow] provider -> the sessions waiting on its model now
    */
-  function view(mcpUse, projectServers = [], asked = new Map()) {
+  function view(mcpUse, projectServers = [], asked = new Map(), waitingNow = new Map(), now = Date.now()) {
+    waiting = waitingNow;
+    // What was read of a server no longer waited on is not shown: it is old.
+    for (const name of live.keys()) if (!waiting.get(name)?.length) live.delete(name);
     return {
       checkedAt,
       // Each model server with what it really runs, and where OpenCode thinks otherwise.
@@ -191,7 +244,13 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
         const known = settings.get(m.name);
         if (!known) return m;
         const contextOf = model => opencode.limits.get(`${m.name}/${model}`) ?? null;
-        return { ...m, settings: { status: known.status, problem: known.problem ?? null, ...known.server }, mismatches: mismatchesOf(known.server, asked.get(m.name) ?? [], contextOf) };
+        const slots = live.get(m.name);
+        return {
+          ...m,
+          settings: { status: known.status, problem: known.problem ?? null, ...known.server },
+          mismatches: mismatchesOf(known.server, asked.get(m.name) ?? [], contextOf),
+          ...(slots ? { live: { progress: slots.progress, idleMs: slots.idleSince == null ? null : now - slots.idleSince } } : {}),
+        };
       }),
       services,
       mcp: mcpStatus({
