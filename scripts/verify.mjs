@@ -8,7 +8,7 @@
 // Read-only like the monitor: the database is opened read-only, the log only read.
 //
 //   node scripts/verify.mjs [--data-dir <path>] [--config <path>]
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -19,6 +19,9 @@ import { loadConfig, parseArgs } from '../src/config.mjs';
 import { trimEndOf } from '../src/text.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const startedAt = Date.now();
+// Set for the second run, after OpenCode wrote while the first was counting.
+const AGAIN = process.env.OCM_VERIFY_AGAIN === '1';
 const args = parseArgs(process.argv.slice(2));
 const cfg = loadConfig(args);
 const dbPath = join(cfg.dataDir, 'opencode.db');
@@ -90,7 +93,15 @@ for (const [table, columns] of Object.entries({ session: 'id, parent_id, time_cr
   if (!db.prepare(`pragma table_info(${table})`).all().length) db.exec(`pragma temp_store = memory; create temp table ${table} (${columns})`);
 }
 const one = (sql, ...a) => db.prepare(sql).get(...a);
+
 const all = (sql, ...a) => db.prepare(sql).all(...a);
+// The latest moment OpenCode wrote anything this counts from: if it moves while this runs, a
+// session was working, and a figure counted a moment apart from the monitor's can differ.
+const lastWrite = () => Math.max(
+  ...['message', 'part'].map(t => one(`select max(time_updated) t from ${t}`)?.t ?? 0),
+  ...(all("select name from sqlite_master where type = 'table' and name = 'session_message'").length ? [one('select max(time_updated) t from session_message')?.t ?? 0] : []),
+);
+const writtenAtStart = lastWrite();
 const START = `coalesce(json_extract(data,'$.state.time.start'), time_created)`;
 const SENT = `coalesce(json_extract(data,'$.tokens.input'),0)+coalesce(json_extract(data,'$.tokens.cache.read'),0)+coalesce(json_extract(data,'$.tokens.cache.write'),0)`;
 // A path inside the session's project, as the project sees it: one file however it was written.
@@ -292,9 +303,13 @@ for (const d of [7, 14, 30]) {
   for (const key of ['toolCalls', 'compactions', 'activeMs']) compare(`Stats, ${d} days`, `days add up: ${key}`, v.daily.reduce((n, x) => n + x[key], 0), v.totals[key]);
 }
 
+const skippedLive = [];
 for (const s of s30.sessions.slice(0, 5)) {
   const one30 = await view(`Stats, session "${s.title.slice(0, 30)}"`, `/api/stats?days=30&session=${s.id}`, family(s.id));
-  compare(`Stats, session "${s.title.slice(0, 30)}"`, 'its row in History = this view (agent time)', one30.totals.activeMs, s.activeMs);
+  // Two of the monitor's answers, a minute apart: a session working in between has more agent
+  // time in the second. Compared only for a session that has stopped.
+  if (s.lastAt >= startedAt - 10 * 60_000) skippedLive.push(s.title.slice(0, 30));
+  else compare(`Stats, session "${s.title.slice(0, 30)}"`, 'its row in History = this view (agent time)', one30.totals.activeMs, s.activeMs);
 }
 
 // MCP rows
@@ -375,6 +390,20 @@ if (existsSync(logPath)) {
 
 // ---------------------------------------------------------------- report
 const bad = rows.filter(r => !r.ok);
+const written = lastWrite() > writtenAtStart;
+// OpenCode wrote while this counted, and something differs: counted again, once, from the
+// start, and only that count is reported. A difference that stays is not the moment's.
+if (bad.length && written && !AGAIN) {
+  console.log(`${bad.length} of ${rows.length} figures differed while OpenCode was writing (a session was working). Counting again...`);
+  db.close();
+  stop();
+  const again = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...process.argv.slice(2)], { stdio: 'inherit', env: { ...process.env, OCM_VERIFY_AGAIN: '1' } });
+  process.exitCode = again.status ?? 1;
+} else {
+  report();
+}
+
+function report() {
 let area = '';
 for (const r of rows) {
   if (r.area !== area) {
@@ -383,10 +412,13 @@ for (const r of rows) {
   }
   console.log(`  ${r.ok ? 'ok  ' : 'DIFF'} ${r.name.padEnd(46)} ${String(r.independent).padStart(14)} ${r.ok ? '' : `  monitor shows ${r.monitor}`}`);
 }
+if (skippedLive.length) console.log(`\nNot compared, as still working: its row in History against its own view, for ${skippedLive.map(t => `"${t}"`).join(', ')}.`);
 console.log(`\n${rows.length - bad.length} of ${rows.length} figures agree with an independent count of this machine's data.`);
-if (bad.length) console.log('Figures that differ are a bug: please report them with this output (it holds counts only, no content).');
+if (bad.length && written) console.log('OpenCode was writing while this counted, the second time too: run it again when no session is working. If a figure still differs then, it is a bug: please report it with this output (it holds counts only, no content).');
+else if (bad.length) console.log('Figures that differ are a bug: please report them with this output (it holds counts only, no content).');
 db.close();
 // Not process.exit(): on Windows, leaving while a connection to the monitor is still closing
 // ends Node with a failed assertion and an exit code of its own, whatever was found.
 process.exitCode = bad.length ? 1 : 0;
 stop();
+}
