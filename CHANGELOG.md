@@ -3,6 +3,34 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.8.0 - 2026-10-17
+
+While you were away, and what the model server really runs.
+
+- **While you were away.** At the top of the Tasks tab, a report of the latest night
+  (`overnight.from` to `overnight.to`, 22:00 to 08:00 by default), from the monitor's record
+  of each change of state: each session that ran, how long it worked and waited for you, how
+  it stood at the end and why, its plan; and above them, the longest stretch in which nothing
+  ran while a session needed you. On this machine it shows the night llama-server went down:
+  nothing ran from 03:40 to 07:30. With `notify.overnight.enabled` it goes to Discord once
+  the night ends; off by default.
+- **What a llama.cpp server really runs.** The model-server check also reads the server's
+  own settings (`/props`): the model loaded (its `--alias`) and the context it was started
+  with, on hover. It turns red when a session working now asks for another model than the
+  one loaded, or when OpenCode takes the context to be larger than the server's. A server
+  that wants a key is read only with `modelServerKeys`, which names where the key is
+  (`{env:NAME}` or `{file:path}`) and refuses the key itself; one that refuses is asked once
+  per start, so its log does not fill with failed logins.
+- **MCP connected.** OpenCode 2 logs each MCP connection and how many tools it offered: a
+  server it connected shows *connected* before any of its tools is used, where it showed *no
+  signal*, and one that offered no tools shows so in grey, not as a failure (graft offers its
+  tools only in a project it has indexed).
+- **SonarQube.** The quality gate passes again: 35 issues in the code since 11.3 fixed with
+  no change in behaviour, and Linux programs (`ps`, `lsof`, `systemctl`, `notify-send`) run
+  from the system's folders by full path, never found through PATH.
+- A link-local address (169.254.x.x) is no longer offered as one of this machine's LAN
+  addresses.
+
 ## 11.7.0 - 2026-10-15
 
 The MCP tools from another machine of the network.
