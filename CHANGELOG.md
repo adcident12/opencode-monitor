@@ -3,6 +3,37 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.11.0 - 2026-10-17
+
+Why the prompt cache was lost, an agent going round in circles, and what it cost.
+
+- **Prompt cache lost, and why.** From the cached and new tokens OpenCode records for each
+  request, for any server that reports them: each time a request read again most of what the
+  one before it had cached, put down to its first cause that holds (a compaction or another
+  model, which are expected; another session in between, a pause, a new turn, part of the
+  prompt changed, or no cause seen). Stats lists them by cause with the time each took
+  (`cacheDrops`), and "Worth knowing" names the cause that cost most. On this machine over a
+  week, 128 of 316 losses were unexpected, 3.7M tokens.
+- **The agent going round in circles.** The same calls back to back, one tool failing again
+  and again, or an hour of work and 30 calls without its plan changing. The session says so,
+  a `"loop"` notification tells once each time it starts (for a subagent too), and Stats
+  lists each one of the period with "still going" (`loops`). The limits were set against a
+  month of real sessions, past what ordinary work reached; they caught a script that failed
+  257 times back to back. `"loop"` is on by default; a `notify.on` already set in
+  `config.json` needs it added.
+- **What it cost.** For a model with a price: today and this month, where the month ends at
+  this pace, each day and month, by model and by session, as OpenCode recorded it (US
+  dollars at list price). `budget.daily` and `budget.monthly` show the share used, and a
+  `"budget"` notification tells at `budget.warnPct` and at the whole of it. Left out for
+  someone who pays for nothing.
+- **MCP keeps up.** `opencode_stats` has `cacheDrops` and `loops`, and `opencode_costs` is new,
+  over `mcp.mjs` and `/mcp` alike.
+- **OpenCode 2 prompts asked for by path.** `opencode api GET /api/session/<id>/permission`
+  in place of the operation name, which made OpenCode send its whole API description
+  (276 KB) on every question. Its event stream would need the service password, which can
+  answer prompts and run anything, so the monitor still does not read it.
+- **npm run release** checks are tested; the sample has a loop and a priced model to show.
+
 ## 11.10.0 - 2026-10-17
 
 Prompts read again, a model server that stops, and a README true to the system.
