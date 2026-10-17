@@ -361,6 +361,8 @@ export async function main(argv) {
       mcpDisconnected: () => log.mcpDisconnected(),
       currentModel: () => loadOpencodeConfig(cfg.opencodeConfigDir).model,
       tasks,
+      overnight,
+      modelServers: () => monitor.environmentView?.() ?? [],
     }),
   });
   const access = createAccess({ lan: cfg.lan, port: cfg.port, key: cfg.lan ? loadAccessKey(accessKeyFile(cfg)) : undefined });

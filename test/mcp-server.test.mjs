@@ -137,13 +137,14 @@ test('mcp.mjs: a real process speaks only the protocol on stdout, on sample data
   send({ id: 5, method: 'tools/call', params: { name: 'opencode_takeaways', arguments: {} } });
   send({ id: 6, method: 'tools/call', params: { name: 'opencode_sessions', arguments: { days: 30 } } });
   send({ id: 7, method: 'tools/call', params: { name: 'opencode_config_changes', arguments: {} } });
+  send({ id: 9, method: 'tools/call', params: { name: 'opencode_overnight', arguments: { nightsAgo: 1 } } });
   send({ id: 8, method: 'tools/call', params: { name: 'opencode_compare', arguments: { at: new Date(Date.now() - 3_600_000).toISOString(), hours: 2 } } });
   child.stdin.end();
   const code = await new Promise(done => child.on('close', done));
   assert.equal(code, 0, err);
   const replies = out.trim().split('\n').map(line => JSON.parse(line));
-  assert.deepEqual(replies.map(r => r.id), [1, 2, 3, 4, 5, 6, 7, 8]);
-  assert.equal(replies[1].result.tools.length, 7);
+  assert.deepEqual(replies.map(r => r.id), [1, 2, 3, 4, 5, 6, 7, 9, 8]);
+  assert.equal(replies[1].result.tools.length, 8);
   for (const reply of replies.slice(2)) assert.equal(reply.result.isError, undefined, reply.result.content[0].text);
   const figures = JSON.parse(replies[2].result.content[0].text);
   assert.ok(figures.totals.toolCalls > 0);

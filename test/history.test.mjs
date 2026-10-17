@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, appendFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHistory } from '../src/history.mjs';
@@ -94,4 +94,22 @@ test('a monitor left running drops what passes retention, as a restart would', (
   history.record([s('a', 'working')], T);
   history.record([s('a', 'waiting')], T + 2 * DAY);
   assert.deepEqual(history.page().events.map(e => e.to), ['waiting']);
+});
+
+test('read only, for the MCP server: what is past retention is left out but stays in the file, and nothing is recorded', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-hist-ro-'));
+  const file = join(dir, 'history.jsonl');
+  try {
+    const old = { t: Date.now() - 40 * 86_400_000, id: 'old', to: 'working' };
+    const recent = { t: Date.now() - 60_000, id: 'new', to: 'working' };
+    writeFileSync(file, `${JSON.stringify(old)}\n${JSON.stringify(recent)}\n`);
+    const before = readFileSync(file, 'utf8');
+    const history = createHistory({ file, retentionDays: 30, readOnly: true });
+    assert.equal(history.count, 1);
+    history.record([{ id: 'x', state: 'waiting', since: 0, title: '', project: '' }], Date.now());
+    assert.equal(history.count, 1);
+    assert.equal(readFileSync(file, 'utf8'), before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

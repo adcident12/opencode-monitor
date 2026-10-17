@@ -51,7 +51,7 @@ function toEvent(session, previous, now) {
  * The entries of the file that are within retention, oldest first. What is past it, and any
  * broken line, is dropped from the file itself.
  */
-function readKept(file, cutoff) {
+function readKept(file, cutoff, readOnly = false) {
   const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
   const events = [];
   for (const line of lines) {
@@ -62,7 +62,7 @@ function readKept(file, cutoff) {
       // A half-written line from a crash; skip it.
     }
   }
-  if (events.length !== lines.length) writeFileSync(file, events.map(e => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
+  if (!readOnly && events.length !== lines.length) writeFileSync(file, events.map(e => JSON.stringify(e)).join('\n') + (events.length ? '\n' : ''));
   return events;
 }
 
@@ -72,8 +72,12 @@ function readKept(file, cutoff) {
  * @param {number} options.retentionDays
  * @param {boolean} [options.enabled]
  */
-export function createHistory({ file, retentionDays, enabled = true, now = Date.now() }) {
-  let events = enabled && file && existsSync(file) ? readKept(file, now - retentionDays * DAY_MS) : [];
+/**
+ * @param {boolean} [readOnly]  for a process that only reads it (the MCP server): what is past
+ *   retention is left out, not dropped from the file, and nothing is ever recorded
+ */
+export function createHistory({ file, retentionDays, enabled = true, now = Date.now(), readOnly = false }) {
+  let events = enabled && file && existsSync(file) ? readKept(file, now - retentionDays * DAY_MS, readOnly) : [];
   let dropped = 0; // entries still in the file that memory no longer holds
   const last = new Map(events.map(event => [event.id, event])); // session id -> its latest event
   // The cap only guards against a runaway; what goes past it stays in the file.
@@ -85,7 +89,7 @@ export function createHistory({ file, retentionDays, enabled = true, now = Date.
   capToMemory();
 
   function record(sessions, at) {
-    if (!enabled) return;
+    if (!enabled || readOnly) return;
     const ids = new Set(sessions.map(s => s.id));
     const added = [];
     for (const session of sessions) {

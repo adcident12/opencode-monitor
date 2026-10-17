@@ -41,7 +41,7 @@ function bufferAdvice(written, buffer) {
   return null;
 }
 
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, overnight = null, modelServers = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: (k.since ? t('takeaways.since', k.vars) : '') + t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
@@ -92,8 +92,25 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
       },
     },
     {
+      name: 'opencode_overnight',
+      description: 'What happened while the user was away: the night (overnight.from to overnight.to in the monitor\'s config, 22:00 to 08:00 by default) from the monitor\'s record of each change of state. Each session that ran: how long it worked and waited for the user, how it stood at the end of the night and why (reason, as the Now tab says it), its plan. Above them, the longest stretch in which nothing ran while a session needed the user. Only the hours the monitor was running are known. Times are milliseconds or ISO.',
+      inputSchema: { type: 'object', properties: { nightsAgo: { type: 'integer', minimum: 0, maximum: 6, description: 'Which night: 0 the latest (default), 1 the one before, and so on.' } } },
+      run: ({ nightsAgo }) => {
+        if (!overnight) return { error: 'Not available.' };
+        const back = Math.min(6, Math.max(0, Number.isInteger(nightsAgo) ? nightsAgo : 0));
+        const r = overnight.report(now() - back * 86_400_000);
+        const iso = t => (t == null ? null : new Date(t).toISOString());
+        const still = r.totals.longestStill;
+        return {
+          from: iso(r.from), to: iso(r.to), going: r.going, recorded: r.recorded,
+          totals: { ...r.totals, longestStill: still && { from: iso(still.from), to: iso(still.to), ms: still.ms } },
+          sessions: r.sessions.map(s => ({ ...s, since: iso(s.since) })),
+        };
+      },
+    },
+    {
       name: 'opencode_settings',
-      description: 'What OpenCode is set to, as far as it matters for the figures: each model\'s context, input and output limits and the size at which OpenCode compacts a session of it, the compaction settings, the MCP servers and whether each is switched on (with OpenCode 2, also the folders where one failed to connect and was not tried again, with the command that connects it), and which config files exist. No keys, addresses or commands.',
+      description: 'What OpenCode is set to, as far as it matters for the figures: each model\'s context, input and output limits and the size at which OpenCode compacts a session of it, the compaction settings, the MCP servers and whether each is switched on (with OpenCode 2, also the folders where one failed to connect and was not tried again, with the command that connects it), what each model server really runs (the model loaded and its context, read from llama.cpp itself) and where OpenCode thinks otherwise, and which config files exist. No keys, addresses or commands.',
       inputSchema: { type: 'object', properties: {} },
       run: () => {
         // Only the models used in the last 30 days: OpenCode's catalogue has thousands.
@@ -128,6 +145,16 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
             }));
             return { name: m.name, type: m.type, enabled: m.enabled, ...(down.length ? { disconnected: down } : {}) };
           }),
+          // What each model server really runs (llama.cpp's /props), as the monitor last read it.
+          modelServers: modelServers().map(m => ({
+            provider: m.name,
+            up: m.ok,
+            ...(m.settings?.status === 'ok'
+              ? { model: m.settings.model ?? null, file: m.settings.file ?? null, context: m.settings.nCtx ?? null, slots: m.settings.slots ?? null, build: m.settings.build ?? null }
+              : { settings: m.settings?.status ?? 'not_read' }),
+            mismatches: m.mismatches ?? [],
+          })),
+          modelServersNote: 'Read from each llama.cpp server itself. model is the name it answers to (--alias), null without one. mismatches: a session working now asks for another model than the one loaded, or OpenCode takes the context to be larger than the server\'s. settings "needs_key": the monitor\'s config has no key for it (modelServerKeys).',
           configFiles: configFiles(cfg.opencodeConfigDir).filter(f => existsSync(f)).map(f => f.replaceAll('\\', '/')),
           configFilesNote: 'Global. A project may have its own opencode.json or .opencode/opencode.json, which is applied over these.',
         };

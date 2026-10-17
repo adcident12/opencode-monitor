@@ -14,6 +14,9 @@ import { createProjectMcp, loadOpencodeConfig, outputTokenMaxFrom } from './open
 import { clip, createRedactor } from './redact.mjs';
 import { createStatsSource } from './stats-source.mjs';
 import { createTasksSource } from './tasks.mjs';
+import { createHistory } from './history.mjs';
+import { createOvernight } from './overnight.mjs';
+import { createEnvironment } from './environment.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
 
@@ -68,7 +71,17 @@ export async function mcpMain(argv) {
   // Read again each time: the model is the setting changed most often.
   const currentModel = () => loadOpencodeConfig(cfg.opencodeConfigDir).model;
   const tasks = createTasksSource({ db, show: (text, max) => clip(redact(String(text ?? '')), max) });
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks });
+  // The monitor's record of each change of state, read and never written.
+  const history = createHistory({ ...cfg.history, file: cfg.history.enabled && !args.sample ? resolve(ROOT, cfg.history.file) : null, readOnly: true });
+  const overnight = createOvernight({ cfg, history, tasks });
+  // Each model server's own settings, read now and then in the background: the tools answer
+  // at once from what was last read. Not for --sample: its sessions are fake, the servers real.
+  const environment = args.sample ? null : createEnvironment({ cfg, opencode, log, probe: { running: null } });
+  // The first reading before the first answer: a tool asked at once must not say "not read".
+  await environment?.refresh();
+  if (environment) setInterval(() => environment.refresh(), 60_000).unref();
+  const modelServers = () => environment?.view(new Map()).models ?? [];
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks, overnight, modelServers });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();
