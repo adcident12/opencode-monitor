@@ -52,6 +52,13 @@ const RULES = [
     if (!top || top.count < 3) return null;
     return { id: 'permission_repeat', tone: 'act', vars: { n: top.count, permission: top.permission, pattern: top.pattern }, anchor: 'stats-you' };
   },
+  // OpenCode named replies after a model the server did not have loaded: every figure of that
+  // model is another's. Ten at least, so a switch caught mid-reply is not one.
+  s => {
+    const top = s.servedAs?.differ?.[0];
+    if (!top || top.replies < 10) return null;
+    return { id: 'served_other', tone: 'act', vars: { n: top.replies, asked: top.asked, served: top.served }, anchor: 'stats-model' };
+  },
   // Summarising took a real share of the agent's time.
   s => {
     const { compactingMs, activeMs, compactions } = s.totals;

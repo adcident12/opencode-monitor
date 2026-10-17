@@ -3,6 +3,7 @@
 import { promptFits } from './audit.mjs';
 import { askIsFor } from './state.mjs';
 import { computeMcpStats } from './mcp.mjs';
+import { servedAsOf } from './served.mjs';
 import { agentsOf, fileKey, filesOf, inProject, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
 const ASK_MATCH_MS = 2000;
@@ -556,7 +557,7 @@ function contextOfSession({ sessionId, own, compactions, tools, from, contextLim
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
-export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, allowedNow = () => false, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set() }) {
+export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, allowedNow = () => false, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set(), servedAt = () => null }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
   const daily = new Map(keys.map(k => [k, { date: k, activeMs: 0, waitMs: 0, prompts: 0, stuck: 0, abandoned: 0, toolCalls: 0, toolErrors: 0, compactions: 0, sessions: 0, tokens: 0, cost: 0, readingMs: 0, thinkingMs: 0, writingMs: 0, toolMs: 0, files: 0 }]));
@@ -649,6 +650,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory, version: sessionById.get(sessionId)?.version ?? null }) : null,
     work,
     speed: computeSpeed({ requests: timed, keys, show, outputs }),
+    // Replies OpenCode named after one model while the server had another loaded.
+    servedAs: servedAsOf(messages, servedAt, { from, to: now, inScope }),
     usage: {
       ...usage,
       // Share of what was sent that the model server could reuse from its cache.

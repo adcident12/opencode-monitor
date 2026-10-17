@@ -461,6 +461,7 @@
   "takeaways.cut_off.one": "คำตอบถูกตัดที่ขีดจำกัด output {n} ครั้ง ({models}) เพิ่ม limit.output ของโมเดลนั้นใน opencode.json หรือสั่งงานเป็นขั้นที่เล็กลง",
   "takeaways.mcp_unused": "เปิดไว้แต่ไม่ถูกเรียกเลยใน {sessions} session: {names} MCP server แต่ละตัวเพิ่มรายการ tool เข้าไปในทุก prompt",
   "takeaways.permission_repeat": "ถูกถามขออนุญาต {permission} {n} ครั้ง: {pattern} เขียน permission rule ใน opencode.json จะไม่ต้องถามอีก",
+  "takeaways.served_other": "คำตอบ {n} ครั้งที่ OpenCode นับว่าเป็น {asked} จริงๆ เขียนโดย {served} ซึ่งเป็นโมเดลที่ server โหลดอยู่ ตัวเลขเหล่านั้นจึงเป็นของโมเดลนั้น ควรตั้งโมเดลใน OpenCode ให้ตรงกับที่ server รันอยู่",
   "takeaways.compacting_time": "เวลา {pct}% ของ agent ({hours} ชม.) ใช้ไปกับการสรุปเพื่อย่อบทสนทนา {n} ครั้ง ไม่ได้ทำงานเลย การย่อที่น้อยลง (session สั้นลง หรือเริ่มต้นเล็กลง) จะได้เวลานี้คืน",
   "takeaways.long_session": "มี session หนึ่งทำต่อเนื่องผ่านการย่อบทสนทนา {n} ครั้ง ในเวลาทำงาน {hours} ชม. การเปิด session ใหม่สำหรับงานใหญ่แต่ละชิ้นจะเก็บรายละเอียดได้มากกว่า",
   "takeaways.mcp_no_answer": "MCP server {name} ไม่ตอบ {n} จาก {calls} ครั้ง ตรวจว่าเริ่มทำงานได้ หรือปิดไว้",

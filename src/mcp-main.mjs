@@ -16,9 +16,22 @@ import { createStatsSource } from './stats-source.mjs';
 import { createTasksSource } from './tasks.mjs';
 import { createHistory } from './history.mjs';
 import { createOvernight } from './overnight.mjs';
+import { createServedLog } from './served.mjs';
 import { createEnvironment } from './environment.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
+
+/**
+ * The monitor's own files, beside the history, that this process reads and never writes:
+ * none when the history is off, or for --sample, whose sessions are not the user's.
+ */
+function keptFiles(cfg, args) {
+  const keep = cfg.history.enabled && !args.sample;
+  return {
+    history: keep ? resolve(ROOT, cfg.history.file) : null,
+    beside: name => (keep ? join(dirname(resolve(ROOT, cfg.history.file)), name) : null),
+  };
+}
 
 export async function mcpMain(argv) {
   const args = parseArgs(argv);
@@ -33,7 +46,8 @@ export async function mcpMain(argv) {
 
   const db = openDb(cfg.dataDir);
   // The prompts of OpenCode 2 the monitor recorded: read, never asked for from here.
-  const pending = cfg.history.enabled && !args.sample ? createPending({ file: join(dirname(resolve(ROOT, cfg.history.file)), 'prompts.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true }) : null;
+  const kept = keptFiles(cfg, args);
+  const pending = kept.history ? createPending({ file: kept.beside('prompts.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true }) : null;
   const log = withPending(createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), pending);
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
   const redact = createRedactor(cfg.redact);
@@ -49,11 +63,14 @@ export async function mcpMain(argv) {
     permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions,
     // Read when a figure is asked for, after configChanges below is made.
     configChangedAt: since => configChanges.list(since).map(c => c.t),
+    servedAt: (provider, t) => served.servedAt(provider, t),
   });
+  // Which model each server had loaded, as the monitor recorded it: read, never written.
+  const served = createServedLog({ file: kept.beside('served.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true });
   // What the monitor recorded, read and never written: this process changes nothing.
   const configChanges = createConfigWatch({
     files: () => [],
-    file: cfg.history.enabled && !args.sample ? join(dirname(resolve(ROOT, cfg.history.file)), 'config-changes.jsonl') : null,
+    file: kept.beside('config-changes.jsonl'),
     retentionDays: cfg.history.retentionDays,
     readOnly: true,
   });
@@ -72,7 +89,7 @@ export async function mcpMain(argv) {
   const currentModel = () => loadOpencodeConfig(cfg.opencodeConfigDir).model;
   const tasks = createTasksSource({ db, show: (text, max) => clip(redact(String(text ?? '')), max) });
   // The monitor's record of each change of state, read and never written.
-  const history = createHistory({ ...cfg.history, file: cfg.history.enabled && !args.sample ? resolve(ROOT, cfg.history.file) : null, readOnly: true });
+  const history = createHistory({ ...cfg.history, file: kept.history, readOnly: true });
   const overnight = createOvernight({ cfg, history, tasks });
   // Each model server's own settings, read now and then in the background: the tools answer
   // at once from what was last read. Not for --sample: its sessions are fake, the servers real.

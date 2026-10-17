@@ -217,6 +217,8 @@ Pick a session next to the period to see the same figures for that session and i
 
 **When OpenCode's settings changed.** While it runs, the monitor looks once a minute at OpenCode's config (the global `opencode.json[c]`, and the config of each project on screen). A save that changed a setting is listed at the top of Stats with what changed, for example `limit.output 8192 → 16384`, and a button that compares the days before it with the days from it on; the same days are marked in the "Compare from" list. A change made while the monitor was not running is found at the next start and dated by the file. What is kept, in `data/config-changes.jsonl` beside the history and for as long: numbers, on/off, setting words such as `allow` or `high`, and model names, with their values; other text (an address, a command) only as "changed", from a hash; and settings whose name says secret (`apiKey`, `headers`, `env`, anything with token or password) are not read at all. A file saved without any setting changing is not listed. With `history.enabled` off, nothing is written and changes are only known while the monitor runs.
 
+**Which model really answered.** OpenCode records each reply under the model it asked for, and a llama.cpp server started with another model answers all the same. While it runs, the monitor keeps which model each server had loaded (from its settings, see Environment), in `data/served.jsonl`: a line when it changes, and one an hour while it does not, for as long as the history. Replies are compared with it only where it was seen, and only for a server started with `--alias` (the name it answers to); the figures stay under the names OpenCode recorded, and Stats says how many replies were written by another model than the one named (`servedAs`, and a "Worth knowing" sentence from ten replies on). Nothing is known of a time the monitor was not running.
+
 The size of each MCP server's tool list is not shown: OpenCode does not record the tool definitions it sends, so it could only be measured by starting every server, which the monitor does not do.
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
@@ -409,6 +411,7 @@ src/leftovers.mjs       background processes still running, matched to the comma
 src/history.mjs         record of state changes (data/history.jsonl)
 src/takeaways.mjs       the rules behind "Worth knowing" (pure)
 src/config-changes.mjs  notices a changed OpenCode setting (data/config-changes.jsonl)
+src/served.mjs          which model each server had loaded, and when (data/served.jsonl)
 src/digest.mjs          the weekly summary to Discord
 src/overnight.mjs       "While you were away": the night's sessions from the history, and its Discord report
 src/tasks.mjs           the Tasks tab: every session by project, how it ended, and its plan

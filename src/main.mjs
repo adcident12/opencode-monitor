@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
 import { createOvernight } from './overnight.mjs';
+import { createServedLog } from './served.mjs';
 import { createReplaySource } from './replay-source.mjs';
 import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
@@ -256,7 +257,9 @@ export async function main(argv) {
     retentionDays: cfg.history.retentionDays,
   });
 
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions, configChangedAt: since => configWatch.list(since).map(c => c.t) });
+  // Which model each server had loaded, and when, kept beside the history.
+  const served = createServedLog({ file: kept('served.jsonl'), retentionDays: cfg.history.retentionDays });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions, configChangedAt: since => configWatch.list(since).map(c => c.t), servedAt: served.servedAt });
   const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const bridge = createBridgeSource({ db, replay });
   // Not for --sample: a summary of fake sessions has no business in a real channel.
@@ -283,6 +286,7 @@ export async function main(argv) {
     configWatch.check(snap.now);
     digest?.check(snap.now);
     overnight.check(snap.now);
+    for (const m of snap.environment?.models ?? []) if (m.settings?.status === 'ok') served.record(m.name, m.settings, snap.now);
     if (!snap.stale) {
       notify(snap.sessions, snap.now);
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
