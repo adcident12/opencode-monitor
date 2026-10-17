@@ -20,7 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const windows = process.platform === 'win32';
-const run = (cmd, args, options = {}) => execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8', shell: windows && cmd === 'npm', ...options }).trim();
+// What a command printed; nothing when its output went straight to this terminal (stdio: inherit).
+const run = (cmd, args, options = {}) => (execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8', shell: windows && cmd === 'npm', ...options }) ?? '').trim();
 const git = (...args) => run('git', args);
 const fail = message => {
   console.error(`release: ${message}`);
