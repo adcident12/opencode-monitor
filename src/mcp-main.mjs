@@ -17,6 +17,7 @@ import { createTasksSource } from './tasks.mjs';
 import { createHistory } from './history.mjs';
 import { createOvernight } from './overnight.mjs';
 import { createServedLog } from './served.mjs';
+import { createReadLog } from './reads.mjs';
 import { createEnvironment } from './environment.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
@@ -64,7 +65,9 @@ export async function mcpMain(argv) {
     // Read when a figure is asked for, after configChanges below is made.
     configChangedAt: since => configChanges.list(since).map(c => c.t),
     servedAt: (provider, t) => served.servedAt(provider, t),
+    longReads: (from, to, inScope) => reads.between(from, to, inScope),
   });
+  const reads = createReadLog({ file: kept.beside('reads.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true });
   // Which model each server had loaded, as the monitor recorded it: read, never written.
   const served = createServedLog({ file: kept.beside('served.jsonl'), retentionDays: cfg.history.retentionDays, readOnly: true });
   // What the monitor recorded, read and never written: this process changes nothing.

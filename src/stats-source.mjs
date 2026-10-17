@@ -88,7 +88,7 @@ export function limitsFor({ cfg, projectMcp = null, modelLimits = new Map(), mod
  * @param {Map<string, number>} [deps.modelLimits]  "provider/model" -> context window
  * @param {(since: number) => number[]} [deps.configChangedAt]  when the config was changed
  */
-export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, permissionRules = [], configChangedAt = () => [], servedAt = () => null }) {
+export function createStatsSource({ db, log, cfg, redact, mcpServers = [], projectMcp = null, modelLimits = new Map(), modelReserves = new Map(), compactionSettings = {}, outputTokenMax = null, permissionRules = [], configChangedAt = () => [], servedAt = () => null, longReads = () => [] }) {
   const { compactAt, contextLimit } = limitsFor({ cfg, projectMcp, modelLimits, modelReserves, compactionSettings, outputTokenMax });
   const show = (text, max) => clip(redact(String(text ?? '').slice(0, 2000)), max);
   const cache = new Map(); // "days|session" -> { at, value }
@@ -185,6 +185,7 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       show,
       allowedNow: (permission, patterns) => allowedByRules(rules, permission, patterns),
       servedAt,
+      longReads,
     };
     return input;
   }

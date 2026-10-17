@@ -59,6 +59,12 @@ const RULES = [
     if (!top || top.replies < 10) return null;
     return { id: 'served_other', tone: 'act', vars: { n: top.replies, asked: top.asked, served: top.served }, anchor: 'stats-model' };
   },
+  // The model server read whole prompts again, and the sessions waited on it.
+  s => {
+    const r = s.longReads;
+    if (!r || r.count < 3 || r.ms < 10 * 60_000) return null;
+    return { id: 'long_reads', tone: 'note', vars: { n: r.count, minutes: Math.round(r.ms / 60_000), tokens: Math.round(r.tokens / 1000) }, anchor: 'stats-model' };
+  },
   // Summarising took a real share of the agent's time.
   s => {
     const { compactingMs, activeMs, compactions } = s.totals;

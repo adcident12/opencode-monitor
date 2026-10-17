@@ -412,7 +412,8 @@ for (const r of rows) {
   }
   console.log(`  ${r.ok ? 'ok  ' : 'DIFF'} ${r.name.padEnd(46)} ${String(r.independent).padStart(14)} ${r.ok ? '' : `  monitor shows ${r.monitor}`}`);
 }
-if (skippedLive.length) console.log(`\nNot compared, as still working: its row in History against its own view, for ${skippedLive.map(t => `"${t}"`).join(', ')}.`);
+const quoted = skippedLive.map(t => JSON.stringify(t)).join(', ');
+if (skippedLive.length) console.log(`\nNot compared, as still working: its row in History against its own view, for ${quoted}.`);
 console.log(`\n${rows.length - bad.length} of ${rows.length} figures agree with an independent count of this machine's data.`);
 if (bad.length && written) console.log('OpenCode was writing while this counted, the second time too: run it again when no session is working. If a figure still differs then, it is a bug: please report it with this output (it holds counts only, no content).');
 else if (bad.length) console.log('Figures that differ are a bug: please report them with this output (it holds counts only, no content).');

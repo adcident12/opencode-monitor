@@ -5,6 +5,7 @@ import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
 import { createOvernight } from './overnight.mjs';
 import { createServedLog } from './served.mjs';
+import { createReadLog } from './reads.mjs';
 import { createReplaySource } from './replay-source.mjs';
 import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
@@ -229,7 +230,8 @@ export async function main(argv) {
   const log = withPending(createLogTail(join(cfg.dataDir, 'log', 'opencode.log')), pending);
   const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck });
   const opencode = loadOpencodeConfig(cfg.opencodeConfigDir, args.sample ? { XDG_CACHE_HOME: cfg.dataDir } : process.env);
-  const environment = createEnvironment({ cfg, opencode, log, probe });
+  // Long prompt reads seen in the servers' slots, kept beside the history (made below).
+  const environment = createEnvironment({ cfg, opencode, log, probe, onRead: read => reads.record(read) });
   // Off for --sample: fake sessions name directories that may exist on this machine.
   const projectMcp = args.sample ? null : createProjectMcp();
   const git = createGitProbe({ enabled: cfg.work.git });
@@ -259,7 +261,8 @@ export async function main(argv) {
 
   // Which model each server had loaded, and when, kept beside the history.
   const served = createServedLog({ file: kept('served.jsonl'), retentionDays: cfg.history.retentionDays });
-  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions, configChangedAt: since => configWatch.list(since).map(c => c.t), servedAt: served.servedAt });
+  const reads = createReadLog({ file: kept('reads.jsonl'), retentionDays: cfg.history.retentionDays });
+  const stats = createStatsSource({ db, log, cfg, redact: createRedactor(cfg.redact), mcpServers: opencode.mcp, projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom(), permissionRules: () => loadOpencodeConfig(cfg.opencodeConfigDir).permissions, configChangedAt: since => configWatch.list(since).map(c => c.t), servedAt: served.servedAt, longReads: reads.between });
   const replay = createReplaySource({ db, log, cfg, redact: createRedactor(cfg.redact), projectMcp, modelLimits: opencode.limits, modelReserves: opencode.reserves, compactionSettings: opencode.compaction, outputTokenMax: outputTokenMaxFrom() });
   const bridge = createBridgeSource({ db, replay });
   // Not for --sample: a summary of fake sessions has no business in a real channel.

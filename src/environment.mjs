@@ -4,6 +4,7 @@ import { connect } from 'node:net';
 import { isLocalHost } from './audit.mjs';
 import { mergeServers } from './mcp.mjs';
 import { trimEndOf } from './text.mjs';
+import { createReadTracker } from './reads.mjs';
 import { mismatchesOf, parseProps, parseSlots, propsUrl, resolveKey, slotProgress, slotsUrl } from './model-server.mjs';
 
 const TIMEOUT_MS = 4000;
@@ -153,7 +154,8 @@ function tcpCheck(host, port) {
  * @param {object} options.log       log tail
  * @param {object} options.probe     OpenCode process probe
  */
-export function createEnvironment({ cfg, opencode, log, probe }) {
+export function createEnvironment({ cfg, opencode, log, probe, onRead = () => {} }) {
+  const track = createReadTracker();
   const mode = cfg.environment.modelServers;
   const modelTargets = opencode.providers
     .filter(p => mode === 'all' || (mode === 'local' && isLocalHost(targetOf(p.baseURL))))
@@ -193,6 +195,9 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
         const before = live.get(target.name);
         if (!slots) return live.delete(target.name);
         const progress = slots.map(slot => slotProgress(slot, before?.slots.find(b => b.id === slot.id), before ? at - before.at : 0)).filter(Boolean);
+        // A long prompt read just finished: the session it was for, when only one waited.
+        const ids = waiting.get(target.name) ?? [];
+        for (const read of track(target.name, slots, at)) onRead({ ...read, session: ids.length === 1 ? ids[0] : null });
         // Waited on, and not one slot working: from when that was first seen.
         const idleSince = progress.length ? null : (before?.idleSince ?? at);
         live.set(target.name, { at, slots, progress, idleSince });

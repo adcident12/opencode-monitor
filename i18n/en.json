@@ -462,6 +462,7 @@
   "takeaways.mcp_unused": "Switched on but never called in {sessions} sessions: {names}. Each MCP server adds its tools to every prompt.",
   "takeaways.permission_repeat": "You were asked {n} times to allow {permission}: {pattern}. A permission rule in opencode.json would stop asking.",
   "takeaways.served_other": "{n} replies that OpenCode counted as {asked} were written by {served}, the model the server had loaded. Their figures are that model's: set the model OpenCode uses to the one the server runs.",
+  "takeaways.long_reads": "The model server read {n} prompts again almost whole ({tokens}k tokens), and the sessions waited {minutes} min on it. A prompt the server still holds is read in a moment: one it does not, after a compaction or when its cache was dropped, is read from the start.",
   "takeaways.compacting_time": "{pct}% of the agent's time ({hours} h) went on summarising for {n} compactions, none of it on the task. Fewer compactions (shorter sessions, a smaller start) give it back.",
   "takeaways.long_session": "One session went on through {n} compactions over {hours} h of agent time. A new session for each large piece of work keeps more of the detail.",
   "takeaways.mcp_no_answer": "MCP server {name} did not answer {n} of {calls} calls. Check that it starts, or switch it off.",

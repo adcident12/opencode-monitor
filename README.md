@@ -219,6 +219,8 @@ Pick a session next to the period to see the same figures for that session and i
 
 **Which model really answered.** OpenCode records each reply under the model it asked for, and a llama.cpp server started with another model answers all the same. While it runs, the monitor keeps which model each server had loaded (from its settings, see Environment), in `data/served.jsonl`: a line when it changes, and one an hour while it does not, for as long as the history. Replies are compared with it only where it was seen, and only for a server started with `--alias` (the name it answers to); the figures stay under the names OpenCode recorded, and Stats says how many replies were written by another model than the one named (`servedAs`, and a "Worth knowing" sentence from ten replies on). Nothing is known of a time the monitor was not running.
 
+**Prompts read again.** A prompt the model server still holds is read in a moment; one it does not (after a compaction, or when its cache was dropped) is read from the start, at a few thousand tokens a second, and the session waits. While a session waits on a llama.cpp server, the monitor sees in its slots when a request finished reading its prompt, and keeps each one of 8,192 tokens or more in `data/reads.jsonl`: when, how many tokens, and how long it was seen reading (a lower bound: the slots are asked every three seconds, and a request first seen already writing is left out). Stats sums them (`longReads`), and from ten minutes in a period "Worth knowing" says so. On this machine one such read was of 99,442 tokens, and the session waited two minutes for it.
+
 The size of each MCP server's tool list is not shown: OpenCode does not record the tool definitions it sends, so it could only be measured by starting every server, which the monitor does not do.
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
@@ -412,6 +414,7 @@ src/history.mjs         record of state changes (data/history.jsonl)
 src/takeaways.mjs       the rules behind "Worth knowing" (pure)
 src/config-changes.mjs  notices a changed OpenCode setting (data/config-changes.jsonl)
 src/served.mjs          which model each server had loaded, and when (data/served.jsonl)
+src/reads.mjs           prompts the model server read again from the start (data/reads.jsonl)
 src/digest.mjs          the weekly summary to Discord
 src/overnight.mjs       "While you were away": the night's sessions from the history, and its Discord report
 src/tasks.mjs           the Tasks tab: every session by project, how it ended, and its plan
