@@ -146,6 +146,18 @@ const RULES = [
     if (!looped) return null;
     return { id: 'script_loop', tone: 'note', vars: { tool: looped.tool, scripts: looped.loop.scripts, calls: looped.loop.calls, n: looped.loop.errors }, anchor: 'stats-agent' };
   },
+  // The agent went round in circles: several times, or once for long. Named by the worst.
+  s => {
+    const loops = s.loops;
+    if (!loops?.count) return null;
+    const counted = loops.episodes.filter(e => e.times != null).sort((a, b) => b.times - a.times)[0];
+    const stalled = loops.episodes.filter(e => e.kind === 'plan_stalled').sort((a, b) => b.workMs - a.workMs)[0];
+    const long = counted?.times >= 20 || stalled?.workMs >= 2 * HOUR;
+    if (loops.count < 3 && !long) return null;
+    const worst = counted ?? stalled;
+    const vars = { n: loops.count, tool: worst.tool ?? worst.tools?.join(' → ') ?? '', times: worst.times ?? 0, hours: Math.round(((worst.workMs ?? 0) / HOUR) * 10) / 10 };
+    return { id: `loops_${worst.kind}`, tone: 'act', vars, anchor: 'stats-agent' };
+  },
   // You waited a long time, in all.
   s => {
     const { waitMs, prompts } = s.totals;

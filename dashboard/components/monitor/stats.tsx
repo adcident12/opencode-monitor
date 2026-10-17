@@ -399,6 +399,7 @@ function Figures({ stats }: Readonly<{ stats: StatsData }>) {
         <div className={GRID}>
           <ToolUse stats={stats} />
           <div className="space-y-8">
+            <Loops loops={stats.loops} />
             <Ranked title={t("stats.rereads")} note={t("stats.rereadsNote")} empty={t("stats.noRereads")} shortBy={10}>
               {stats.rereads.map(r => (
                 <li key={`${r.file}-${r.project}`} className="flex items-baseline gap-3 py-2">
@@ -525,6 +526,29 @@ function Ranked({ title, note, empty, shortBy, children }: Readonly<{ title: str
         </button>
       )}
     </section>
+  )
+}
+
+/** The agent going round in circles: the same calls, one tool failing, its plan not moving. */
+function Loops({ loops }: Readonly<{ loops: StatsData["loops"] }>) {
+  const { t } = useI18n()
+  if (!loops) return null
+  return (
+    <Ranked title={t("stats.loops")} note={t("stats.loopsNote")} empty={t("stats.noLoops")}>
+      {loops.episodes.map(e => (
+        <li key={`${e.session_id}-${e.kind}-${e.at}`} className="space-y-1 py-2.5">
+          <div className={ROW}>
+            <span className="font-medium tabular-nums text-stuck">{e.kind === "plan_stalled" ? rough(e.workMs ?? 0) : `×${e.times ?? 0}`}</span>
+            <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+              <span className="text-sm [overflow-wrap:anywhere]">{t(`stats.loop.${e.kind}`, { tool: e.tool ?? e.tools?.join(" → ") ?? "", calls: e.calls ?? 0, open: e.open ?? 0 })}</span>
+              {e.ongoing && <Tag tone="warn">{t("stats.loopOngoing")}</Tag>}
+            </span>
+            <When at={e.at} project={e.project} />
+          </div>
+          {e.text && <Code className="pl-[4.5rem] text-muted-foreground">{e.text}</Code>}
+        </li>
+      ))}
+    </Ranked>
   )
 }
 

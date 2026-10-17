@@ -82,6 +82,8 @@ export interface Session {
     toolErrors: number
     lastError: { tool: string; text: string; at: number } | null
     repeat: { count: number; tool: string; text: string } | null
+    /** The agent going round in circles at its last call (see src/loops.mjs). */
+    loop?: Loop | null
     hints: string[]
     suggestNewSession: boolean
   }
@@ -283,6 +285,21 @@ export interface Takeaway {
   since?: number
 }
 
+/** The agent going round in circles: the same calls, one tool failing, or its plan not moving. */
+export interface Loop {
+  kind: "repeating" | "failing" | "plan_stalled"
+  id: string
+  since: number
+  times: number | null
+  tools: string[] | null
+  tool: string | null
+  text: string | null
+  error: string | null
+  workMs: number | null
+  calls: number | null
+  open: number | null
+}
+
 /** Prompt cache a model server had and lost, by why (see src/cache-drops.mjs). */
 export interface CacheDrops {
   checked: number
@@ -295,6 +312,26 @@ export interface CacheDrops {
 export interface Stats {
   range: { from: number; to: number; days: number }
   cacheDrops?: CacheDrops
+  loops?: {
+    count: number
+    byKind: Record<string, number>
+    episodes: {
+      kind: Loop["kind"]
+      at: number
+      to: number
+      ongoing: boolean
+      session_id: string
+      project: string
+      title: string
+      times: number | null
+      tools: string[] | null
+      tool: string | null
+      text: string | null
+      workMs: number | null
+      calls: number | null
+      open: number | null
+    }[]
+  }
   session: SessionChoice | null
   /** Top-level sessions in the range with what each cost, whatever session is selected. */
   sessions: (SessionChoice & { toolCalls: number; lastAt: number; activeMs: number; waitMs: number; compactions: number; tokens: number; cost: number })[]

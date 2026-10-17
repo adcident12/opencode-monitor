@@ -72,6 +72,7 @@ function sampleSession(kind, title, now) {
   if (kind === 'compact_soon') return sample('test-compact', 'working', { hints: ['context_high'], compactions: 1, compaction: { at: 99_072, room: 9000, growth: 3000, requestsLeft: 3 } });
   if (kind === 'dropped') return { ...sample('test-dropped', 'idle'), reason: 'dropped' };
   if (kind === 'server_idle') return { ...sample('test-server-idle', 'working'), reason: 'thinking', modelProgress: { phase: 'idle', idleMs: 90_000 } };
+  if (kind === 'loop') return sample('test-loop', 'working', { loop: { kind: 'failing', id: 'failing:test', since: now - 65_000, tool: 'chrome-devtools_evaluate_script', times: 12 } });
   return sample(`test-${kind}`, kind);
 }
 
@@ -122,6 +123,7 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   // one. Told once per compaction: the estimate of "requests left" wobbles, the count does not.
   const closeToCompaction = new Map();
   const serverIdleTold = new Set(); // sessions told of an idle server, until it works again
+  const loopsTold = new Map(); // session id -> the loop episode it was told of
   let baseline = true;
   const recent = []; // what was sent, oldest first, with how each channel answered
 
@@ -167,6 +169,13 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   function serverIdle(session, now) {
     const lines = [`${session.project} — ${session.title}`, t('notify.server_idle.body', { t: formatDuration(session.modelProgress.idleMs) })];
     deliver('server_idle', t('notify.server_idle'), lines, now);
+  }
+
+  // Once per episode: the agent goes round in circles (see loops.mjs).
+  function loop(session, now) {
+    const l = session.health.loop;
+    const vars = { tool: l.tool ?? l.tools?.join(' → ') ?? '', n: l.times ?? 0, t: formatDuration(l.workMs ?? 0), calls: l.calls ?? 0 };
+    deliver('loop', t(`notify.loop.${l.kind}`), [`${session.project} — ${session.title}`, t(`notify.loop.${l.kind}.body`, vars)], now);
   }
 
   // Once per compaction: the session is close to the point where OpenCode compacts it.
@@ -236,6 +245,16 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
     serverIdleTold.add(session.id);
   }
 
+  /** The agent going round in circles while it works: told once each time it starts. */
+  function onLoop(session, now) {
+    const l = session.health?.loop;
+    const atWork = session.state === 'working' || session.state === 'stuck';
+    if (!l || !atWork) return;
+    if (loopsTold.get(session.id) === l.id) return;
+    if (cfg.on.includes('loop') && !baseline) loop(session, now);
+    loopsTold.set(session.id, l.id);
+  }
+
   /** Not a state of its own: a warning that can come while the session works. */
   function onCloseToCompaction(session, now) {
     const close = Boolean(session.health?.compaction) && session.health.hints?.includes('context_high');
@@ -248,15 +267,18 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   function onSnapshot(sessions, now) {
     const ids = new Set(sessions.map(s => s.id));
     for (const session of sessions) {
+      // A subagent goes round in circles on its own, and is told so.
+      onLoop(session, now);
       // A subagent's prompt is reported once, through its parent.
       if (session.parentId && ids.has(session.parentId)) continue;
       onState(session, now);
       onCloseToCompaction(session, now);
       onServerIdle(session, now);
     }
-    for (const id of closeToCompaction.keys()) if (!ids.has(id)) closeToCompaction.delete(id);
-    for (const id of serverIdleTold) if (!ids.has(id)) serverIdleTold.delete(id);
-    for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
+    // What is known of sessions that are gone is forgotten.
+    for (const known of [closeToCompaction, serverIdleTold, loopsTold, seen]) {
+      for (const id of known.keys()) if (!ids.has(id)) known.delete(id);
+    }
     baseline = false;
   }
 }

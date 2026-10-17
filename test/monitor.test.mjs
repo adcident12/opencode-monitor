@@ -104,9 +104,9 @@ test('review: grouping by rule lists every distinct command, and ignored rules a
   assert.equal(values.examples.length, 2);
   assert.ok(values.examples[0].text.startsWith('sonar-scanner') && values.examples[1].text.startsWith('curl'));
 
-  // The same command five times is one line with a count, not five lines.
+  // The same command six times is one line with a count, not six lines.
   const loop = byTitle('Migrate reports').health.repeat;
-  assert.equal(loop.count, 5);
+  assert.equal(loop.count, 6);
 
   const make = ignoreRules => createMonitor({
     db, log: createLogTail(join(dir, 'data', 'log', 'opencode.log')), cfg: { ...DEFAULTS, review: { ignoreRules } },
@@ -195,7 +195,10 @@ test('session health shows up', () => {
   const h = byTitle('Migrate reports').health;
   assert.equal(h.contextPct, 92);
   assert.equal(h.compactions, 19);
-  assert.equal(h.repeat.count, 5);
+  assert.equal(h.repeat.count, 6);
+  // The migration failing six times in a row, and still tried: going round in circles.
+  assert.deepEqual([h.loop.kind, h.loop.tool, h.loop.times], ['failing', 'bash', 6]);
+  assert.ok(h.hints.includes('loop') && !h.hints.includes('looping'));
   assert.ok(h.suggestNewSession);
 });
 

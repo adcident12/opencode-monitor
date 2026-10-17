@@ -6,6 +6,7 @@ import { computeMcpStats } from './mcp.mjs';
 import { servedAsOf } from './served.mjs';
 import { longReadsOf } from './reads.mjs';
 import { cacheDropsOf } from './cache-drops.mjs';
+import { loopsInPeriod } from './loops.mjs';
 import { agentsOf, fileKey, filesOf, inProject, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
 const ASK_MATCH_MS = 2000;
@@ -559,6 +560,20 @@ function contextOfSession({ sessionId, own, compactions, tools, from, contextLim
  * @param {{servers: object[], events: object[], logFrom: number|null}|null} [input.mcp]
  *   MCP servers known for these sessions, and the marked failure lines from the log
  */
+/** The period's loops, each with the session it was in, and nothing of what was typed. */
+function loopsOfPeriod({ tools, todoWrites, from, now, inScope, where, show }) {
+  const { count, byKind, episodes } = loopsInPeriod({ tools, todoWrites, from, now, inScope });
+  return {
+    count,
+    byKind,
+    episodes: episodes.slice(0, TOP).map(e => ({
+      kind: e.kind, at: e.at, to: e.to, ongoing: e.ongoing, session_id: e.session_id, ...where(e.session_id),
+      times: e.times ?? null, tools: e.tools ?? null, tool: e.tool ?? null, text: e.call ? show(describe(e.call), 120) || null : null,
+      workMs: e.workMs ?? null, calls: e.calls ?? null, open: e.open ?? null,
+    })),
+  };
+}
+
 export function computeStats({ sessions, tools, messages, compactions, asks, replies, eventTimes, now, days, stuckMs, show, allowedNow = () => false, liveRuns = null, runEnds = new Map(), sessionId = null, mcp = null, steps = new Map(), contextLimit = () => null, compactAt = () => null, spans = [], patches = [], todos = [], todoWrites = [], todoWriters = new Set(), servedAt = () => null, longReads = () => [] }) {
   const keys = dayRange(now, days);
   const from = new Date(`${keys[0]}T00:00:00`).getTime();
@@ -659,6 +674,8 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     longReads: longReadsOf(longReads(from, now, inScope)),
     // Prompt cache the server had and lost, by why, from OpenCode's own token counts.
     cacheDrops: cacheDropsOf(messages, { from, to: now, inScope, readTps: model => speed.models.find(m => m.model === model)?.readTps ?? null }),
+    // The agent going round in circles: the same calls, one tool failing, its plan not moving.
+    loops: loopsOfPeriod({ tools, todoWrites, from, now, inScope, where, show }),
     usage: {
       ...usage,
       // Share of what was sent that the model server could reuse from its cache.

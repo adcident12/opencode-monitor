@@ -352,6 +352,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
         ...health,
         lastError: health.lastError ? { tool: health.lastError.tool, text: show(health.lastError.text, 200), at: health.lastError.at } : null,
         repeat: health.repeat ? { count: health.repeat.count, tool: health.repeat.tool, text: show(health.repeat.text, 120) } : null,
+        loop: health.loop ? { ...health.loop, text: health.loop.text && show(health.loop.text, 120), error: health.loop.error && show(health.loop.error, 200) } : null,
       },
       work: workOf(session, digest),
       review: reviewOf(digest, asks),

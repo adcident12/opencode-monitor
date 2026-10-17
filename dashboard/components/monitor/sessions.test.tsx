@@ -116,3 +116,25 @@ describe("WorkingCard: what the model server is doing", () => {
     expect(await screen.findByText("The model server has not been working on any request for 1m 30s: it may have dropped this one.")).toBeInTheDocument()
   })
 })
+
+describe("WorkingCard: going round in circles", () => {
+  const card = (loop: NonNullable<Session["health"]["loop"]>) =>
+    render(
+      <I18nProvider>
+        <TooltipProvider>
+          <WorkingCard session={{ ...waiting, state: "working", reason: "tool", prompt: null, health: { ...waiting.health, hints: ["loop"], suggestNewSession: false, loop } }} subagents={[]} now={NOW} />
+        </TooltipProvider>
+      </I18nProvider>,
+    )
+  const none = { tools: null, tool: null, text: null, error: null, workMs: null, calls: null, open: null, times: null }
+
+  it("says which calls repeat, and how many times", async () => {
+    card({ ...none, kind: "repeating", id: "r", since: NOW, times: 9, tools: ["read"], text: "src/app.ts" })
+    expect(await screen.findByText("Going round in circles: the same calls 9 times in a row (read): src/app.ts")).toBeInTheDocument()
+  })
+
+  it("says how long the plan has stood still", async () => {
+    card({ ...none, kind: "plan_stalled", id: "p", since: NOW, workMs: 4_500_000, calls: 120, open: 3 })
+    expect(await screen.findByText(/^The plan has not moved: .+ of work and 120 tool calls since it last changed, with 3 items open\.$/)).toBeInTheDocument()
+  })
+})

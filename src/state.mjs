@@ -1,6 +1,7 @@
 // Pure logic: turns rows from the database and log into a state and health figures.
 // No I/O here, so every rule can be unit-tested.
 import { trimEndOf } from './text.mjs';
+import { loopsOf, finished } from './loops.mjs';
 
 // Most urgent first.
 export const STATES = ['waiting', 'stuck', 'error', 'working', 'finished', 'idle'];
@@ -263,6 +264,16 @@ function findRepeat(recentTools, repeatWarn) {
   return repeat;
 }
 
+/** What the agent is going round in circles on at its last call, if it is (see loops.mjs). */
+function loopNow(parts) {
+  const e = loopsOf(parts.filter(finished)).now;
+  if (!e) return null;
+  return {
+    kind: e.kind, id: e.id, since: e.at, times: e.times ?? null, tools: e.tools ?? null, tool: e.tool ?? null,
+    text: e.call ? describePart(e.call) : null, error: e.error ?? null, workMs: e.workMs ?? null, calls: e.calls ?? null, open: e.open ?? null,
+  };
+}
+
 /**
  * Room left before OpenCode compacts, and roughly how many requests of the usual size fit.
  * @returns {{compaction: object|null, soon: boolean}} soon: close enough to warn
@@ -279,12 +290,14 @@ function compactionRoom(sizes, compactAt, thresholds) {
 }
 
 /** What is worth a line under the session, as keys of strings. */
-function hintsOf({ contextHigh, compactions, ageMs, repeat, overflowCompactions, toolErrors }, thresholds) {
+function hintsOf({ contextHigh, compactions, ageMs, repeat, loop, overflowCompactions, toolErrors }, thresholds) {
   const hints = [];
   if (contextHigh) hints.push('context_high');
   if (compactions >= thresholds.compactionWarn) hints.push('many_compactions');
   if (ageMs >= thresholds.sessionAgeWarnHours * 3_600_000) hints.push('old_session');
-  if (repeat) hints.push('looping');
+  // Going round in circles now says more than the same call having run a few times lately.
+  if (loop) hints.push('loop');
+  else if (repeat) hints.push('looping');
   // The model server turned a request away before OpenCode's own limit was reached: its
   // context size is smaller than limit.context in opencode.json.
   if (overflowCompactions) hints.push('server_limit');
@@ -298,6 +311,7 @@ function hintsOf({ contextHigh, compactions, ageMs, repeat, overflowCompactions,
 export function deriveHealth({ session, parts, now, thresholds, contextLimit, compactAt = null, autoCompact = true }) {
   const { sizes, compacting, overflowCompactions, compactions, toolCalls, toolErrors, lastError, recentTools, ...tally } = tallyParts(parts, thresholds.repeatWindow);
   const repeat = findRepeat(recentTools, thresholds.repeatWarn);
+  const loop = loopNow(parts);
 
   // While compacting, the last known size is the old context: not shown as if it were current.
   const contextTokens = compacting ? null : tally.contextTokens;
@@ -305,12 +319,13 @@ export function deriveHealth({ session, parts, now, thresholds, contextLimit, co
   const { compaction, soon } = compactionRoom(sizes, compactAt, thresholds);
   // With a known compaction point, warn against it; otherwise fall back to the window size.
   const contextHigh = compaction ? soon : contextPct != null && contextPct >= thresholds.contextWarnPct;
-  const hints = hintsOf({ contextHigh, compactions, ageMs: now - session.time_created, repeat, overflowCompactions, toolErrors }, thresholds);
+  const hints = hintsOf({ contextHigh, compactions, ageMs: now - session.time_created, repeat, loop, overflowCompactions, toolErrors }, thresholds);
 
   return {
     contextTokens, contextLimit: contextLimit ?? null, contextPct, compaction, compacting, overflowCompactions, autoCompact,
     compactions, toolCalls, toolErrors, lastError,
     repeat: repeat ? { count: repeat.count, tool: repeat.part.tool, text: describePart(repeat.part) } : null,
+    loop,
     hints,
     suggestNewSession: hints.some(h => h === 'context_high' || h === 'many_compactions' || h === 'old_session'),
   };

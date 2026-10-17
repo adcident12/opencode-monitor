@@ -252,7 +252,9 @@ export function openDb(dataDir) {
         substr(json_extract(data,'$.state.input.name'),1,100) skill,
         substr(json_extract(data,'$.state.error'),1,200) error,
         json_extract(data,'$.state.input.offset') read_offset,
-        json_extract(data,'$.state.input.limit') read_limit
+        json_extract(data,'$.state.input.limit') read_limit,
+        substr(json_extract(data,'$.state.input'),1,1000) input,
+        length(json_extract(data,'$.state.input')) input_len
       from part where time_created >= ? and json_extract(data,'$.type') = 'tool'`),
     messages: db.prepare(`select id, session_id, time_created, json_extract(data,'$.role') role, json_extract(data,'$.time.completed') completed,
         json_extract(data,'$.summary') summary,

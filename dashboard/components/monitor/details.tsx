@@ -155,6 +155,11 @@ export function Hints({ session, now }: Readonly<{ session: Session; now: number
     many_compactions: () => t("hint.many_compactions", { n: h.compactions }),
     old_session: () => t("hint.old_session", { t: rough(now - session.createdAt) }),
     looping: () => t("hint.looping", { tool: h.repeat?.tool ?? "", n: h.repeat?.count ?? 0, text: h.repeat?.text ?? "" }),
+    loop: () => {
+      const l = h.loop
+      if (!l) return ""
+      return t(`hint.loop.${l.kind}`, { tool: l.tool ?? l.tools?.join(" → ") ?? "", n: l.times ?? 0, text: l.text ?? "", t: rough(l.workMs ?? 0), calls: l.calls ?? 0, open: l.open ?? 0 })
+    },
     many_errors: () => t("hint.many_errors", { n: h.toolErrors }),
     server_limit: () => t("hint.server_limit", { n: h.overflowCompactions }),
   }

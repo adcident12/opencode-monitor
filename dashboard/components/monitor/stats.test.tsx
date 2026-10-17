@@ -131,6 +131,37 @@ describe("Prompt cache lost in Stats", () => {
   })
 })
 
+describe("Going round in circles in Stats", () => {
+  it("lists each loop with how many times or how long, and marks one still going", async () => {
+    const english = readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8")
+    const ep = { session_id: "ses_shop", project: "shop", title: "Checkout flow", tools: null, tool: null, text: null, workMs: null, calls: null, open: null, times: null, to: NOW }
+    vi.stubGlobal("fetch", async (url: string) =>
+      url.startsWith("/api/stats")
+        ? Response.json(figures({ loops: { count: 2, byKind: { failing: 1, plan_stalled: 1 }, episodes: [
+            { ...ep, kind: "failing", at: NOW, tool: "evaluate_script", times: 257, ongoing: true },
+            { ...ep, kind: "plan_stalled", at: NOW - 1000, workMs: 4_500_000, calls: 186, open: 2, ongoing: false },
+          ] } }))
+        : new Response(english)
+    )
+    renderStats()
+    const list = (await screen.findByRole("heading", { name: "Going round in circles" })).closest("section")!
+    const items = within(list).getAllByRole("listitem")
+    expect(items[0]).toHaveTextContent("×257")
+    expect(items[0]).toHaveTextContent("evaluate_script failing again and again")
+    expect(items[0]).toHaveTextContent("still going")
+    expect(items[1]).toHaveTextContent("the plan not moving: 186 calls, 2 items open")
+    expect(items[1]).not.toHaveTextContent("still going")
+  })
+
+  it("says so when there was none", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url.startsWith("/api/stats") ? Response.json(figures({ loops: { count: 0, byKind: {}, episodes: [] } })) : new Response(readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8"))
+    )
+    renderStats()
+    expect(await screen.findByText("The agent did not go round in circles.")).toBeInTheDocument()
+  })
+})
+
 describe("Takeaways in Stats", () => {
   it("is left out when no rule held", async () => {
     renderStats()

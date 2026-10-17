@@ -146,18 +146,18 @@ export function buildSample(dir, now = Date.now()) {
     message(sid, 'assistant', 18 * MIN, assistant({ error: { name: 'APIError', data: { message: 'connection refused' } } }));
   }
 
-  // 7. Working but unhealthy: nearly full context, many compactions, a repeated command,
-  //    and a token in a command line (shown redacted).
+  // 7. Working but unhealthy: nearly full context, many compactions, a migration failing again
+  //    and again (going round in circles), and a token in a command line (shown redacted).
   {
     const sid = session('Migrate reports to the new schema', 'clinic-app', { ageMs: 20 * HOUR });
     history(sid, 40 * MIN, 60_000, 2);
     message(sid, 'user', 30 * MIN);
     const mid = message(sid, 'assistant', 29 * MIN, assistant({ finish: 'tool-calls', time: { created: now - 29 * MIN, completed: now - 2 * MIN } }));
     for (let i = 0; i < 19; i++) part(sid, mid, 28 * MIN - i * 1000, { type: 'compaction', auto: true });
-    for (let i = 0; i < 5; i++) {
-      part(sid, mid, 20 * MIN - i * MIN, tool('bash', i % 2 ? 'error' : 'completed', { command: 'npx prisma migrate dev' }, 20 * MIN - i * MIN, i % 2 ? { error: 'Error: P3006 migration failed to apply' } : { output: 'ok' }));
+    for (let i = 0; i < 6; i++) {
+      part(sid, mid, 20 * MIN - i * MIN, tool('bash', 'error', { command: 'npx prisma migrate dev' }, 20 * MIN - i * MIN, { error: 'Error: P3006 migration failed to apply' }));
     }
-    part(sid, mid, 3 * MIN, tool('bash', 'completed', { command: `curl -H "Authorization: Bearer ${FAKE_TOKEN}" http://localhost:9000/api/issues/search` }, 3 * MIN, { output: '{}' }));
+    part(sid, mid, 22 * MIN, tool('bash', 'completed', { command: `curl -H "Authorization: Bearer ${FAKE_TOKEN}" http://localhost:9000/api/issues/search` }, 22 * MIN, { output: '{}' }));
     part(sid, mid, 2 * MIN, stepFinish('tool-calls', 120_500));
     const next = message(sid, 'assistant', 90_000, assistant());
     part(sid, next, 30_000, tool('bash', 'running', { command: `sonar-scanner -Dsonar.token=${FAKE_TOKEN}` }, 30_000));
