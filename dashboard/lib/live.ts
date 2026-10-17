@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 import type { Bridge } from "./bridge"
 import type { Replay } from "./replay"
-import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, Overnight, SetupReport, Snapshot, Stats, Tasks } from "./types"
+import type { ConfigChange, CostReport, HistoryEvent, HistoryPage, SessionChoice, Overnight, SetupReport, Snapshot, Stats, Tasks } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -312,6 +312,27 @@ export function useTasks(days: number, enabled: boolean) {
 }
 
 /** Days on which an OpenCode config file changed, newest first. Empty until loaded, or when none. */
+/** What the agent cost, read again each minute; null until it has been read. */
+export function useCosts(enabled: boolean) {
+  const [costs, setCosts] = useState<CostReport | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    const load = () =>
+      fetch("/api/costs")
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(report => live && report && Array.isArray(report.daily) && setCosts(report))
+        .catch(() => {})
+    load()
+    const timer = setInterval(load, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [enabled])
+  return costs
+}
+
 export function useConfigChanges(days: number, enabled: boolean) {
   const [changes, setChanges] = useState<ConfigChange[]>([])
   useEffect(() => {

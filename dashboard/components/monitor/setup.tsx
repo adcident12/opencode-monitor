@@ -22,6 +22,13 @@ function weeklyText(notify: SetupReport["notify"], t: (key: string, vars?: Recor
   return t("setup.weeklyAt", { day, hour: String(notify.weekly.hour).padStart(2, "0") })
 }
 
+/** The budget as set: a day's and a month's, and when you are told. */
+function budgetText(budget: NonNullable<SetupReport["budget"]>, t: ReturnType<typeof useI18n>["t"]) {
+  if (!budget.daily && !budget.monthly) return t("setup.none")
+  const dollars = (n: number) => (n ? `$${n}` : "–")
+  return t("setup.budgetSet", { daily: dollars(budget.daily), monthly: dollars(budget.monthly), pct: budget.warnPct })
+}
+
 export function Setup({ active }: Readonly<{ active: boolean }>) {
   const { t, lang } = useI18n()
   const { report, failed } = useSetup(active)
@@ -94,6 +101,7 @@ export function Setup({ active }: Readonly<{ active: boolean }>) {
         <Row label={t("setup.discord")} ok={report.notify.discord} value={t(report.notify.discord ? "setup.discordSet" : "setup.no")} />
         <Row label={t("setup.notifyOn")} value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")} />
         <Row label={t("setup.weekly")} value={weeklyText(report.notify, t, lang)} />
+        {report.budget && <Row label={t("setup.budget")} value={budgetText(report.budget, t)} />}
       </Section>
       <Sent report={report} />
 

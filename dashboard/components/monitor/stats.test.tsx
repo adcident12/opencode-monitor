@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { I18nProvider } from "@/lib/i18n"
-import type { ConfigChange, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
+import type { ConfigChange, CostReport, McpStat, PeriodSummary, Stats as StatsData } from "@/lib/types"
 import { Stats } from "./stats"
 
 const NOW = 1_800_000_000_000
@@ -159,6 +159,50 @@ describe("Going round in circles in Stats", () => {
     )
     renderStats()
     expect(await screen.findByText("The agent did not go round in circles.")).toBeInTheDocument()
+  })
+})
+
+describe("What it cost in Stats", () => {
+  const english = () => readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8")
+  const day = (date: string, cost: number) => ({ date, cost, requests: cost ? 2 : 0, tokens: 0 })
+  const report = (extra: Partial<CostReport> = {}): CostReport => ({
+    currency: "USD",
+    today: { cost: 8.5, requests: 4, tokens: 90_000 },
+    month: { cost: 48.5, requests: 40, tokens: 900_000, month: "2027-01", projected: 92.4 },
+    daily: [day("2027-01-14", 0), day("2027-01-15", 8.5)],
+    monthly: [{ month: "2026-12", cost: 12, requests: 9, tokens: 0, models: [] }, { month: "2027-01", cost: 48.5, requests: 40, tokens: 0, models: [] }],
+    models: [{ model: "cloud/large", cost: 40.25, requests: 30, tokens: 700_000, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }],
+    sessions: [{ session_id: "s1", cost: 21.5, requests: 12, project: "shop", title: "Checkout flow" }],
+    budget: { warnPct: 80, daily: { limit: 10, spent: 8.5, pct: 85, level: "warn" }, monthly: { limit: 50, spent: 48.5, pct: 97, level: "warn" }, projected: 92.4 },
+    any: true,
+    ...extra,
+  })
+  const serve = (costs: CostReport) =>
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.startsWith("/api/stats")) return Response.json(figures())
+      if (url.startsWith("/api/costs")) return Response.json(costs)
+      return new Response(english())
+    })
+
+  it("shows today and the month against the budget, where the month heads, by model and by session", async () => {
+    serve(report())
+    renderStats()
+    const section = (await screen.findByRole("heading", { name: "What it cost" })).closest("section")!
+    expect(within(section).getByText("$8.50")).toBeInTheDocument()
+    expect(within(section).getByText("of $10.00 budget · 85%")).toBeInTheDocument()
+    expect(within(section).getByText("$92.40")).toBeInTheDocument()
+    expect(within(section).getByText("past the budget of $50.00")).toBeInTheDocument()
+    expect(within(section).getByRole("rowheader", { name: "cloud/large" })).toBeInTheDocument()
+    expect(within(section).getByText("$40.25")).toBeInTheDocument()
+    expect(within(section).getByText("Checkout flow")).toBeInTheDocument()
+  })
+
+  it("is left out for someone who pays for nothing and set no budget", async () => {
+    serve(report({ any: false, budget: { warnPct: 80, daily: null, monthly: null, projected: null } }))
+    renderStats()
+    await screen.findByRole("heading", { name: "Where the time went" })
+    await new Promise(r => setTimeout(r, 50))
+    expect(screen.queryByRole("heading", { name: "What it cost" })).not.toBeInTheDocument()
   })
 })
 

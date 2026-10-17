@@ -231,6 +231,8 @@ export interface SetupReport {
   compaction: { auto: boolean; reserved: number | null; outputTokenMax: number | null }
   models: { id: string; requests: number; lastAt: number; context: number | null; output: number | null; input: number | null; source: "opencode" | "monitor" | null; compactAt: number | null }[]
   mcp: { name: string; type: "local" | "remote"; enabled: boolean }[]
+  /** What the agent may cost, in dollars; 0 for none. */
+  budget?: { daily: number; monthly: number; warnPct: number }
   notify: {
     /** The week's takeaways, to Discord only. weekday: 0 Sunday .. 6 Saturday. */
     weekly: { enabled: boolean; weekday: number; hour: number }
@@ -283,6 +285,27 @@ export interface Takeaway {
   anchor: string
   /** Read from the figures since this moment: a change of the config or the model. */
   since?: number
+}
+
+/** Spent against one budget: the limit and what was spent in dollars, the share, and its level. */
+export interface BudgetStanding {
+  limit: number
+  spent: number
+  pct: number
+  level: "ok" | "warn" | "over"
+}
+
+/** What the agent cost, as OpenCode recorded it (see src/costs.mjs). */
+export interface CostReport {
+  currency: "USD"
+  today: { cost: number; requests: number; tokens: number }
+  month: { cost: number; requests: number; tokens: number; month: string; projected: number | null }
+  daily: { date: string; cost: number; requests: number; tokens: number }[]
+  monthly: { month: string; cost: number; requests: number; tokens: number; models: { model: string; cost: number }[] }[]
+  models: { model: string; cost: number; requests: number; tokens: number; input: number; output: number; cacheRead: number; cacheWrite: number }[]
+  sessions: { session_id: string; cost: number; requests: number; project: string; title: string }[]
+  budget: { warnPct: number; daily: BudgetStanding | null; monthly: BudgetStanding | null; projected: number | null }
+  any: boolean
 }
 
 /** The agent going round in circles: the same calls, one tool failing, or its plan not moving. */

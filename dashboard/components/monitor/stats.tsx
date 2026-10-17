@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { compact, duration, money, quick, rough } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
-import { useConfigChanges, useStats } from "@/lib/live"
-import type { ConfigChange, DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
+import { useConfigChanges, useCosts, useStats } from "@/lib/live"
+import type { BudgetStanding, ConfigChange, CostReport, DayStats, McpStat, PeriodSummary, Stats as StatsData, Takeaway } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Code } from "./details"
 import { Hint, TIP } from "./hint"
@@ -287,7 +287,7 @@ function Change({ before, after, better }: Readonly<{ before: number | null; aft
 }
 
 /** The chapters of the page, in reading order. Each id is also where the jump links land. */
-const GROUPS = ["you", "agent", "done", "model", "mcp"] as const
+const GROUPS = ["you", "agent", "done", "model", "cost", "mcp"] as const
 type GroupId = (typeof GROUPS)[number]
 
 /**
@@ -328,10 +328,13 @@ function Jump({ shown }: Readonly<{ shown: GroupId[] }>) {
 function Figures({ stats }: Readonly<{ stats: StatsData }>) {
   const { t } = useI18n()
   const { totals } = stats
+  const costs = useCosts(true)
+  // Only for someone who pays for a model, or has set a budget: to anyone else, $0.00 says nothing.
+  const hasCost = Boolean(costs && (costs.any || costs.budget.daily || costs.budget.monthly))
   const hasModel = stats.usage.requests > 0 || stats.speed.models.length > 0 || stats.context != null
   const hasDone = stats.work.files.edits > 0 || stats.work.plans.total > 0
   // Chapters with nothing to show are left out, of the page and of the links to it.
-  const has: Partial<Record<GroupId, boolean>> = { model: hasModel, mcp: stats.mcp.length > 0, done: hasDone }
+  const has: Partial<Record<GroupId, boolean>> = { model: hasModel, cost: hasCost, mcp: stats.mcp.length > 0, done: hasDone }
   const shown = GROUPS.filter(id => has[id] ?? true)
 
   return (
@@ -442,6 +445,12 @@ function Figures({ stats }: Readonly<{ stats: StatsData }>) {
         </Group>
       )}
 
+      {hasCost && costs && (
+        <Group id="cost" note={t("stats.costNote")}>
+          <Costs costs={costs} />
+        </Group>
+      )}
+
       {stats.mcp.length > 0 && (
         <Group id="mcp" note={t("stats.mcpNote")}>
           <McpServers stats={stats} />
@@ -529,6 +538,102 @@ function Ranked({ title, note, empty, shortBy, children }: Readonly<{ title: str
   )
 }
 
+// Room for "$240" beside the cost charts, where "12h" needs less.
+const COST_AXIS = 52
+
+/** Spent against a budget, as a tile: the amount, and of how much. */
+function budgetNote(t: ReturnType<typeof useI18n>["t"], b: BudgetStanding | null, fallback: string) {
+  return b ? t("stats.costOfBudget", { limit: money(b.limit), pct: b.pct }) : fallback
+}
+const budgetTone = (b: BudgetStanding | null) => (b && b.level !== "ok" ? "stuck" : undefined)
+
+/** What the agent cost: today, this month and where it heads, each day and month, by model and session. */
+function Costs({ costs }: Readonly<{ costs: CostReport }>) {
+  const { t } = useI18n()
+  const { budget } = costs
+  // Whole dollars on the axis, as hours are on the others; the exact amounts are in the tooltip.
+  const dollars = (v: number) => (v >= 1000 ? `$${Math.round(v / 100) / 10}k` : `$${v}`)
+  return (
+    <>
+      <section aria-label={t("stats.group.cost")} className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
+        <Tile label={t("stats.costToday")} value={money(costs.today.cost)} note={budgetNote(t, budget.daily, t("stats.requests", { n: costs.today.requests }))} tone={budgetTone(budget.daily)} />
+        <Tile label={t("stats.costMonth")} value={money(costs.month.cost)} note={budgetNote(t, budget.monthly, t("stats.requests", { n: costs.month.requests }))} tone={budgetTone(budget.monthly)} />
+        <Tile
+          label={t("stats.costProjected")}
+          value={costs.month.projected == null ? "–" : money(costs.month.projected)}
+          note={budget.projected == null ? t("stats.costProjectedNote") : t("stats.costProjectedOver", { limit: money(budget.monthly?.limit ?? 0) })}
+          tone={budget.projected == null ? undefined : "stuck"}
+        />
+      </section>
+      <div className={GRID}>
+        <Bars
+          title={t("stats.costDaily")}
+          summary={t("stats.costTotal", { cost: money(costs.daily.reduce((n, d) => n + d.cost, 0)) })}
+          points={costs.daily.map(d => ({ date: d.date, value: d.cost, text: money(d.cost) }))}
+          color="var(--color-working)"
+          tick={dollars}
+          axis={COST_AXIS}
+        />
+        <Bars
+          title={t("stats.costMonthly")}
+          summary={t("stats.costTotal", { cost: money(costs.monthly.reduce((n, m) => n + m.cost, 0)) })}
+          points={costs.monthly.map(m => ({ date: m.month, value: m.cost, text: money(m.cost) }))}
+          color="var(--color-working)"
+          tick={dollars}
+          monthly
+          axis={COST_AXIS}
+        />
+      </div>
+      <div className={GRID}>
+        <section className={SUB}>
+          <h3 className={H3}>{t("stats.costModels")}</h3>
+          {costs.models.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th scope="col" className={TH}>{t("stats.speedModel")}</th>
+                    <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.costRequests")}</th>
+                    <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.costTokens")}</th>
+                    <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.costCost")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {costs.models.map(m => (
+                    <tr key={m.model}>
+                      <th scope="row" className="py-2 pr-3 text-left font-normal">
+                        <Hint label={m.model} onlyWhenCut className="block max-w-[14rem] truncate font-mono text-code">
+                          {m.model}
+                        </Hint>
+                      </th>
+                      <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{m.requests}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{compact(m.tokens)}</td>
+                      <td className="py-2 text-right font-medium tabular-nums whitespace-nowrap">{money(m.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("stats.costNone")}</p>
+          )}
+        </section>
+        <Ranked title={t("stats.costSessions")} empty={t("stats.costNone")}>
+          {costs.sessions.map(s => (
+            <li key={s.session_id} className="space-y-1 py-2.5">
+              <div className={ROW}>
+                <span className="font-medium tabular-nums">{money(s.cost)}</span>
+                <span className="min-w-0 text-sm [overflow-wrap:anywhere]">{s.title}</span>
+                <span className="col-start-2 truncate font-mono text-xs text-muted-foreground sm:col-start-auto">{s.project}</span>
+              </div>
+            </li>
+          ))}
+        </Ranked>
+      </div>
+    </>
+  )
+}
+
 /** The agent going round in circles: the same calls, one tool failing, its plan not moving. */
 function Loops({ loops }: Readonly<{ loops: StatsData["loops"] }>) {
   const { t } = useI18n()
@@ -560,11 +665,15 @@ function DayChart({ title, days, pick, color }: Readonly<{ title: string; days: 
   return <Bars title={title} summary={t("stats.total", { t: rough(total) })} points={points} color={color} tick={v => `${v}h`} />
 }
 
-/** One bar per day. Single series: the title names it, so there is no legend. */
-function Bars({ title, summary, points, color, tick }: Readonly<{ title: string; summary: string; points: { date: string; value: number; text: string }[]; color: string; tick: (v: number) => string }>) {
+/**
+ * One bar per day, or per month (dates as "2026-10"). Single series: the title names it, so
+ * there is no legend.
+ */
+function Bars({ title, summary, points, color, tick, monthly = false, axis = 44 }: Readonly<{ title: string; summary: string; points: { date: string; value: number; text: string }[]; color: string; tick: (v: number) => string; monthly?: boolean; axis?: number }>) {
   const { lang } = useI18n()
-  const label = new Intl.DateTimeFormat(lang, { day: "numeric", month: "short" })
-  const data = points.map(p => ({ ...p, label: label.format(new Date(`${p.date}T12:00:00`)) }))
+  const label = new Intl.DateTimeFormat(lang, monthly ? { month: "short", year: "2-digit" } : { day: "numeric", month: "short" })
+  // Midday, mid-month: a day or month whatever the time zone.
+  const data = points.map(p => ({ ...p, label: label.format(new Date(`${monthly ? p.date + "-15" : p.date}T12:00:00`)) }))
 
   return (
     <section className={SUB}>
@@ -574,10 +683,10 @@ function Bars({ title, summary, points, color, tick }: Readonly<{ title: string;
       </div>
       <div className="h-48" role="img" aria-label={title}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap={data.length > 14 ? 2 : 6}>
+          <BarChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -18 }} barCategoryGap={data.length > 14 ? 2 : 6}>
             <CartesianGrid vertical={false} stroke="var(--color-border)" strokeDasharray="0" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} width={44} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} tickFormatter={tick} />
+            <YAxis tickLine={false} axisLine={false} width={axis} allowDecimals={false} tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }} tickFormatter={tick} />
             <Tooltip
               cursor={{ fill: "var(--color-muted)", opacity: 0.6 }}
               content={({ active, payload }) => {

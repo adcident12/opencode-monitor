@@ -77,10 +77,13 @@ export const DEFAULTS = {
   work: { git: true, processes: true, protectedBranches: ['main', 'master'] },
   review: { ignoreRules: [] },
   history: { enabled: true, file: 'data/history.jsonl', retentionDays: 30 },
+  // What the agent may cost, in US dollars as OpenCode records it: a day's and a month's. 0: none.
+  // Told when the share used reaches warnPct, and again at the whole of it (notify.on "budget").
+  budget: { daily: 0, monthly: 0, warnPct: 80 },
   // The hours you are away, local time: the night the overnight report covers.
   overnight: { from: 22, to: 8 },
   notify: {
-    on: ['waiting', 'stuck', 'error', 'dropped', 'server_idle', 'loop'],
+    on: ['waiting', 'stuck', 'error', 'dropped', 'server_idle', 'loop', 'budget'],
     environment: true,
     repeatMinutes: 30,
     desktop: true,
@@ -187,10 +190,21 @@ function validateNotify(cfg) {
   if (typeof cfg.notify.overnight.enabled !== 'boolean') throw new UserError('notify.overnight.enabled must be true or false.');
 }
 
+/** A budget is a number of dollars, 0 for none. */
+function validateBudget(cfg) {
+  for (const key of ['daily', 'monthly']) {
+    const value = cfg.budget[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new UserError(`budget.${key} must be a number of US dollars, 0 for none.`);
+  }
+  const pct = cfg.budget.warnPct;
+  if (!Number.isInteger(pct) || pct < 1 || pct > 100) throw new UserError('budget.warnPct must be a whole number from 1 to 100.');
+}
+
 /** Refuses settings the monitor cannot run with, in words that say which one. */
 function validate(cfg) {
   validateMonitor(cfg);
   validateNotify(cfg);
+  validateBudget(cfg);
 }
 
 export function loadConfig(args = {}, env = process.env) {

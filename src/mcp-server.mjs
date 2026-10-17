@@ -41,7 +41,7 @@ function bufferAdvice(written, buffer) {
   return null;
 }
 
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, overnight = null, modelServers = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, overnight = null, costs = null, modelServers = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: (k.since ? t('takeaways.since', k.vars) : '') + t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
@@ -107,6 +107,12 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
           sessions: r.sessions.map(s => ({ ...s, since: iso(s.since) })),
         };
       },
+    },
+    {
+      name: 'opencode_costs',
+      description: 'What the agent cost, in US dollars as OpenCode recorded it for each reply (at the list price of the model in its catalogue; a model with no price, such as a local one, costs nothing; a subscription is counted at list price): today and this month, with where the month ends at the pace so far, each of the last 31 days, each of the last 6 months with its top models, this month by model (requests, tokens, cost), the sessions that cost most this month, and the budget in the config of the monitor (budget.daily, budget.monthly; level ok, warn at budget.warnPct, or over). `any` is false when nothing in the report cost anything.',
+      inputSchema: { type: 'object', properties: {} },
+      run: () => (costs ? costs(now()) : { error: 'Not available.' }),
     },
     {
       name: 'opencode_settings',

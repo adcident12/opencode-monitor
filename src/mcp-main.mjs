@@ -19,6 +19,7 @@ import { createOvernight } from './overnight.mjs';
 import { createServedLog } from './served.mjs';
 import { createReadLog } from './reads.mjs';
 import { createEnvironment } from './environment.mjs';
+import { createCostSource } from './costs.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
 
@@ -101,7 +102,8 @@ export async function mcpMain(argv) {
   await environment?.refresh();
   if (environment) setInterval(() => environment.refresh(), 60_000).unref();
   const modelServers = () => environment?.view(new Map()).models ?? [];
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks, overnight, modelServers });
+  const costs = createCostSource({ db, cfg, show: (text, max) => clip(redact(String(text ?? '')), max) });
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks, overnight, costs, modelServers });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();

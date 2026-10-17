@@ -37,6 +37,7 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 - **What it depends on.** The model server (and what it really has loaded), MCP servers, and services of your own. [The status strip](#status-strip)
 - **What it did.** Files touched, the branch, processes left running, and tool calls worth a second look. [What the agent did](#agent-did)
 - **Where the time went.** Waits, hangs, tools, MCP servers, model speed, tokens and cost, compactions, prompts read again, and a few sentences on what is worth changing. [Stats](#stats)
+- **What it cost.** For a model you pay for: each day and month, by model and session, where the month heads, and a notification at the budget you set. [Stats](#stats)
 - **Looking back.** Every change of state, and any session played back moment by moment, or a whole day at once. [History](#history), [Replay](#replay)
 - **Asking about it.** The same figures for Claude Code over MCP, on this machine or from another. [Ask Claude about it](#mcp)
 
@@ -302,6 +303,8 @@ Pick a session next to the period to see the same figures for that session and i
 
 **Going round in circles.** Stats lists each time the agent went round in circles in the period, newest first, with how many times or how long, the session, and "still going" for one that still is (`loops`); from three in a period, or one of 20 times or two hours, "Worth knowing" says so. The limits were set against a month of real sessions on this machine (9,789 tool calls): a page snapshot taken a few times while it loads, or a file read again after an edit, is how agents work, and each limit is past what ordinary work there reached. What they caught there: one script that failed 257 times back to back, waits for a page that timed out four times in a row, and plans that stood still for over an hour of work.
 
+**What it cost.** For a model with a price, Stats has a chapter of its own: today and this month, where the month ends at the pace so far (once a tenth of it has gone), each of the last 31 days and 6 months, this month by model (replies, tokens, cost) and the sessions that cost most. The cost is OpenCode's: what it recorded for each reply, in US dollars, at the list price of the model in its catalogue (input, output, cache read and write, per million tokens). A model with no price there, a local one or most free ones, costs nothing and the chapter is left out; a subscription is counted at list price, which is what it would have cost on the API. Set `budget.daily` or `budget.monthly` (dollars) and the tiles show the share used, and with `"budget"` in `notify.on` you are told once when it reaches `budget.warnPct` (80%) and once at the whole of it; what was already so when the monitor started is shown, not told. `opencode_costs` gives an assistant the same report.
+
 The size of each MCP server's tool list is not shown: OpenCode does not record the tool definitions it sends, so it could only be measured by starting every server, which the monitor does not do.
 
 A question's answer time comes from OpenCode's log. A permission's does not exist in any record, so it is taken as the next update to the tool call the prompt blocked. Prompts and calls left unfinished when a session moved on or OpenCode closed are counted separately, not as days of waiting. The time a call spent waiting for your permission is not counted as the call being slow.
@@ -341,6 +344,7 @@ Then, in Claude Code: *use opencode-monitor and tell me what to change*. `--data
 | `opencode_overnight` | While you were away: the latest night (or one up to six nights back), each session that ran, how it stood at the end and why, and the longest stretch nothing ran while a session needed you |
 | `opencode_tasks` | Every session of a period by project, how it ended, and what is left of its plan |
 | `opencode_compare` | The same figures before and after a moment (by default the newest config change), per hour of agent time, and whether the model was the same on both sides |
+| `opencode_costs` | What the agent cost: today, this month and where it heads, each of the last 31 days and 6 months, this month by model and by session, and the budget |
 
 What to know before you connect it:
 
@@ -410,7 +414,9 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `history.file` | `data/history.jsonl` | Where the history is kept; the monitor's other files go beside it |
 | `history.retentionDays` | 30 | How long the history and the files beside it are kept |
 | `overnight.from`, `overnight.to` | 22, 8 | The hours you are away, local time: the night "While you were away" covers |
-| `notify.on` | `["waiting","stuck","error","dropped","server_idle","loop"]` | What triggers a notification. `"loop"`: the agent goes round in circles while it works (see [the Now tab](#now-tab)), told once each time it starts, for a subagent too. `"error"`: the last reply failed and stayed failed for a minute (the model server down, or refusing the request); one OpenCode retries by itself within that minute is not told. `"dropped"`: OpenCode 2 gave up on a question or permission prompt nobody answered (it puts a project away after an hour without activity) and the session stopped. `"server_idle"`: a session waits on its llama.cpp server and the server has worked on no request for a minute (it may have dropped this one), told once until it works again. Add `"compact_soon"` to be told once when a session is about to be compacted |
+| `budget.daily`, `budget.monthly` | 0, 0 | What the agent may cost a day and a month, in US dollars as OpenCode records it; 0 for none (see [Stats](#stats)) |
+| `budget.warnPct` | 80 | The share of a budget at which you are told first; you are told again at the whole of it |
+| `notify.on` | `["waiting","stuck","error","dropped","server_idle","loop","budget"]` | What triggers a notification. `"budget"`: what the agent cost reached `budget.warnPct` of a budget, or all of it, told once a day or month each (nothing without a budget). `"loop"`: the agent goes round in circles while it works (see [the Now tab](#now-tab)), told once each time it starts, for a subagent too. `"error"`: the last reply failed and stayed failed for a minute (the model server down, or refusing the request); one OpenCode retries by itself within that minute is not told. `"dropped"`: OpenCode 2 gave up on a question or permission prompt nobody answered (it puts a project away after an hour without activity) and the session stopped. `"server_idle"`: a session waits on its llama.cpp server and the server has worked on no request for a minute (it may have dropped this one), told once until it works again. Add `"compact_soon"` to be told once when a session is about to be compacted |
 | `notify.environment` | `true` | Notify when an MCP server, model server, or service goes down |
 | `notify.repeatMinutes` | 30 | Remind again while the state lasts; 0 turns reminders off |
 | `notify.desktop` | `true` | Desktop notification |
@@ -499,6 +505,7 @@ recomputes the figures the page shows straight from your OpenCode data, with its
 - The 1.x rule was read from OpenCode 1.18.35 and checked against every automatic compaction in a real database (237 of 237). The OpenCode 2 rule was read from its own source (2.0.26) and checked against a real database: before each of 1,644 requests, OpenCode's own estimate of the next request against this point said whether to compact, and it compacted every time it did (31 of 36; the other five fell short by under 1%, or had nothing measured yet), and never sent a request it said to compact first. The monitor counts the last request's size; OpenCode adds its estimate of the tool results that came after it, so it compacts a request or so sooner than the room shown. A later OpenCode may change either rule.
 - Lines added and removed are not recorded by OpenCode, so "files changed" counts files, not lines. A permission prompt's answer is not recorded either, so "what interrupted you" counts prompts, not refusals. Time is split by the timestamps OpenCode writes on each part; a reply still being written is not timed yet.
 - Token counts are the model server's own, per request. A server that reports none (some local servers do not report cached tokens) shows zeros, and "how big a session starts" needs the session's first request to fall inside the period.
+- The cost is what OpenCode recorded, at the list price in its model catalogue when the reply was made: a price changed since, a discount, a free tier or what a provider really bills is not known. Replies of OpenCode 2 count once they are done.
 - Going round in circles is read off the tool calls: the same call is the same tool with the same input (its first 1,000 characters and its length), and a plan is the todo list the agent wrote. A loop inside one call (a script that retries) is not seen, nor is an agent that edits a file differently each time and never gets it right.
 - Why a prompt cache was lost is read off what this machine's OpenCode recorded. Another computer using the same model server is not seen: a cache it displaced shows as a new turn or with no cause seen. A model whose server never reported a cached token is left out.
 - A closed MCP connection is taken as OpenCode shutting down when it is the last thing a finished run logged, or when two or more servers close within two seconds. Several servers really dying in the same moment would be missed, and with a single server configured a shutdown of the running OpenCode looks like a failure.
@@ -547,6 +554,7 @@ src/served.mjs          which model each server had loaded, and when (data/serve
 src/reads.mjs           prompts the model server read again from the start (data/reads.jsonl)
 src/cache-drops.mjs     prompt cache lost, and why, from OpenCode's token counts (pure)
 src/loops.mjs           the agent going round in circles, from its tool calls (pure)
+src/costs.mjs           what the agent cost, by day, month, model and session, and the budget
 src/tasks.mjs           the Tasks tab: every session by project, how it ended, and its plan
 src/overnight.mjs       "While you were away": the night's sessions from the history, and its Discord report
 src/digest.mjs          the weekly summary to Discord

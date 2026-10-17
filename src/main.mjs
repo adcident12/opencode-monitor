@@ -27,6 +27,7 @@ import { createLeftoverProbe } from './leftovers.mjs';
 import { createProcessProbe } from './process.mjs';
 import { createMonitor } from './monitor.mjs';
 import { createNotifier, testNotify } from './notify.mjs';
+import { createCostSource } from './costs.mjs';
 import { loadTranslator } from './format.mjs';
 import { existsSync } from 'node:fs';
 import { buildSetupReport, formatSetupReport } from './setup.mjs';
@@ -268,6 +269,10 @@ export async function main(argv) {
   // Not for --sample: a summary of fake sessions has no business in a real channel.
   const digest = args.sample ? null : createDigest({ cfg: cfg.notify, stats, send: notify.send, t: loadTranslator(cfg.lang), stateFile: kept('weekly.json') });
   const historyCount = () => (cfg.history.enabled ? history.count : null);
+  const redactCosts = createRedactor(cfg.redact);
+  const costs = createCostSource({ db, cfg, show: (text, max) => clip(redactCosts(String(text ?? '')), max) });
+  // Read only with a budget to hold it to, and never for --sample: fake costs to a real channel.
+  const watchBudget = !args.sample && (cfg.budget.daily > 0 || cfg.budget.monthly > 0);
 
   let latest = '{}';
   let liveStates = new Map(); // session id -> its state on the Now tab, from the latest reading
@@ -293,6 +298,7 @@ export async function main(argv) {
     if (!snap.stale) {
       notify(snap.sessions, snap.now);
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
+      if (watchBudget) notify.budget(costs(snap.now).budget, snap.now);
       history.record(snap.sessions, snap.now);
     }
     latest = JSON.stringify({ ...snap, historyCount: historyCount(), build: lookup.buildId(), version: VERSION, opencodeTested: TESTED_OPENCODE, opencodeUntested: isUntestedOpencode(snap.opencodeVersion) === true });
@@ -351,6 +357,11 @@ export async function main(argv) {
       body: () => JSON.stringify(overnight.report()),
       unavailable: ['Overnight report failed', 'The overnight report is not available right now.'],
     },
+    // What the agent cost, by day, month, model and session, and against the budget.
+    '/api/costs': {
+      body: () => JSON.stringify(costs()),
+      unavailable: ['Cost report failed', 'The cost report is not available right now.'],
+    },
     '/api/config-changes': {
       body: query => {
         const days = Math.min(30, Math.max(1, Number(query.get('days')) || 30));
@@ -369,6 +380,7 @@ export async function main(argv) {
       currentModel: () => loadOpencodeConfig(cfg.opencodeConfigDir).model,
       tasks,
       overnight,
+      costs,
       modelServers: () => monitor.environmentView?.() ?? [],
     }),
   });

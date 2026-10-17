@@ -258,6 +258,26 @@ export function buildSample(dir, now = Date.now()) {
     call(mid, 'bash', { command: 'npm run lint' }, 4402, 4430);
   }
 
+  // 11. Work on a model with a price, for the cost report: a session every few days back into
+  //     last month. All older than the Now tab looks back, so it changes nothing there.
+  {
+    const titles = ['Write the invoice export', 'Review the payment webhooks', 'Summarise the support tickets', 'Plan the search rewrite'];
+    const paid = (sid, at, i, k) => {
+      const cost = Math.round((0.18 + ((i * 7 + k * 3) % 11) * 0.09) * 100) / 100;
+      message(sid, 'assistant', at - k * MIN, assistant({
+        providerID: 'cloud', modelID: k % 3 === 2 ? 'small-model' : 'large-model', finish: k === 3 ? 'stop' : 'tool-calls', cost,
+        time: { created: now - (at - k * MIN), completed: now - (at - k * MIN) + 40_000 },
+        tokens: { input: 6000 + i * 300, output: 900 + k * 150, reasoning: 0, cache: { read: 30_000 + i * 1000, write: 2000 } },
+      }));
+    };
+    for (let i = 0; i < 14; i++) {
+      const at = (1 + i * 3) * 24 * HOUR + 5 * HOUR;
+      const sid = session(titles[i % titles.length], i % 2 ? 'billing' : 'support-desk', { ageMs: at + 10 * MIN, updatedAgoMs: at - 4 * MIN });
+      message(sid, 'user', at + MIN);
+      for (let k = 0; k < 4; k++) paid(sid, at, i, k);
+    }
+  }
+
   // MCP servers: one that never started in this run and one that died after the kill above.
   const mcpLine = (agoMs, text) => logLines.push(`timestamp=${new Date(now - agoMs).toISOString()} level=WARN run=sample00 message=${text}`);
   mcpLine(4 * HOUR, '"server unavailable" key=sonarqube type=local status=failed');

@@ -73,7 +73,18 @@ function sampleSession(kind, title, now) {
   if (kind === 'dropped') return { ...sample('test-dropped', 'idle'), reason: 'dropped' };
   if (kind === 'server_idle') return { ...sample('test-server-idle', 'working'), reason: 'thinking', modelProgress: { phase: 'idle', idleMs: 90_000 } };
   if (kind === 'loop') return sample('test-loop', 'working', { loop: { kind: 'failing', id: 'failing:test', since: now - 65_000, tool: 'chrome-devtools_evaluate_script', times: 12 } });
+  if (kind === 'budget') return { budget: { warnPct: 80, daily: { limit: 10, spent: 8.42, pct: 84, level: 'warn' }, monthly: null } };
   return sample(`test-${kind}`, kind);
+}
+
+/** One made-up case of a kind of notification, through the notifier as a real one goes. */
+function sendSample(notifier, kind, t, now) {
+  const session = sampleSession(kind, t('notify.test.body'), now);
+  // Not about a session: what was spent against the budget.
+  if (session.budget) return notifier.budget(session.budget, now, { test: true });
+  // "dropped" is told of a session that was there before: first seen at work.
+  if (kind === 'dropped') notifier([{ ...session, state: 'working', reason: 'tool' }], now);
+  return notifier([session], now);
 }
 
 /**
@@ -92,12 +103,7 @@ export async function testNotify(cfg, t, send = { desktop: desktopNotify, discor
   const notifier = createNotifier(cfg, t, send, { quiet: true });
   const now = Date.now();
   notifier([], now); // what is there at startup is never announced; start with nothing
-  for (const kind of cfg.on.length ? cfg.on : ['waiting']) {
-    const session = sampleSession(kind, t('notify.test.body'), now);
-    // "dropped" is told of a session that was there before: first seen at work.
-    if (kind === 'dropped') notifier([{ ...session, state: 'working', reason: 'tool' }], now);
-    notifier([session], now);
-  }
+  for (const kind of cfg.on.length ? cfg.on : ['waiting']) sendSample(notifier, kind, t, now);
 
   // Each channel reports back in its own time.
   const deadline = Date.now() + waitMs;
@@ -207,7 +213,26 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
     envBaseline = false;
   }
 
+  // Budget: told once a period when the share spent reaches warnPct, and once at the whole of it.
+  const budgetTold = new Map(); // "daily" / "monthly" -> "<day or month>|<level>" told last
+  let budgetBaseline = true;
+  function onBudget(budget, now = Date.now(), { test = false } = {}) {
+    for (const period of ['daily', 'monthly']) {
+      const b = budget?.[period];
+      if (!b || b.level === 'ok') continue;
+      const key = `${period === 'daily' ? new Date(now).toLocaleDateString('sv-SE') : new Date(now).toLocaleDateString('sv-SE').slice(0, 7)}|${b.level}`;
+      if (budgetTold.get(period) === key && !test) continue;
+      if ((cfg.on.includes('budget') && !budgetBaseline) || test) {
+        const vars = { spent: b.spent.toFixed(2), limit: b.limit.toFixed(2), pct: b.pct };
+        deliver('budget', t(`notify.budget.${period}.${b.level}`, vars), [t(`notify.budget.${period}.body`, vars)], now);
+      }
+      budgetTold.set(period, key);
+    }
+    budgetBaseline = false;
+  }
+
   onSnapshot.environment = onEnvironment;
+  onSnapshot.budget = onBudget;
   /** For what is not about one session, such as the weekly summary. */
   onSnapshot.send = deliver;
   /** What was sent since the monitor started, newest first, with each channel's outcome. */

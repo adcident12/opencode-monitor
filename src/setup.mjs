@@ -103,6 +103,8 @@ export function buildSetupReport({ cfg, opencode, db, pending = null, opencodeVe
       // What was sent since this monitor started, newest first, and how each channel answered.
       recent: notifications.slice(0, 20),
     },
+    // What the agent may cost, in dollars; 0 for none.
+    budget: { daily: cfg.budget?.daily ?? 0, monthly: cfg.budget?.monthly ?? 0, warnPct: cfg.budget?.warnPct ?? 80 },
     history: { enabled: Boolean(cfg.history.enabled), file: cfg.history.file, retentionDays: cfg.history.retentionDays, count: historyCount },
     problems,
   };

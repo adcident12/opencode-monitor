@@ -114,6 +114,11 @@ function mergeSessions(v1, v2) {
  * is read from there only when it is newer than everything the 1.x tables hold for its
  * session: a session begun in OpenCode 2, or a 1.x session carried on in it.
  */
+const COST_COLUMNS_V1 = `json_extract(data,'$.providerID') provider_id, json_extract(data,'$.modelID') model_id,
+        json_extract(data,'$.cost') cost, json_extract(data,'$.tokens.input') tokens_input, json_extract(data,'$.tokens.output') tokens_output,
+        json_extract(data,'$.tokens.reasoning') tokens_reasoning, json_extract(data,'$.tokens.cache.read') tokens_cache_read,
+        json_extract(data,'$.tokens.cache.write') tokens_cache_write`;
+
 function openV2(db, columns) {
   if (!Object.keys(V2_TABLES).every(table => columns[table].size)) return null;
   // A fork copies its parent's history into itself, each row as it was: those rows are the
@@ -135,6 +140,11 @@ function openV2(db, columns) {
     lastOfSession: db.prepare(`select * from (${ROWS} and sm.session_id = ? order by sm.time_created desc, sm.seq desc limit 40)
       order by time_created, seq`),
     signature: db.prepare(`select count(*) n, max(sm.time_updated) t from session_message sm where sm.session_id = ? and ${NEWER}`),
+    costs: db.prepare(`select sm.session_id, sm.time_created, json_extract(sm.data,'$.model.providerID') provider_id, json_extract(sm.data,'$.model.id') model_id,
+        json_extract(sm.data,'$.cost') cost, json_extract(sm.data,'$.tokens.input') tokens_input, json_extract(sm.data,'$.tokens.output') tokens_output,
+        json_extract(sm.data,'$.tokens.reasoning') tokens_reasoning, json_extract(sm.data,'$.tokens.cache.read') tokens_cache_read,
+        json_extract(sm.data,'$.tokens.cache.write') tokens_cache_write
+      from session_message sm where sm.type = 'assistant' and sm.time_created >= ? and json_extract(sm.data,'$.cost') > 0 and ${NEWER}`),
     sessions: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ?`),
     recent: db.prepare(`select ${SESSION} from session_v2 where time_updated >= ? order by time_updated desc limit ?`),
     tree: db.prepare(`with recursive tree(id) as (select ? union all select s.id from session_v2 s join tree on s.parent_id = tree.id)
@@ -167,6 +177,7 @@ function openV2(db, columns) {
     since: since => rowsOf(`since|${since}`, () => stmt.since.all(since)),
     inSessions: ids => rowsOf(`in|${JSON.stringify(ids)}`, () => stmt.inSessions.all(JSON.stringify(ids))),
     sessions: since => stmt.sessions.all(since),
+    costs: since => stmt.costs.all(since),
     recent: (since, limit) => stmt.recent.all(since, limit),
     tree: sessionId => stmt.tree.all(sessionId),
     /** Copies: the monitor marks and trims the rows it is given. */
@@ -239,6 +250,9 @@ export function openDb(dataDir) {
 
   // For the stats page: everything in a time range, with only the fields it counts.
   const statsStmt = {
+    // What each paid reply cost, as OpenCode recorded it: only the fields a cost report needs.
+    costs: db.prepare(`select session_id, time_created, ${COST_COLUMNS_V1}
+      from message where time_created >= ? and json_extract(data,'$.role') = 'assistant' and json_extract(data,'$.cost') > 0`),
     sessions: db.prepare(`select id, parent_id, directory, title, time_created, time_updated, ${columns.session.has('version') ? 'version' : 'null as version'} from session where time_updated >= ?`),
     tools: db.prepare(`select id, message_id, session_id, time_created, time_updated,
         json_extract(data,'$.tool') tool,
@@ -334,6 +348,8 @@ export function openDb(dataDir) {
       ...Object.fromEntries(ROWS.map(name => [name, since => withV2(name, statsStmt[name].all(since), () => v2.since(since))])),
       models: since => (v2 ? mergeModels(statsStmt.models.all(since), v2.since(since).messages) : statsStmt.models.all(since)),
       todoStatus: () => (todoStatus ? todoStatus.all() : []),
+      /** Paid replies since a time, OpenCode 1.x and 2 alike: who, when, which model, cost and tokens. */
+      costs: since => [...statsStmt.costs.all(since), ...(v2 ? v2.costs(since) : [])],
       todoWriters: () => new Set(statsStmt.todoWriters.all().map(r => r.session_id)),
       toolEvents: sessionId => (toolEvents ? toolEvents.all(sessionId) : []),
     },
