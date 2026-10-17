@@ -1,6 +1,8 @@
 // Tells the user when a session starts needing them: desktop notification and, if
 // configured, a Discord webhook. Only already-redacted snapshot data is used here.
 import { execFile } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { formatDuration } from './format.mjs';
 import { NOTIFY_SEND, OSASCRIPT, POWERSHELL } from './programs.mjs';
 
@@ -117,13 +119,35 @@ export async function testNotify(cfg, t, send = { desktop: desktopNotify, discor
   return results;
 }
 
+/** What was told of the budget, as the file keeps it; nothing for no file or a broken one. */
+function readBudgetTold(file) {
+  if (!file) return [];
+  try {
+    const kept = JSON.parse(readFileSync(file, 'utf8'));
+    return ['daily', 'monthly'].filter(p => typeof kept?.[p] === 'string').map(p => [p, kept[p]]);
+  } catch {
+    return [];
+  }
+}
+
+function writeBudgetTold(file, told) {
+  if (!file) return;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(Object.fromEntries(told)));
+  } catch (err) {
+    console.warn(`Could not write ${file}: ${err.code ?? err.message}`);
+  }
+}
+
 /**
  * @param {object} cfg  the `notify` section of the config
  * @param {(key: string, vars?: object) => string} t
  * @param {object} [send] replaceable senders, for tests
- * @param {{quiet?: boolean}} [options] quiet: do not print a line per notification
+ * @param {{quiet?: boolean, budgetFile?: string|null}} [options] quiet: do not print a line per
+ *   notification; budgetFile: remembers what was told of the budget, across restarts
  */
-export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, { quiet = false } = {}) {
+export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord: discordNotify }, { quiet = false, budgetFile = null } = {}) {
   const seen = new Map(); // session id -> { state, notifiedAt }
   // session id -> how many times it had been compacted when it was last close to the next
   // one. Told once per compaction: the estimate of "requests left" wobbles, the count does not.
@@ -214,21 +238,29 @@ export function createNotifier(cfg, t, send = { desktop: desktopNotify, discord:
   }
 
   // Budget: told once a period when the share spent reaches warnPct, and once at the whole of it.
-  const budgetTold = new Map(); // "daily" / "monthly" -> "<day or month>|<level>" told last
-  let budgetBaseline = true;
+  // With a file, what was told is remembered across restarts, so a budget already spent when
+  // the monitor starts is told if it was not yet; without one, that is taken as already known.
+  const budgetTold = new Map(readBudgetTold(budgetFile)); // "daily" / "monthly" -> "<day or month>|<level>"
+  let budgetBaseline = !budgetFile;
   function onBudget(budget, now = Date.now(), { test = false } = {}) {
+    let changed = false;
     for (const period of ['daily', 'monthly']) {
       const b = budget?.[period];
       if (!b || b.level === 'ok') continue;
-      const key = `${period === 'daily' ? new Date(now).toLocaleDateString('sv-SE') : new Date(now).toLocaleDateString('sv-SE').slice(0, 7)}|${b.level}`;
+      const day = new Date(now).toLocaleDateString('sv-SE');
+      const key = `${period === 'daily' ? day : day.slice(0, 7)}|${b.level}`;
       if (budgetTold.get(period) === key && !test) continue;
       if ((cfg.on.includes('budget') && !budgetBaseline) || test) {
         const vars = { spent: b.spent.toFixed(2), limit: b.limit.toFixed(2), pct: b.pct };
         deliver('budget', t(`notify.budget.${period}.${b.level}`, vars), [t(`notify.budget.${period}.body`, vars)], now);
       }
-      budgetTold.set(period, key);
+      if (!test) {
+        budgetTold.set(period, key);
+        changed = true;
+      }
     }
     budgetBaseline = false;
+    if (changed) writeBudgetTold(budgetFile, budgetTold);
   }
 
   onSnapshot.environment = onEnvironment;

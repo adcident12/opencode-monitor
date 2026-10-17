@@ -247,12 +247,13 @@ export async function main(argv) {
     outputTokenMax: outputTokenMaxFrom(),
     mcpNames: opencode.mcp.map(server => server.name),
   });
-  const notify = createNotifier(cfg.notify, loadTranslator(cfg.lang));
   // Sample runs keep their history in memory so fake sessions never land in the real file.
   const history = createHistory({ ...cfg.history, file: args.sample ? null : resolve(ROOT, cfg.history.file) });
   // Kept beside the history and with it: off with it, in memory for --sample (whose config is fake).
   const keep = cfg.history.enabled && !args.sample;
   const kept = name => (keep ? join(dirname(resolve(ROOT, cfg.history.file)), name) : null);
+  // What was told of the budget, kept beside the history so a restart neither repeats nor misses it.
+  const notify = createNotifier(cfg.notify, loadTranslator(cfg.lang), undefined, { budgetFile: kept('budget.json') });
   const configWatch = createConfigWatch({
     files: () => (args.sample ? [] : configFiles(cfg.opencodeConfigDir, monitor.directories())),
     file: kept('config-changes.jsonl'),

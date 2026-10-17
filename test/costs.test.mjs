@@ -102,3 +102,29 @@ test('a budget is a number of dollars, and warnPct a whole share', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('with a file, what was told survives a restart: told if it was not yet, never twice', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-budget-told-'));
+  try {
+    const budgetFile = join(dir, 'budget.json');
+    const sent = [];
+    const make = () => createNotifier(
+      { on: ['budget'], repeatMinutes: 30, desktop: true, discord: { webhookUrl: '', mention: '', includeDetail: false } },
+      key => key,
+      { desktop: title => sent.push(title), discord: () => {} },
+      { budgetFile },
+    );
+    const over = { warnPct: 80, daily: null, monthly: { limit: 50, spent: 60, pct: 120, level: 'over' } };
+    // Already over when it starts, and never told: told now.
+    make().budget(over, NOW);
+    assert.deepEqual(sent, ['notify.budget.monthly.over']);
+    // Restarted the same month: not again.
+    make().budget(over, NOW + 3_600_000);
+    assert.equal(sent.length, 1);
+    // A month later, over again: told.
+    make().budget(over, at(10, 17));
+    assert.equal(sent.length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
