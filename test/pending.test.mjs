@@ -20,7 +20,7 @@ function fakeRun(lists) {
   const calls = [];
   const run = async (command, args) => {
     calls.push([command, ...args].join(' '));
-    const session = args.at(-1).replace('sessionID=', '');
+    const session = /^\/api\/session\/([^/]+)\/permission$/.exec(args.at(-1))?.[1];
     const list = lists[session];
     if (list instanceof Error) throw list;
     return JSON.stringify({ data: list ?? [] });
@@ -43,7 +43,7 @@ test('a session with a running call is asked about: a prompt appears, and is clo
   const pending = createPending({ run });
   pending.check(['s1'], T + 3000);
   await settle();
-  assert.deepEqual(calls, ['opencode api session.permission.list --param sessionID=s1']);
+  assert.deepEqual(calls, ['opencode api GET /api/session/s1/permission']);
   assert.deepEqual(pending.asks(), [{ t: T, run: null, id: ASK_ID, kind: 'permission', permission: 'read', patterns: '.env', session: 's1', part: 'call1', answeredAt: null }]);
   assert.equal(pending.status().ok, true);
 

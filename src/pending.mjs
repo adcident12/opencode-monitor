@@ -197,7 +197,9 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
   async function ask(sessionId, at) {
     busy++;
     try {
-      const out = JSON.parse(await run(command, ['api', 'session.permission.list', '--param', `sessionID=${sessionId}`]));
+      // By its path, not its operation name: a name is looked up first in OpenCode's whole API
+      // description (276 KB in 2.0.29), fetched again on every question.
+      const out = JSON.parse(await run(command, ['api', 'GET', `/api/session/${sessionId}/permission`]));
       if (!Array.isArray(out?.data)) throw new Error('unexpected answer');
       apply(sessionId, out.data, at);
       status = { ok: true, error: null, at };
