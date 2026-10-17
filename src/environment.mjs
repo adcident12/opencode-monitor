@@ -42,7 +42,7 @@ export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning, c
     // a failure is the server back. Some offer tools only in a project they were set up for
     // (graft: none in a folder it has not indexed), so a connection with none is not a failure.
     const link = connected.get(server.name) ?? null;
-    const failure = candidates[0] && !(link?.t > candidates[0].t) ? candidates[0] : null;
+    const failure = candidates[0] && (link == null || link.t <= candidates[0].t) ? candidates[0] : null;
     let status;
     if (!server.enabled) status = 'disabled';
     else if (opencodeRunning === false) status = 'unknown';
