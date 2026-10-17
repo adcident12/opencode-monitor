@@ -336,6 +336,7 @@ claude mcp add opencode-monitor -- node /path/to/opencode-monitor/mcp.mjs
 
 | Tool | ตอบอะไร |
 | --- | --- |
+| `opencode_now` | สิ่งที่แท็บตอนนี้แสดง: ทุก session ในหนึ่งวันล่าสุด เรื่องด่วนสุดก่อน พร้อมสิ่งที่รออยู่ call ที่กำลังรัน แผนงาน context และที่เหลือก่อน compact วนซ้ำอยู่ที่เดิมหรือไม่ และ server ที่มันต้องพึ่ง |
 | `opencode_takeaways` | ประโยคจาก "สิ่งที่ควรรู้" พร้อมตัวเลขที่แต่ละข้ออ้างอิง |
 | `opencode_stats` | ตัวเลขของแท็บสถิติสำหรับ 7, 14 หรือ 30 วัน หรือสำหรับ session เดียว |
 | `opencode_sessions` | session ของช่วงเวลาหนึ่ง และแต่ละ session ใช้ไปเท่าไร |
@@ -555,6 +556,7 @@ src/reads.mjs           prompt ที่ model server ต้องอ่าน�
 src/cache-drops.mjs     prompt cache ที่หายไปและสาเหตุ จากจำนวน token ของ OpenCode (pure)
 src/loops.mjs           agent วนซ้ำอยู่ที่เดิม จากการเรียก tool ของมัน (pure)
 src/costs.mjs           ค่าใช้จ่ายของ agent รายวัน รายเดือน แยกตามโมเดลและ session และงบประมาณ
+src/now-view.mjs        แท็บตอนนี้สำหรับ assistant (opencode_now) จาก snapshot เดียวกับหน้าเว็บ (pure)
 src/tasks.mjs           แท็บงาน: ทุก session แยกตามโปรเจกต์ จบอย่างไร และแผนงาน
 src/overnight.mjs       "ระหว่างที่คุณไม่อยู่": session ของคืนนั้นจากประวัติ และรายงานไปยัง Discord
 src/digest.mjs          สรุปรายสัปดาห์ไปยัง Discord

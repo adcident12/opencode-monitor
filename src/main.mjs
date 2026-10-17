@@ -275,6 +275,7 @@ export async function main(argv) {
   const watchBudget = !args.sample && (cfg.budget.daily > 0 || cfg.budget.monthly > 0);
 
   let latest = '{}';
+  let lastSnap = null; // what the page shows now, for opencode_now at /mcp
   let liveStates = new Map(); // session id -> its state on the Now tab, from the latest reading
   const redactTasks = createRedactor(cfg.redact);
   const tasks = createTasksSource({ db, show: (text, max) => clip(redactTasks(String(text ?? '')), max), liveState: id => liveStates.get(id) ?? null });
@@ -290,6 +291,7 @@ export async function main(argv) {
     git.refresh(monitor.directories());
     leftovers.refresh(monitor.backgroundCalls());
     const snap = monitor();
+    lastSnap = snap;
     liveStates = new Map(snap.sessions.map(s => [s.id, s.state]));
     configWatch.check(snap.now);
     digest?.check(snap.now);
@@ -381,6 +383,7 @@ export async function main(argv) {
       tasks,
       overnight,
       costs,
+      live: () => lastSnap ?? monitor(),
       modelServers: () => monitor.environmentView?.() ?? [],
     }),
   });

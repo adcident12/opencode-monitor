@@ -336,6 +336,7 @@ Then, in Claude Code: *use opencode-monitor and tell me what to change*. `--data
 
 | Tool | Answers |
 | --- | --- |
+| `opencode_now` | What the Now tab shows: every session of the last day, most urgent first, with what it waits on, the call it runs, its plan, its context and room before compaction, whether it is going round in circles, and the servers it depends on |
 | `opencode_takeaways` | The sentences from "Worth knowing", with the figures each is based on |
 | `opencode_stats` | The figures of the Stats tab for 7, 14 or 30 days, or for one session |
 | `opencode_sessions` | The sessions of a period and what each took |
@@ -555,6 +556,7 @@ src/reads.mjs           prompts the model server read again from the start (data
 src/cache-drops.mjs     prompt cache lost, and why, from OpenCode's token counts (pure)
 src/loops.mjs           the agent going round in circles, from its tool calls (pure)
 src/costs.mjs           what the agent cost, by day, month, model and session, and the budget
+src/now-view.mjs        the Now tab for an assistant (opencode_now), from the page's snapshot (pure)
 src/tasks.mjs           the Tasks tab: every session by project, how it ended, and its plan
 src/overnight.mjs       "While you were away": the night's sessions from the history, and its Discord report
 src/digest.mjs          the weekly summary to Discord

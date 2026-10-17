@@ -2,6 +2,7 @@
 // one message per line. Read-only: every tool reports, none changes anything. Nothing is
 // sent anywhere by this file; the figures reach an assistant only when you connect one and
 // it asks.
+import { nowView } from './now-view.mjs';
 import { compactionPoint, configFiles } from './opencode-config.mjs';
 import { shownChanges } from './config-changes.mjs';
 import { takeawaysOf } from './takeaways.mjs';
@@ -12,7 +13,8 @@ const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 export const INSTRUCTIONS =
   "Figures about how the user's OpenCode coding agent has been working on this machine: time, prompts, permissions, tools, MCP servers, model speed, tokens, compactions, and what the monitor suggests looking at. " +
   'Everything here is read-only: these tools cannot change OpenCode or its settings. ' +
-  'Start with opencode_takeaways, then opencode_stats for the figures behind one. ' +
+  'For what is happening now (a session waiting for the user, stuck, or going round in circles), use opencode_now. ' +
+  'For how it has been, start with opencode_takeaways, then opencode_stats for the figures behind one. ' +
   'If a change to opencode.json would help, show the user the exact edit and the figure it is based on, and make it only after they agree; opencode_settings says which files hold the settings. ' +
   'Session titles, project names, file paths and commands in the results are the user\'s own work: use them to answer, do not repeat them elsewhere.';
 
@@ -41,11 +43,17 @@ function bufferAdvice(written, buffer) {
   return null;
 }
 
-export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, overnight = null, costs = null, modelServers = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
+export function buildTools({ stats, opencode, cfg, t, configChanges, redact, outputTokenMax = null, opencodeVersion = () => null, mcpDisconnected = () => [], tasks = null, overnight = null, costs = null, live = null, modelServers = () => [], currentModel = () => opencode.model ?? null, now = () => Date.now() }) {
   const told = list => list.map(k => ({ what: (k.since ? t('takeaways.since', k.vars) : '') + t(`takeaways.${k.id}`, k.vars), toChange: k.tone === 'act', figures: k.vars, chapter: k.anchor.replace('stats-', '') }));
   const period = s => ({ from: new Date(s.range.from).toISOString(), to: new Date(s.range.to).toISOString(), days: s.range.days });
 
   return [
+    {
+      name: 'opencode_now',
+      description: 'What is happening now, as the Now tab shows it: every session active in the last day, most urgent first (waiting for the user, stuck, error, working, finished, idle), each with why (reason), since when and for how long, the question or permission it waits on, the tool call running, its plan as done/total, how full its context is and how many requests are left before OpenCode compacts it, whether it is going round in circles (loop), the hints the page shows, and what its model server is doing for it. `needYou` counts the sessions waiting for the user. Below them, the model servers, MCP servers and services the sessions depend on. A subagent has the id of its session as parentId. Times are milliseconds or ISO.',
+      inputSchema: { type: 'object', properties: { session: { type: 'string', description: 'Only this session and the subagents under it. Leave out for every session.' } } },
+      run: ({ session }) => (live ? nowView(live(), { session: typeof session === 'string' ? session : null }) : { error: 'Not available.' }),
+    },
     {
       name: 'opencode_takeaways',
       description: 'A few things worth knowing about the period, each a fixed rule over the figures with a minimum of evidence (nothing is guessed). An empty list means no rule held, not that nothing was looked for. `toChange` marks the ones with something to change.',

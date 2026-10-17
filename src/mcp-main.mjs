@@ -20,6 +20,8 @@ import { createServedLog } from './served.mjs';
 import { createReadLog } from './reads.mjs';
 import { createEnvironment } from './environment.mjs';
 import { createCostSource } from './costs.mjs';
+import { createMonitor } from './monitor.mjs';
+import { createProcessProbe } from './process.mjs';
 
 const ALLOWED = new Set(['dataDir', 'config', 'sample']);
 
@@ -103,7 +105,20 @@ export async function mcpMain(argv) {
   if (environment) setInterval(() => environment.refresh(), 60_000).unref();
   const modelServers = () => environment?.view(new Map()).models ?? [];
   const costs = createCostSource({ db, cfg, show: (text, max) => clip(redact(String(text ?? '')), max) });
-  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks, overnight, costs, modelServers });
+  // The Now tab, read as the page reads it, here and now: what is running, from the process
+  // list (not for --sample, whose sessions must never be matched against real processes).
+  const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck && !args.sample });
+  await probe.refresh();
+  setInterval(() => probe.refresh(), 10_000).unref();
+  const monitor = createMonitor({
+    db, log, cfg, probe, environment, pending, redact,
+    modelLimits: opencode.limits,
+    modelReserves: opencode.reserves,
+    compactionSettings: opencode.compaction,
+    outputTokenMax,
+    mcpNames: opencode.mcp.map(server => server.name),
+  });
+  const tools = buildTools({ stats, opencode, cfg, t: loadTranslator('en'), configChanges, redact, outputTokenMax, opencodeVersion, mcpDisconnected, currentModel, tasks, overnight, costs, live: monitor, modelServers });
   serve(createMcpServer({ tools, version: VERSION ?? '0' }), process.stdin, process.stdout);
   process.stdin.on('end', () => {
     db.close();
