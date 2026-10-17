@@ -2,7 +2,7 @@
 // configured, a Discord webhook. Only already-redacted snapshot data is used here.
 import { execFile } from 'node:child_process';
 import { formatDuration } from './format.mjs';
-import { OSASCRIPT, POWERSHELL } from './programs.mjs';
+import { NOTIFY_SEND, OSASCRIPT, POWERSHELL } from './programs.mjs';
 
 // How many sent notifications are remembered, for the "This machine" tab.
 const RECENT_MAX = 50;
@@ -35,7 +35,7 @@ export function desktopNotify(title, body, onDone) {
     execFile(OSASCRIPT, ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run', title, body],
       { timeout: 15_000 }, done);
   } else {
-    execFile('notify-send', ['--app-name=opencode-monitor', title, body], { timeout: 15_000 }, done);
+    execFile(NOTIFY_SEND, ['--app-name=opencode-monitor', title, body], { timeout: 15_000 }, done);
   }
 }
 

@@ -55,7 +55,7 @@ const RULES = [
   // Summarising took a real share of the agent's time.
   s => {
     const { compactingMs, activeMs, compactions } = s.totals;
-    if (!(compactingMs >= 30 * 60_000) || !activeMs || compactingMs / activeMs < 0.1) return null;
+    if ((compactingMs ?? 0) < 30 * 60_000 || !activeMs || compactingMs / activeMs < 0.1) return null;
     return { id: 'compacting_time', tone: 'note', vars: { pct: Math.round((compactingMs / activeMs) * 100), hours: Math.round((compactingMs / 3_600_000) * 10) / 10, n: compactions }, anchor: 'stats-agent' };
   },
   // One session that went on through many compactions: each costs the detail of what came before.

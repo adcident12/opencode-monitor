@@ -169,9 +169,9 @@ function readJson(path) {
 export function wildcardMatch(input, pattern, platform = process.platform) {
   let escaped = String(pattern)
     .replaceAll('\\', '/')
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
+    .replaceAll(/[.+^${}()|[\]\\]/g, String.raw`\$&`)
+    .replaceAll('*', '.*')
+    .replaceAll('?', '.');
   if (escaped.endsWith(' .*')) escaped = `${escaped.slice(0, -3)}( .*)?`;
   return new RegExp(`^${escaped}$`, platform === 'win32' ? 'si' : 's').test(String(input).replaceAll('\\', '/'));
 }
@@ -181,20 +181,27 @@ export function wildcardMatch(input, pattern, platform = process.platform) {
  * { action, resource, effect }, and 1.x's "permission" object (an action set to an effect, or
  * to { pattern: effect }). Only actions and patterns are kept: they are what a rule matches.
  */
+const effectOf = value => (['allow', 'ask', 'deny'].includes(value) ? value : null);
+
+/** OpenCode 2's "permissions": a list of { action, resource, effect }. */
+function rulesOfList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(r => typeof r?.action === 'string' && typeof r.resource === 'string' && effectOf(r.effect)).map(r => ({ action: r.action, resource: r.resource, effect: r.effect }));
+}
+
+/** 1.x's "permission": one effect for all, or an action set to an effect or to { pattern: effect }. */
+function rulesOfObject(old) {
+  if (effectOf(old)) return [{ action: '*', resource: '*', effect: old }];
+  if (!old || typeof old !== 'object' || Array.isArray(old)) return [];
+  return Object.entries(old).flatMap(([action, value]) => {
+    if (effectOf(value)) return [{ action, resource: '*', effect: value }];
+    if (!value || typeof value !== 'object') return [];
+    return Object.entries(value).filter(([, effect]) => effectOf(effect)).map(([resource, effect]) => ({ action, resource, effect }));
+  });
+}
+
 function permissionRulesOf(config) {
-  const rules = [];
-  const effectOf = value => (['allow', 'ask', 'deny'].includes(value) ? value : null);
-  for (const r of Array.isArray(config?.permissions) ? config.permissions : []) {
-    if (typeof r?.action === 'string' && typeof r.resource === 'string' && effectOf(r.effect)) rules.push({ action: r.action, resource: r.resource, effect: r.effect });
-  }
-  const old = config?.permission;
-  if (old && typeof old === 'object' && !Array.isArray(old)) {
-    for (const [action, value] of Object.entries(old)) {
-      if (effectOf(value)) rules.push({ action, resource: '*', effect: value });
-      else if (value && typeof value === 'object') for (const [resource, effect] of Object.entries(value)) if (effectOf(effect)) rules.push({ action, resource, effect });
-    }
-  } else if (effectOf(old)) rules.push({ action: '*', resource: '*', effect: old });
-  return rules;
+  return [...rulesOfList(config?.permissions), ...rulesOfObject(config?.permission)];
 }
 
 /**

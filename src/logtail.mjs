@@ -24,9 +24,9 @@ const CLI_VERSION = / version=(\d+\.\d+\.\d+[^\s]*)/;
 // OpenCode 2 connects each MCP server once per folder it has loaded, and says how it went. A
 // server that failed (a timeout after a network blip) is not tried again by itself.
 const MCP_V2 = /^timestamp=(\S+) level=\S+ run=(\S+) message="(mcp connect failed|mcp connected)" server=(\S+)/;
-const QUOTED_OR_WORD = '("(?:[^"\\\\]|\\\\.)*"|\\S+)';
+const QUOTED_OR_WORD = String.raw`("(?:[^"\\]|\\.)*"|\S+)`;
 const DIRECTORY = new RegExp(` directory=${QUOTED_OR_WORD}`);
-const STATUS_ERROR = new RegExp(` status\\.error=${QUOTED_OR_WORD}`);
+const STATUS_ERROR = new RegExp(String.raw` status\.error=${QUOTED_OR_WORD}`);
 const unquote = text => {
   if (!text?.startsWith('"')) return text ?? null;
   try {
@@ -192,24 +192,27 @@ export function createLogTail(path) {
       return;
     }
     noteRun(line, prefix[2], Date.parse(prefix[1]));
-    if (line.includes('message=asking')) {
-      const ask = parseAskLine(line);
-      if (ask) asks.push(ask);
-    } else if (line.includes('message=replied')) {
-      const reply = parseReplyLine(line);
-      if (reply) replies.set(reply.id, reply.t);
-    } else if (line.includes('message="server unavailable"') || line.includes('message="MCP connection closed"')) {
-      const failure = parseMcpLine(line);
-      if (failure) mcpEvents.push(failure);
-    } else if (line.includes('message="mcp connect')) {
-      const c = parseMcpConnectLine(line);
-      if (c) connections.set(`${c.name}|${c.directory}`, c);
-    } else if (line.includes('message="location services evicted"')) {
-      const evicted = parseEvictedLine(line);
-      if (evicted) evictions.push(evicted);
-      if (evictions.length > MAX_EVICTIONS) evictions = evictions.slice(-MAX_EVICTIONS);
-    }
+    // The first kind the line is of; a line no parser reads is kept as nothing.
+    const kind = KINDS.find(k => k.marks.some(mark => line.includes(mark)));
+    const parsed = kind?.parse(line);
+    if (parsed) kind.keep(parsed);
   }
+
+  // Each kind of line the monitor reads: how it is told, read, and kept.
+  const KINDS = [
+    { marks: ['message=asking'], parse: parseAskLine, keep: ask => asks.push(ask) },
+    { marks: ['message=replied'], parse: parseReplyLine, keep: reply => replies.set(reply.id, reply.t) },
+    { marks: ['message="server unavailable"', 'message="MCP connection closed"'], parse: parseMcpLine, keep: failure => mcpEvents.push(failure) },
+    { marks: ['message="mcp connect'], parse: parseMcpConnectLine, keep: c => connections.set(`${c.name}|${c.directory}`, c) },
+    {
+      marks: ['message="location services evicted"'],
+      parse: parseEvictedLine,
+      keep: evicted => {
+        evictions.push(evicted);
+        if (evictions.length > MAX_EVICTIONS) evictions = evictions.slice(-MAX_EVICTIONS);
+      },
+    },
+  ];
 
   function poll() {
     let fd;

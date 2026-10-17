@@ -147,6 +147,67 @@ async function servePage(lookup, path, res) {
   }).end(found.body);
 }
 
+/** An address of the API: its JSON, or for one that has `unavailable`, a 503 when it throws. */
+function answerRoute(route, query, res) {
+  let body;
+  try {
+    body = route.body(query);
+  } catch (err) {
+    if (!route.unavailable) throw err;
+    console.warn(`${route.unavailable[0]}: ${err.code ?? err.message}`);
+    res.writeHead(503, BASE_HEADERS).end(route.unavailable[1]);
+    return;
+  }
+  res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end(body);
+}
+
+/**
+ * Who may ask, before anything is answered: the request's URL when it may, else null with the
+ * answer already sent (403 under another name or method, 302 to remember a key, 401 to ask).
+ */
+function admit(req, res, access) {
+  // Refuse requests that reached us under another name (DNS rebinding from a web page).
+  const toMcp = req.url === '/mcp' || req.url.startsWith('/mcp?');
+  if (!access.hosts.has(String(req.headers.host).toLowerCase()) || (req.method !== 'GET' && !toMcp)) {
+    res.writeHead(403).end();
+    return null;
+  }
+  const url = new URL(req.url, `http://${HOST}`);
+  // Another device of the network: let in with the key, remembered by a cookie.
+  const who = access.check(req, url);
+  if (who.redirect) {
+    res.writeHead(302, { ...BASE_HEADERS, location: who.redirect, 'set-cookie': who.cookie, 'referrer-policy': 'no-referrer' }).end();
+    return null;
+  }
+  if (who.ask) {
+    const page = url.pathname === '/' || url.pathname === '/index.html';
+    res.writeHead(401, { ...BASE_HEADERS, 'content-type': page ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'content-security-policy': ASK_CSP, 'referrer-policy': 'no-referrer' })
+      .end(page ? askPage(who.wrong) : 'The access key is needed.');
+    return null;
+  }
+  return { toMcp, url };
+}
+
+// Options that do one thing and are done, in the order they are looked at.
+const ONE_OFF = [['testNotify', runTestNotify], ['doctor', runDoctor], ['accessKey', runAccessKey]];
+
+/** The config to run with; for --sample, generated data and its own fake OpenCode config. */
+async function settingsFor(args) {
+  if (args.sample) {
+    const { buildSample } = await import('../scripts/make-sample.mjs');
+    args.dataDir = buildSample(join(ROOT, 'sample'));
+    args.assumeRunning = true;
+    args.noNotify = true;
+  }
+  const cfg = loadConfig(args);
+  if (args.sample) {
+    // The sample directory carries its own fake OpenCode config; never mix in the real one.
+    cfg.opencodeConfigDir = cfg.dataDir;
+    cfg.services = [];
+  }
+  return cfg;
+}
+
 /**
  * @returns {Promise<{port: number, close: () => Promise<void>}|undefined>} the running monitor,
  *   or nothing for the options that print something and are done
@@ -154,22 +215,9 @@ async function servePage(lookup, path, res) {
 export async function main(argv) {
   const args = parseArgs(argv);
   if (await ranWithoutConfig(args)) return;
-  if (args.sample) {
-    const { buildSample } = await import('../scripts/make-sample.mjs');
-    args.dataDir = buildSample(join(ROOT, 'sample'));
-    args.assumeRunning = true;
-    args.noNotify = true;
-  }
-
-  const cfg = loadConfig(args);
-  if (args.testNotify) return runTestNotify(cfg);
-  if (args.sample) {
-    // The sample directory carries its own fake OpenCode config; never mix in the real one.
-    cfg.opencodeConfigDir = cfg.dataDir;
-    cfg.services = [];
-  }
-  if (args.doctor) return runDoctor(cfg);
-  if (args.accessKey) return runAccessKey(cfg);
+  const cfg = await settingsFor(args);
+  const oneOff = ONE_OFF.find(([option]) => args[option]);
+  if (oneOff) return oneOff[1](cfg);
 
   const db = openDb(cfg.dataDir);
   // What OpenCode 2 waits for you to allow, asked of OpenCode itself; kept beside the history.
@@ -303,19 +351,6 @@ export async function main(argv) {
       },
     },
   };
-  const answer = (route, query, res) => {
-    let body;
-    try {
-      body = route.body(query);
-    } catch (err) {
-      if (!route.unavailable) throw err;
-      console.warn(`${route.unavailable[0]}: ${err.code ?? err.message}`);
-      res.writeHead(503, BASE_HEADERS).end(route.unavailable[1]);
-      return;
-    }
-    res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end(body);
-  };
-
   // The MCP tools at /mcp, for an assistant on another machine: the same tools as mcp.mjs, the
   // same key as the page. Read-only, like everything here.
   const mcp = createMcpServer({
@@ -332,26 +367,10 @@ export async function main(argv) {
   // The monitor's own page may call /mcp from a browser; a page anywhere else may not.
   const origins = new Set([...access.hosts].map(host => `http://${host}`));
   const server = createServer(async (req, res) => {
-    // Refuse requests that reached us under another name (DNS rebinding from a web page).
-    const toMcp = req.url === '/mcp' || req.url.startsWith('/mcp?');
-    if (!access.hosts.has(String(req.headers.host).toLowerCase()) || (req.method !== 'GET' && !toMcp)) {
-      res.writeHead(403).end();
-      return;
-    }
-    const url = new URL(req.url, `http://${HOST}`);
+    const admitted = admit(req, res, access);
+    if (!admitted) return;
+    const { toMcp, url } = admitted;
     const { pathname: path, searchParams: query } = url;
-    // Another device of the network: let in with the key, remembered by a cookie.
-    const who = access.check(req, url);
-    if (who.redirect) {
-      res.writeHead(302, { ...BASE_HEADERS, location: who.redirect, 'set-cookie': who.cookie, 'referrer-policy': 'no-referrer' }).end();
-      return;
-    }
-    if (who.ask) {
-      const page = path === '/' || path === '/index.html';
-      res.writeHead(401, { ...BASE_HEADERS, 'content-type': page ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'content-security-policy': ASK_CSP, 'referrer-policy': 'no-referrer' })
-        .end(page ? askPage(who.wrong) : 'The access key is needed.');
-      return;
-    }
     if (toMcp) {
       await answerMcp(req, res, mcp, origins);
     } else if (path === '/api/events') {
@@ -360,7 +379,7 @@ export async function main(argv) {
       clients.add(res);
       req.on('close', () => clients.delete(res));
     } else if (Object.hasOwn(api, path)) {
-      answer(api[path], query, res);
+      answerRoute(api[path], query, res);
     } else {
       await servePage(lookup, path, res);
     }

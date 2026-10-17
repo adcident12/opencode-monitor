@@ -145,7 +145,7 @@ export function compareAt(input, at, hours, scope = null, model = null) {
   // a short side after a recent change still compares.
   const back = Math.min(hours * HOUR, at - first);
   const ahead = Math.min(hours * HOUR, input.now - at);
-  if (!(back > 0) || !(ahead > 0)) return { at: new Date(at).toISOString(), error: 'no time on one side of this moment in the period read' };
+  if (Number.isNaN(back + ahead) || back <= 0 || ahead <= 0) return { at: new Date(at).toISOString(), error: 'no time on one side of this moment in the period read' };
   const before = side(input, at - back, at, inScope, model);
   const after = side(input, at, at + ahead, inScope, model);
   const enough = before.agentHours >= 1 && after.agentHours >= 1;
@@ -154,7 +154,8 @@ export function compareAt(input, at, hours, scope = null, model = null) {
   const one = list => (list.length === 1 ? list[0].model : null);
   const sameModel = one(before.models) != null && one(before.models) === one(after.models);
   let note = null;
-  if (!enough) note = `Agent time${model ? ` of ${model}` : ''}: ${before.agentHours} h before, ${after.agentHours} h after. Under an hour on a side is too little to say much.`;
+  const whose = model ? ` of ${model}` : '';
+  if (!enough) note = `Agent time${whose}: ${before.agentHours} h before, ${after.agentHours} h after. Under an hour on a side is too little to say much.`;
   else if (!sameModel) note = 'The model was not the same on both sides: every figure moves with the model, so this compares models as much as the change. Give `model` to compare one model only.';
   return {
     at: new Date(at).toISOString(),

@@ -44,6 +44,36 @@ const startOf = p => p.started ?? p.time_created;
 const isExploreTool = tool => tool === 'read' || tool === 'grep' || tool === 'glob';
 const isGraft = tool => tool.startsWith('graft_');
 
+const isOver = part => part.status !== 'running' && part.status !== 'pending';
+
+/**
+ * When a prompt nobody answered was left behind: whichever came first of OpenCode 2 saying it
+ * ended, its session moving on (a new message), and the OpenCode that asked going away. Null
+ * while none of them has happened: still open.
+ */
+function abandonedAtOf(ask, part, { movedOn, liveRuns, runEnds }) {
+  const candidates = [];
+  if (ask.droppedAt != null) candidates.push(Math.max(ask.t, ask.droppedAt));
+  const next = part ? movedOn(part.session_id, ask.t) : null;
+  if (next != null) candidates.push(next);
+  if (ask.run && liveRuns && !liveRuns.has(ask.run)) candidates.push(Math.max(ask.t, runEnds.get(ask.run) ?? ask.t));
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+/**
+ * When a permission prompt was answered: as the monitor saw it (a moment late, at its next
+ * reading) unless the call was over before that, which says more exactly; else the call's
+ * first update after the prompt, or its end.
+ */
+function permissionAnsweredAt(ask, part, replies, eventTimes) {
+  const seen = replies.get(ask.id) ?? null;
+  if (!part) return seen;
+  const over = isOver(part) ? Math.max(ask.t, part.time_updated) : null;
+  if (seen != null) return over == null ? seen : Math.min(seen, over);
+  const after = (eventTimes.get(part.id) ?? []).find(t => t >= ask.t + ANSWER_MIN_MS);
+  return after ?? over;
+}
+
 /**
  * Pairs each prompt from the log with what answered it.
  * Questions: OpenCode logs the reply. Permissions: it does not, so the answer is the first
@@ -51,44 +81,18 @@ const isGraft = tool => tool.startsWith('graft_');
  */
 export function matchPrompts({ asks, replies, tools, eventTimes, now, movedOn = () => null, liveRuns = null, runEnds = new Map() }) {
   const byStart = [...tools].sort((a, b) => startOf(a) - startOf(b));
-  const prompts = [];
-  // Without an answer, a prompt ends when its session moved on without it (a new message), or
-  // when the OpenCode process that asked has exited. Only otherwise is it still open.
+  // Without an answer, a prompt ends when its session moved on without it, or when the
+  // OpenCode process that asked has exited. Only otherwise is it still open.
   const settle = (ask, part, answeredAt) => {
-    let abandonedAt = null;
-    if (answeredAt == null) {
-      // Whichever came first: the session moving on, or the asking process going away.
-      const candidates = [];
-      // OpenCode 2 says when a question ended without an answer.
-      if (ask.droppedAt != null) candidates.push(Math.max(ask.t, ask.droppedAt));
-      const next = part ? movedOn(part.session_id, ask.t) : null;
-      if (next != null) candidates.push(next);
-      if (ask.run && liveRuns && !liveRuns.has(ask.run)) candidates.push(Math.max(ask.t, runEnds.get(ask.run) ?? ask.t));
-      if (candidates.length) abandonedAt = Math.min(...candidates);
-    }
+    const abandonedAt = answeredAt == null ? abandonedAtOf(ask, part, { movedOn, liveRuns, runEnds }) : null;
     return { ...ask, part, answeredAt, abandonedAt, abandoned: abandonedAt != null, waitMs: (answeredAt ?? abandonedAt ?? now) - ask.t };
   };
-  for (const ask of asks) {
-    if (ask.kind === 'question') {
-      const part = nearest(byStart, ask.t, p => p.tool === 'question');
-      prompts.push(settle(ask, part, replies.get(ask.id) ?? null));
-      continue;
-    }
+  return asks.map(ask => {
+    if (ask.kind === 'question') return settle(ask, nearest(byStart, ask.t, p => p.tool === 'question'), replies.get(ask.id) ?? null);
     // OpenCode 2 says which call a prompt was for, and the monitor saw when it was answered.
     const part = ask.part ? (byStart.find(p => askIsFor(ask, p)) ?? null) : nearest(byStart, ask.t, p => promptFits(ask, p.tool));
-    let answeredAt = replies.get(ask.id) ?? null;
-    // The monitor sees an answer a moment late, at its next reading. A call that was over
-    // before that says more exactly when: it could only end once it was answered.
-    const over = part && part.status !== 'running' && part.status !== 'pending' ? Math.max(ask.t, part.time_updated) : null;
-    if (answeredAt != null && over != null) answeredAt = Math.min(answeredAt, over);
-    if (part && answeredAt == null) {
-      const after = (eventTimes.get(part.id) ?? []).find(t => t >= ask.t + ANSWER_MIN_MS);
-      if (after != null) answeredAt = after;
-      else if (part.status !== 'running' && part.status !== 'pending') answeredAt = Math.max(ask.t, part.time_updated);
-    }
-    prompts.push(settle(ask, part, answeredAt));
-  }
-  return prompts;
+    return settle(ask, part, permissionAnsweredAt(ask, part, replies, eventTimes));
+  });
 }
 
 /** (sessionId, t) -> time of the first message in that session after t, or null. */
@@ -294,6 +298,14 @@ function addUsage(usage, day, m, sent) {
  * Model requests. Agent time: from each request to its reply, clipped to the range.
  * Tokens: what each request sent and got back, as the model server reported it.
  */
+/** How long a reply was, in tokens written (thinking included), by model: not of a summary. */
+function noteOutput(outputs, m) {
+  if (!m.model_id || m.summary || (m.tokens_output ?? 0) <= 0) return;
+  const model = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
+  if (!outputs.has(model)) outputs.set(model, []);
+  outputs.get(model).push((m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0));
+}
+
 function tallyRequests(ctx, messages, steps) {
   const usage = { requests: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, cost: 0 };
   const firstRequest = new Map(); // session id -> { t, tokens } of its first request with a count
@@ -311,11 +323,7 @@ function tallyRequests(ctx, messages, steps) {
     addUsage(usage, b, m, sent);
     const timing = timingOf(m, steps.get(m.id));
     if (timing) timed.push(timing);
-    if (m.model_id && !m.summary && (m.tokens_output ?? 0) > 0) {
-      const model = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
-      if (!outputs.has(model)) outputs.set(model, []);
-      outputs.get(model).push((m.tokens_output ?? 0) + (m.tokens_reasoning ?? 0));
-    }
+    noteOutput(outputs, m);
     const first = firstRequest.get(m.session_id);
     if (sent > 0 && (!first || m.time_created < first.t)) firstRequest.set(m.session_id, { t: m.time_created, tokens: sent });
   }
@@ -400,6 +408,24 @@ function countUse(p, { explore, reads, readNames, skills, dirOf }) {
 // An OpenCode 2 script that made more calls than this was a loop, not the agent's own steps.
 export const LOOP_SCRIPT_CALLS = 50;
 
+/** A top-level session's calls and its latest, whatever the filter: the list of sessions. */
+function noteRoot(perRoot, rootId, t) {
+  const root = perRoot.get(rootId) ?? { toolCalls: 0, lastAt: 0 };
+  root.toolCalls++;
+  root.lastAt = Math.max(root.lastAt, t);
+  perRoot.set(rootId, root);
+}
+
+/** A call made by a script that looped, counted apart on its tool's entry. */
+function countLoop(entry, p, loopScripts) {
+  if ((p.script_calls ?? 0) <= LOOP_SCRIPT_CALLS) return;
+  entry.loop ??= { scripts: 0, calls: 0, errors: 0 };
+  if (!loopScripts.has(p.script)) entry.loop.scripts++;
+  loopScripts.add(p.script);
+  entry.loop.calls++;
+  if (p.status === 'error') entry.loop.errors++;
+}
+
 /** Tool calls: counts, errors, and how long each ran. */
 function tallyTools(ctx, tools, timing, stuckMs) {
   const perTool = new Map();
@@ -417,24 +443,14 @@ function tallyTools(ctx, tools, timing, stuckMs) {
     const t = startOf(p);
     const b = ctx.bucket(t);
     if (!b) continue;
-    const rootId = rootOf(p.session_id);
-    const root = perRoot.get(rootId) ?? { toolCalls: 0, lastAt: 0 };
-    root.toolCalls++;
-    root.lastAt = Math.max(root.lastAt, t);
-    perRoot.set(rootId, root);
+    noteRoot(perRoot, rootOf(p.session_id), t);
     if (!ctx.inScope(p.session_id)) continue;
 
     const entry = perTool.get(p.tool) ?? { tool: p.tool, count: 0, errors: 0, totalMs: 0 };
     perTool.set(p.tool, entry);
     const run = runOf(p, t, ctx, timing);
     countCall(b, entry, p, run, stuckMs);
-    if ((p.script_calls ?? 0) > LOOP_SCRIPT_CALLS) {
-      entry.loop ??= { scripts: 0, calls: 0, errors: 0 };
-      if (!loopScripts.has(p.script)) entry.loop.scripts++;
-      loopScripts.add(p.script);
-      entry.loop.calls++;
-      if (p.status === 'error') entry.loop.errors++;
-    }
+    countLoop(entry, p, loopScripts);
     if (run.runMs != null) slow.push({ p, runMs: run.runMs, running: run.unfinished });
     calls.push({ tool: p.tool, status: p.status, error: p.error, session_id: p.session_id, at: t, runMs: run.unfinished ? null : run.runMs });
     countUse(p, { explore, reads, readNames, skills, dirOf });
@@ -448,35 +464,43 @@ const EMPTY_EFFORT = Object.freeze({ activeMs: 0, waitMs: 0, compactions: 0, com
  * What each top-level session cost in the range, subagents included, whatever the filter:
  * the list is for choosing which session to look at.
  */
+/** Which models did a top-level session's work: figures from different models are not to be mixed. */
+function modelsPerSession(ctx, messages) {
+  const models = new Map(); // top-level session -> model -> replies
+  for (const m of messages) {
+    if (m.role !== 'assistant' || m.time_created < ctx.from || m.time_created > ctx.now) continue;
+    if (!m.model_id || m.agent === 'compaction') continue;
+    const root = ctx.rootOf(m.session_id);
+    const used = models.get(root) ?? new Map();
+    const name = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
+    used.set(name, (used.get(name) ?? 0) + 1);
+    models.set(root, used);
+  }
+  return models;
+}
+
+/** What one reply adds to its session: agent time (summarising apart too), tokens, cost. */
+function addReply(ctx, m, bump) {
+  const ran = Math.min(m.completed ?? m.time_created, ctx.now) - m.time_created;
+  if (ran > 0) bump(m.session_id, 'activeMs', ran);
+  if (ran > 0 && m.agent === 'compaction') bump(m.session_id, 'compactingMs', ran);
+  const tokens = tokensSent(m) + (m.tokens_output ?? 0);
+  if (tokens > 0) bump(m.session_id, 'tokens', tokens);
+  if (m.cost > 0) bump(m.session_id, 'cost', m.cost);
+}
+
 function effortPerSession(ctx, { messages, compactions, prompts }) {
   const effort = new Map();
-  const models = new Map(); // top-level session -> model -> replies
   const bump = (id, key, n) => {
     const root = ctx.rootOf(id);
     const e = effort.get(root) ?? { ...EMPTY_EFFORT };
     e[key] += n;
     effort.set(root, e);
   };
-  for (const m of messages) {
-    if (m.role !== 'assistant' || m.time_created < ctx.from || m.time_created > ctx.now) continue;
-    const end = Math.min(m.completed ?? m.time_created, ctx.now);
-    if (end > m.time_created) bump(m.session_id, 'activeMs', end - m.time_created);
-    if (end > m.time_created && m.agent === 'compaction') bump(m.session_id, 'compactingMs', end - m.time_created);
-    // Which models did the work: figures from different models are not to be mixed.
-    if (m.model_id && m.agent !== 'compaction') {
-      const root = ctx.rootOf(m.session_id);
-      const used = models.get(root) ?? new Map();
-      const name = m.provider_id ? `${m.provider_id}/${m.model_id}` : m.model_id;
-      used.set(name, (used.get(name) ?? 0) + 1);
-      models.set(root, used);
-    }
-    const tokens = tokensSent(m) + (m.tokens_output ?? 0);
-    if (tokens > 0) bump(m.session_id, 'tokens', tokens);
-    if (m.cost > 0) bump(m.session_id, 'cost', m.cost);
-  }
+  for (const m of messages) if (m.role === 'assistant' && m.time_created >= ctx.from && m.time_created <= ctx.now) addReply(ctx, m, bump);
   for (const c of compactions) if (c.time_created >= ctx.from) bump(c.session_id, 'compactions', 1);
   for (const p of prompts) if (p.part) bump(p.part.session_id, 'waitMs', p.waitMs);
-  for (const [root, used] of models) {
+  for (const [root, used] of modelsPerSession(ctx, messages)) {
     const e = effort.get(root) ?? { ...EMPTY_EFFORT };
     e.models = [...used].sort((a, b) => b[1] - a[1]).map(([model, replies]) => ({ model, replies }));
     effort.set(root, e);

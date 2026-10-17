@@ -13,6 +13,12 @@ const OUTPUT_SCAN_CHARS = 8000;
 const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : null);
 const num = value => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
+/** How a compaction's summary ended: done, still going (no end yet), or failed. */
+function finishOf(done, going) {
+  if (done) return 'stop';
+  return going ? null : 'error';
+}
+
 /** What 1.x called the error a reply ended with; an abort keeps its 1.x name. */
 function errorName(error) {
   if (!error || typeof error !== 'object') return null;
@@ -165,25 +171,44 @@ export function normalizeV2(rows) {
   for (const row of rows) {
     const d = parse(row);
     if (!d) continue;
-    // A compaction was over by the time the session's next row was written, whatever its own
-    // row says: a row's update time can be later than the work (a copy, a later edit).
-    const pending = summarizing.get(row.session_id);
-    if (pending) {
-      if (pending.completed != null) pending.completed = Math.min(pending.completed, row.time_created);
-      summarizing.delete(row.session_id);
-    }
+    endCompaction(summarizing, row);
     const base = { ...EMPTY_MESSAGE, id: row.id, session_id: row.session_id, time_created: row.time_created };
-    if (row.type === 'user') out.messages.push({ ...base, role: 'user' });
-    else if (row.type === 'synthetic') out.messages.push({ ...base, role: 'user', synthetic: true });
-    else if (row.type === 'assistant') lastReply.set(row.session_id, assistant(out, row, d, base));
-    else if (row.type === 'compaction') summarizing.set(row.session_id, compaction(out, row, d, base));
-    else if (row.type === 'idle' && d.outcome === 'interrupted') {
-      // Stopped by you: 1.x marked the reply itself as aborted.
-      const reply = lastReply.get(row.session_id);
-      if (reply && !reply.error_name) reply.error_name = reply.error = 'MessageAbortedError';
+    switch (row.type) {
+      case 'user':
+        out.messages.push({ ...base, role: 'user' });
+        break;
+      case 'synthetic':
+        out.messages.push({ ...base, role: 'user', synthetic: true });
+        break;
+      case 'assistant':
+        lastReply.set(row.session_id, assistant(out, row, d, base));
+        break;
+      case 'compaction':
+        summarizing.set(row.session_id, compaction(out, row, d, base));
+        break;
+      case 'idle':
+        // Stopped by you: 1.x marked the reply itself as aborted.
+        if (d.outcome === 'interrupted') markAborted(lastReply.get(row.session_id));
+        break;
+      default:
     }
   }
   return out;
+}
+
+/**
+ * A compaction was over by the time the session's next row was written, whatever its own row
+ * says: a row's update time can be later than the work (a copy, a later edit).
+ */
+function endCompaction(summarizing, row) {
+  const pending = summarizing.get(row.session_id);
+  if (!pending) return;
+  if (pending.completed != null) pending.completed = Math.min(pending.completed, row.time_created);
+  summarizing.delete(row.session_id);
+}
+
+function markAborted(reply) {
+  if (reply && !reply.error_name) reply.error_name = reply.error = 'MessageAbortedError';
 }
 
 const lengthOf = value => (typeof value === 'string' ? value.length : 0);
@@ -200,7 +225,7 @@ export function estimatedSpans(content, streamed) {
   const thoughts = content.filter(i => i?.type === 'reasoning' && num(i.time?.created) != null);
   if (!thoughts.length) return [];
   const start = Math.min(...thoughts.map(i => i.time.created));
-  if (!(streamed > start)) return [];
+  if (!Number.isFinite(streamed) || streamed <= start) return [];
   const thought = thoughts.reduce((n, i) => n + lengthOf(i.text), 0);
   const texts = content.filter(i => i?.type === 'text');
   const rest = texts.reduce((n, i) => n + lengthOf(i.text), 0)
@@ -255,8 +280,28 @@ function assistant(out, row, d, base) {
   // The first token is the start of the first thing written. OpenCode 2 does not time text, so
   // a reply that opens with text has no known first token: left out rather than guessed late.
   const firstToken = num(content[0]?.time?.created);
+  const lastWritten = addTools(out, row, content);
+  // When the model stopped writing: OpenCode 2 records it; otherwise the last thing written.
+  const streamed = num(time.streamed);
+  const written = streamed ?? lastWritten;
+  out.steps.push({ message_id: row.id, first_token: firstToken, written });
+  for (const span of streamed == null ? copiedSpans(content, written) : estimatedSpans(content, streamed)) out.spans.push({ session_id: row.session_id, ...span });
+
+  addPatch(out, row, d, time);
+  if (d.tokens) addFinish(out, row, message, time);
+  return message;
+}
+
+/**
+ * A reply's tool calls, as 1.x rows (an execute script as the calls it made), and its plans.
+ * When the model last wrote something timed: a reasoning's end or a call's start.
+ */
+function addTools(out, row, content) {
   let lastWritten = null;
-  const later = (a, b) => (b == null ? a : a == null ? b : Math.max(a, b));
+  const later = (a, b) => {
+    if (b == null) return a;
+    return a == null ? b : Math.max(a, b);
+  };
   for (const item of content) {
     const t = item?.time ?? {};
     if (item?.type === 'reasoning') lastWritten = later(lastWritten, num(t.completed));
@@ -268,29 +313,27 @@ function assistant(out, row, d, base) {
       if (tool.tool === 'todowrite' && tool.status === 'completed' && tool.todos) out.todoWrites.push({ session_id: row.session_id, time_created: tool.time_created, todos: tool.todos });
     }
   }
-  // When the model stopped writing: OpenCode 2 records it; otherwise the last thing written.
-  const streamed = num(time.streamed);
-  const written = streamed ?? lastWritten;
-  out.steps.push({ message_id: row.id, first_token: firstToken, written });
-  for (const span of streamed == null ? copiedSpans(content, written) : estimatedSpans(content, streamed)) out.spans.push({ session_id: row.session_id, ...span });
+  return lastWritten;
+}
 
+/** The files a reply changed, from its snapshot, as 1.x's patch part. */
+function addPatch(out, row, d, time) {
   const files = Array.isArray(d.snapshot?.files) ? d.snapshot.files.filter(f => typeof f === 'string') : [];
-  if (files.length) {
-    const at = num(time.completed) ?? row.time_updated;
-    out.patches.push({ session_id: row.session_id, time_created: at, files: JSON.stringify(files) });
-    out.parts.push({ id: `${row.id}:patch`, message_id: row.id, session_id: row.session_id, type: 'patch', time_created: at, time_updated: row.time_updated, files: JSON.stringify(files) });
-  }
-  if (d.tokens) {
-    const n = message;
-    out.parts.push({
-      id: `${row.id}:finish`, message_id: row.id, session_id: row.session_id, type: 'step-finish',
-      time_created: num(time.completed) ?? row.time_updated, time_updated: row.time_updated,
-      tokens_input: n.tokens_input, tokens_output: n.tokens_output, tokens_cache_read: n.tokens_cache_read, tokens_cache_write: n.tokens_cache_write,
-      tokens_total: (n.tokens_input ?? 0) + (n.tokens_output ?? 0) + (n.tokens_reasoning ?? 0) + (n.tokens_cache_read ?? 0) + (n.tokens_cache_write ?? 0),
-      msg_summary: n.summary,
-    });
-  }
-  return message;
+  if (!files.length) return;
+  const at = num(time.completed) ?? row.time_updated;
+  out.patches.push({ session_id: row.session_id, time_created: at, files: JSON.stringify(files) });
+  out.parts.push({ id: `${row.id}:patch`, message_id: row.id, session_id: row.session_id, type: 'patch', time_created: at, time_updated: row.time_updated, files: JSON.stringify(files) });
+}
+
+/** A reply's token counts, as 1.x's step-finish part. */
+function addFinish(out, row, n, time) {
+  out.parts.push({
+    id: `${row.id}:finish`, message_id: row.id, session_id: row.session_id, type: 'step-finish',
+    time_created: num(time.completed) ?? row.time_updated, time_updated: row.time_updated,
+    tokens_input: n.tokens_input, tokens_output: n.tokens_output, tokens_cache_read: n.tokens_cache_read, tokens_cache_write: n.tokens_cache_write,
+    tokens_total: (n.tokens_input ?? 0) + (n.tokens_output ?? 0) + (n.tokens_reasoning ?? 0) + (n.tokens_cache_read ?? 0) + (n.tokens_cache_write ?? 0),
+    msg_summary: n.summary,
+  });
 }
 
 /**
@@ -310,7 +353,7 @@ function compaction(out, row, d, base) {
     agent: 'compaction',
     summary: true,
     completed: going ? null : row.time_updated,
-    finish: done ? 'stop' : going ? null : 'error',
+    finish: finishOf(done, going),
     error_name: done || going ? null : errorName(d.error) ?? 'Error',
     // Still summarising: OpenCode 2 does not set the session's time_compacting, as 1.x did.
     // Only a status that says so: one that failed, or is not known, is not taken for work.

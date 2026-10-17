@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { autostart, autostartCommand, launchdPlist, quoteArg, systemdUnit, TASK_NAME } from '../src/autostart.mjs';
+import { SYSTEMCTL, linuxProgram } from '../src/programs.mjs';
 import { parseArgs } from '../src/config.mjs';
 
 test('the command the task runs: node hidden, with the options that suit a background start', () => {
@@ -61,7 +62,8 @@ test('Linux: a systemd user unit whose command line a path cannot bend', () => {
 });
 
 test('macOS and Linux: on writes the unit and tells the system; off undoes both', async () => {
-  for (const [platform, tool] of [['darwin', '/bin/launchctl'], ['linux', 'systemctl']]) {
+  // Both named in full: on Linux, from the system's own folders, never through PATH.
+  for (const [platform, tool] of [['darwin', '/bin/launchctl'], ['linux', SYSTEMCTL]]) {
     const written = new Map();
     const calls = [];
     const files = { write: (path, text) => written.set(path, text), remove: path => written.delete(path), exists: path => written.has(path) };
@@ -83,4 +85,10 @@ test('macOS and Linux: on writes the unit and tells the system; off undoes both'
 test('--autostart takes on or off', () => {
   assert.deepEqual(parseArgs(['--autostart', 'on', '--port', '4400']), { autostart: 'on', port: 4400 });
   assert.throws(() => parseArgs(['--autostart']), /needs a value/);
+});
+
+test('a Linux program is found in the system folders, never through PATH', () => {
+  assert.equal(linuxProgram('ps', path => path.replaceAll('\\', '/') === '/bin/ps'), '/bin/ps');
+  assert.equal(linuxProgram('notify-send', () => false), '/usr/bin/notify-send');
+  assert.match(SYSTEMCTL, /^\/.+\/systemctl$/);
 });

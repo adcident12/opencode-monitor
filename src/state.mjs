@@ -1,5 +1,6 @@
 // Pure logic: turns rows from the database and log into a state and health figures.
 // No I/O here, so every rule can be unit-tested.
+import { trimEndOf } from './text.mjs';
 
 // Most urgent first.
 export const STATES = ['waiting', 'stuck', 'error', 'working', 'finished', 'idle'];
@@ -56,7 +57,8 @@ export function deriveState({ session, parts, messages, asks, now, thresholds, o
 
 // OpenCode logs that it put the project away within a moment of interrupting the reply.
 const EVICT_MATCH_MS = 5000;
-const sameDirectory = (a, b) => String(a ?? '').replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase() === String(b ?? '').replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+const folderKey = dir => trimEndOf(String(dir ?? '').replaceAll('\\', '/'), '/').toLowerCase();
+const sameDirectory = (a, b) => folderKey(a) === folderKey(b);
 
 /**
  * The last reply ended in an error: stopped by you, dropped by OpenCode, or failed.

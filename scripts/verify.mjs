@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { loadConfig, parseArgs } from '../src/config.mjs';
+import { trimEndOf } from '../src/text.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
@@ -95,7 +96,7 @@ const SENT = `coalesce(json_extract(data,'$.tokens.input'),0)+coalesce(json_extr
 // A path inside the session's project, as the project sees it: one file however it was written.
 const underRoot = (path, root) => {
   const p = String(path).replaceAll('\\', '/');
-  const r = String(root ?? '').replaceAll('\\', '/').replace(/\/+$/, '');
+  const r = trimEndOf(String(root ?? '').replaceAll('\\', '/'), '/');
   const inside = r && (process.platform === 'win32' ? p.toLowerCase().startsWith(`${r.toLowerCase()}/`) : p.startsWith(`${r}/`));
   return inside ? p.slice(r.length + 1) : p;
 };
@@ -160,7 +161,7 @@ const v2Spans = r => {
   const thoughts = content.filter(i => i.type === 'reasoning' && i.time?.created != null);
   if (end == null || !thoughts.length) return null;
   const start = Math.min(...thoughts.map(i => i.time.created));
-  if (!(end > start)) return null;
+  if (!Number.isFinite(end) || end <= start) return null;
   const len = type => content.filter(i => i.type === type).reduce((n, i) => n + (type === 'tool' ? JSON.stringify(i.state?.input ?? {}).length : (i.text ?? '').length), 0);
   const all = len('reasoning') + len('text') + len('tool');
   const turn = all ? Math.round(start + ((end - start) * len('reasoning')) / all) : end;

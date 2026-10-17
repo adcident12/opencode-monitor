@@ -5,6 +5,8 @@
 // Each part is shown only when this machine has data for it: someone who never uses todos, or
 // whose OpenCode does not record reasoning, gets no empty section for it.
 
+import { trimEndOf } from './text.mjs';
+
 const TOP = 10;
 // A prompt whose last reply came this recently may still be going.
 const OPEN_MS = 10 * 60_000;
@@ -149,7 +151,7 @@ export const fileKey = (path, platform = process.platform) => (platform === 'win
  */
 export function inProject(file, root, platform = process.platform) {
   const path = String(file).replaceAll('\\', '/');
-  const base = String(root ?? '').replaceAll('\\', '/').replace(/\/+$/, '');
+  const base = trimEndOf(String(root ?? '').replaceAll('\\', '/'), '/');
   if (!base) return path;
   const same = platform === 'win32' ? path.toLowerCase().startsWith(`${base.toLowerCase()}/`) : path.startsWith(`${base}/`);
   return same ? path.slice(base.length + 1) : path;

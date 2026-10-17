@@ -153,32 +153,44 @@ export function defaultOpencodeConfigDir(env = process.env) {
   return env.XDG_CONFIG_HOME ? join(env.XDG_CONFIG_HOME, 'opencode') : join(homedir(), '.config', 'opencode');
 }
 
-/** Refuses settings the monitor cannot run with, in words that say which one. */
-function validate(cfg) {
+const isHour = h => Number.isInteger(h) && h >= 0 && h <= 23;
+const DISCORD_WEBHOOK = /^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+const KEY_REFERENCE = /^\{(env|file):.+\}$/;
+
+/** The server, its checks and OpenCode's own command. */
+function validateMonitor(cfg) {
   if (!Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535) throw new UserError(`Invalid port: ${cfg.port}`);
   if (typeof cfg.lan !== 'boolean') throw new UserError('lan must be true or false.');
-  if (!(cfg.pollMs >= 500)) throw new UserError('pollMs must be at least 500.');
+  // As `>=` reads it: "600" will do, nothing that is not a number of at least 500 will.
+  const pollMs = Number(cfg.pollMs);
+  if (Number.isNaN(pollMs) || pollMs < 500) throw new UserError('pollMs must be at least 500.');
   if (!['off', 'local', 'all'].includes(cfg.environment.modelServers)) throw new UserError('environment.modelServers must be "off", "local", or "all".');
   if (!Array.isArray(cfg.services)) throw new UserError('services must be a list.');
   if (typeof cfg.opencodeApi.enabled !== 'boolean') throw new UserError('opencodeApi.enabled must be true or false.');
   if (typeof cfg.opencodeApi.command !== 'string' || !cfg.opencodeApi.command.trim()) throw new UserError('opencodeApi.command must be the command that starts OpenCode.');
-  const hook = cfg.notify.discord.webhookUrl;
-  if (hook && !/^https:\/\/(?:[\w-]+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(hook)) {
-    throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
-  }
-
-  const { weekday, hour } = cfg.notify.weekly;
-  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
-  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new UserError('notify.weekly.hour must be 0 to 23.');
-  for (const key of ['from', 'to']) {
-    const h = cfg.overnight[key];
-    if (!Number.isInteger(h) || h < 0 || h > 23) throw new UserError(`overnight.${key} must be an hour, 0 to 23.`);
-  }
-  if (!isPlainObject(cfg.modelServerKeys) || Object.values(cfg.modelServerKeys).some(v => typeof v !== 'string' || !/^\{(env|file):.+\}$/.test(v))) {
+  if (!isPlainObject(cfg.modelServerKeys) || Object.values(cfg.modelServerKeys).some(v => typeof v !== 'string' || !KEY_REFERENCE.test(v))) {
     throw new UserError('modelServerKeys maps a provider id to "{env:NAME}" or "{file:path}", where its key is; never the key itself.');
   }
+}
+
+/** Where notifications go, and when the summaries are sent. */
+function validateNotify(cfg) {
+  const hook = cfg.notify.discord.webhookUrl;
+  if (hook && !DISCORD_WEBHOOK.test(hook)) {
+    throw new UserError('notify.discord.webhookUrl does not look like a Discord webhook URL (https://discord.com/api/webhooks/<id>/<token>).');
+  }
+  const { weekday, hour } = cfg.notify.weekly;
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
+  if (!isHour(hour)) throw new UserError('notify.weekly.hour must be 0 to 23.');
+  for (const key of ['from', 'to']) if (!isHour(cfg.overnight[key])) throw new UserError(`overnight.${key} must be an hour, 0 to 23.`);
   if (cfg.overnight.from === cfg.overnight.to) throw new UserError('overnight.from and overnight.to must differ.');
   if (typeof cfg.notify.overnight.enabled !== 'boolean') throw new UserError('notify.overnight.enabled must be true or false.');
+}
+
+/** Refuses settings the monitor cannot run with, in words that say which one. */
+function validate(cfg) {
+  validateMonitor(cfg);
+  validateNotify(cfg);
 }
 
 export function loadConfig(args = {}, env = process.env) {

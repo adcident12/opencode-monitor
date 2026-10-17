@@ -18,6 +18,32 @@ const DAY_MS = 86_400_000;
 // Ids go into a command line: nothing but what an OpenCode id is made of.
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 
+/** A line of the file as an entry with an id, or null for one that is not. */
+function entryOf(line) {
+  try {
+    const entry = JSON.parse(line);
+    return entry && ID.test(String(entry.id ?? '')) ? entry : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Takes one entry into `asks`: a prompt within retention, or the answer to one known. Whether
+ * its line is worth keeping in the file.
+ */
+function takeEntry(asks, entry, cutoff) {
+  if (!entry) return false;
+  if (typeof entry.t === 'number') {
+    if (entry.t < cutoff) return false;
+    asks.set(entry.id, { run: null, kind: 'permission', permission: null, patterns: '', session: null, part: null, ...entry, answeredAt: entry.answeredAt ?? null });
+    return true;
+  }
+  if (typeof entry.answeredAt !== 'number' || !asks.has(entry.id)) return false;
+  asks.get(entry.id).answeredAt = entry.answeredAt;
+  return true;
+}
+
 /**
  * When a request was made, from its id. An OpenCode id begins with twelve hex digits: the
  * time in milliseconds, its low 36 bits, then a counter. null for anything else.
@@ -111,24 +137,9 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
       return; // Nothing recorded yet.
     }
     const lines = text.split('\n').filter(Boolean);
-    const kept = [];
     asks.clear();
-    for (const line of lines) {
-      let entry;
-      try {
-        entry = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      if (!entry || !ID.test(String(entry.id ?? ''))) continue;
-      if (typeof entry.t === 'number') {
-        if (entry.t < now - retentionDays * DAY_MS) continue;
-        asks.set(entry.id, { run: null, kind: 'permission', permission: null, patterns: '', session: null, part: null, ...entry, answeredAt: entry.answeredAt ?? null });
-      } else if (typeof entry.answeredAt === 'number' && asks.has(entry.id)) {
-        asks.get(entry.id).answeredAt = entry.answeredAt;
-      } else continue;
-      kept.push(line);
-    }
+    const cutoff = now - retentionDays * DAY_MS;
+    const kept = lines.filter(line => takeEntry(asks, entryOf(line), cutoff));
     resort();
     // Lines past their time are dropped from the file when it is first read.
     if (!readOnly && kept.length < lines.length) {
@@ -157,6 +168,13 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
     record({ id: ask.id, answeredAt: ask.answeredAt });
   };
 
+  /** The open prompts of sessions no longer running a call: they have moved on. */
+  function closeMovedOn(wanted, now) {
+    const gone = [...asks.values()].filter(a => a.answeredAt == null && a.session && !wanted.has(a.session));
+    for (const a of gone) close(a, now);
+    if (gone.length) resort();
+  }
+
   /** What OpenCode listed for one session: new prompts are added, missing ones closed. */
   function apply(sessionId, list, at) {
     const open = new Set();
@@ -166,7 +184,10 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
       open.add(ask.id);
       if (asks.has(ask.id)) continue;
       asks.set(ask.id, ask);
-      const { run: _run, answeredAt: _answered, ...line } = ask;
+      // Kept without what only this process knows: which run asked, and when it was answered.
+      const line = { ...ask };
+      delete line.run;
+      delete line.answeredAt;
       record(line);
     }
     for (const ask of asks.values()) if (ask.session === sessionId && !open.has(ask.id)) close(ask, at);
@@ -198,14 +219,7 @@ export function createPending({ enabled = true, command = 'opencode', file = nul
     check(sessionIds, now = Date.now()) {
       if (!enabled || readOnly) return;
       const wanted = new Set(sessionIds.filter(id => ID.test(id)));
-      let changed = false;
-      for (const a of asks.values()) {
-        if (a.answeredAt == null && a.session && !wanted.has(a.session)) {
-          close(a, now);
-          changed = true;
-        }
-      }
-      if (changed) resort();
+      closeMovedOn(wanted, now);
       for (const id of wantedSince.keys()) if (!wanted.has(id)) wantedSince.delete(id);
       for (const id of wanted) if (!wantedSince.has(id)) wantedSince.set(id, now);
       if (busy) return;

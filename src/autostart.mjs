@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { UserError } from './config.mjs';
-import { LAUNCHCTL, POWERSHELL } from './programs.mjs';
+import { LAUNCHCTL, POWERSHELL, SYSTEMCTL } from './programs.mjs';
 import { trimEndOf } from './text.mjs';
 
 export const TASK_NAME = 'opencode-monitor';
@@ -158,9 +158,9 @@ async function autostartUnix(mode, { platform, root, args, home, exec, files }) 
     const was = files.exists(unit.path);
     // Stopping fails when it was never loaded; removing the file is what matters.
     if (mac) await exec(LAUNCHCTL, ['bootout', `${domain}/${LABEL}`]).catch(() => {});
-    else await exec('systemctl', ['--user', 'disable', '--now', UNIT]).catch(() => {});
+    else await exec(SYSTEMCTL, ['--user', 'disable', '--now', UNIT]).catch(() => {});
     files.remove(unit.path);
-    if (!mac) await exec('systemctl', ['--user', 'daemon-reload']).catch(() => {});
+    if (!mac) await exec(SYSTEMCTL, ['--user', 'daemon-reload']).catch(() => {});
     return was ? `Removed ${unit.path}. The monitor will no longer start at login.` : `There was nothing to remove at ${unit.path}.`;
   }
   files.write(unit.path, unit.text);
@@ -168,8 +168,8 @@ async function autostartUnix(mode, { platform, root, args, home, exec, files }) 
     await exec(LAUNCHCTL, ['bootout', `${domain}/${LABEL}`]).catch(() => {}); // replace one already loaded
     await exec(LAUNCHCTL, ['bootstrap', domain, unit.path]);
   } else {
-    await exec('systemctl', ['--user', 'daemon-reload']);
-    await exec('systemctl', ['--user', 'enable', '--now', UNIT]);
+    await exec(SYSTEMCTL, ['--user', 'daemon-reload']);
+    await exec(SYSTEMCTL, ['--user', 'enable', '--now', UNIT]);
   }
   return `The monitor will start each time you log in, and has been started now.\n  written: ${unit.path}\n  undo: node server.mjs --autostart off`;
 }

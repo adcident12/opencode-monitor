@@ -1,14 +1,14 @@
 // Is an OpenCode process alive? Without this, a session that was mid-tool when OpenCode
 // crashed would look "stuck" forever.
 import { execFile } from 'node:child_process';
-import { TASKLIST } from './programs.mjs';
+import { PS, TASKLIST } from './programs.mjs';
 import { fields } from './text.mjs';
 
 function list() {
   return new Promise((resolve, reject) => {
     const [cmd, args] = process.platform === 'win32'
       ? [TASKLIST, ['/FO', 'CSV', '/NH']]
-      : ['ps', ['-A', '-o', 'pid=,args=']];
+      : [PS, ['-A', '-o', 'pid=,args=']];
     execFile(cmd, args, { windowsHide: true, maxBuffer: 16 * 1024 * 1024, timeout: 8000 }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout);

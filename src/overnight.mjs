@@ -39,6 +39,52 @@ function segmentsOf(id, before, events, from, to) {
   return segments;
 }
 
+/** One session of the night, from its states over it. */
+function sessionOf(id, segments, plan) {
+  const sum = state => segments.filter(s => s.state === state).reduce((n, s) => n + s.end - s.start, 0);
+  const last = segments.at(-1);
+  const e = last.event;
+  const left = plan?.left ?? 0;
+  return {
+    id,
+    title: e.title,
+    project: e.project,
+    // How it stood when the night ended, and since when.
+    state: last.state,
+    since: e.t,
+    reason: e.reason ?? null,
+    permission: e.permission ?? null,
+    error: e.error ?? null,
+    limitMs: e.limitMs ?? null,
+    workedMs: sum('working'),
+    waitedMs: sum('waiting') + sum('stuck') + sum('error'),
+    plan: plan?.plan ?? null,
+    left,
+    // Needs you now, or handed back with its plan left part done.
+    unfinished: NEEDS_YOU.has(last.state) || left > 0,
+  };
+}
+
+/**
+ * How long nothing ran while something waited for you: the night's lost hours, in all and
+ * the longest stretch (several short stops are not one long one).
+ */
+function stillOf(segments) {
+  const edges = [...new Set(segments.flatMap(s => [s.start, s.end]))].sort((a, b) => a - b);
+  let stillMs = 0;
+  let longest = null;
+  let run = null;
+  for (let i = 0; i < edges.length - 1; i++) {
+    const [a, b] = [edges[i], edges[i + 1]];
+    const during = segments.filter(s => s.start <= a && s.end >= b);
+    if (during.some(s => s.state === 'working') || !during.some(s => NEEDS_YOU.has(s.state))) continue;
+    stillMs += b - a;
+    run = run?.to === a ? { from: run.from, to: b } : { from: a, to: b };
+    if (!longest || run.to - run.from > longest.to - longest.from) longest = run;
+  }
+  return { stillMs, longestStill: longest && { from: longest.from, to: longest.to, ms: longest.to - longest.from } };
+}
+
 /**
  * @param {object} input
  * @param {Map<string, object>} input.before  each session's latest change before the night
@@ -58,44 +104,7 @@ export function overnightOf({ before, events, from, to, going = false, planOf = 
     const segments = segmentsOf(id, before, events, from, to);
     if (!segments.length) continue;
     all.push(...segments);
-    const sum = state => segments.filter(s => s.state === state).reduce((n, s) => n + s.end - s.start, 0);
-    const last = segments.at(-1);
-    const e = last.event;
-    const plan = planOf(id);
-    sessions.push({
-      id,
-      title: e.title,
-      project: e.project,
-      // How it stood when the night ended, and since when.
-      state: last.state,
-      since: e.t,
-      reason: e.reason ?? null,
-      permission: e.permission ?? null,
-      error: e.error ?? null,
-      limitMs: e.limitMs ?? null,
-      workedMs: sum('working'),
-      waitedMs: sum('waiting') + sum('stuck') + sum('error'),
-      plan: plan?.plan ?? null,
-      left: plan?.left ?? 0,
-      // Needs you now, or handed back with its plan left part done.
-      unfinished: NEEDS_YOU.has(last.state) || (plan?.left ?? 0) > 0,
-    });
-  }
-
-  // How long nothing ran while something waited for you: the night's lost hours.
-  const edges = [...new Set(all.flatMap(s => [s.start, s.end]))].sort((a, b) => a - b);
-  // In all, and the longest stretch: several short stops are not one long one.
-  let stillMs = 0;
-  let longest = null;
-  let run = null;
-  for (let i = 0; i < edges.length - 1; i++) {
-    const [a, b] = [edges[i], edges[i + 1]];
-    const at = s => s.start <= a && s.end >= b;
-    if (!all.some(s => at(s) && s.state === 'working') && all.some(s => at(s) && NEEDS_YOU.has(s.state))) {
-      stillMs += b - a;
-      run = run && run.to === a ? { from: run.from, to: b } : { from: a, to: b };
-      if (!longest || run.to - run.from > longest.to - longest.from) longest = run;
-    }
+    sessions.push(sessionOf(id, segments, planOf(id)));
   }
 
   sessions.sort((a, b) => Number(b.unfinished) - Number(a.unfinished) || b.since - a.since);
@@ -111,8 +120,7 @@ export function overnightOf({ before, events, from, to, going = false, planOf = 
       working: sessions.filter(s => s.state === 'working').length,
       workedMs: sessions.reduce((n, s) => n + s.workedMs, 0),
       waitedMs: sessions.reduce((n, s) => n + s.waitedMs, 0),
-      stillMs,
-      longestStill: longest && { from: longest.from, to: longest.to, ms: longest.to - longest.from },
+      ...stillOf(all),
     },
   };
 }

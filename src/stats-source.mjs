@@ -122,7 +122,12 @@ export function createStatsSource({ db, log, cfg, redact, mcpServers = [], proje
       scope = new Set([sessionId]);
       for (let grew = true; grew;) {
         grew = false;
-        for (const s of input.sessions) if (s.parent_id && scope.has(s.parent_id) && !scope.has(s.id)) grew = scope.add(s.id) && true;
+        for (const s of input.sessions) {
+          if (s.parent_id && scope.has(s.parent_id) && !scope.has(s.id)) {
+            scope.add(s.id);
+            grew = true;
+          }
+        }
       }
     }
     return compareAt(input, at, each, scope, typeof model === 'string' && model.length <= 200 ? model : null);

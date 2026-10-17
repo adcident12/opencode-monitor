@@ -156,7 +156,7 @@ function openV2(db, columns) {
     const { n, t } = stmt.signature.get(sessionId);
     const key = `${n}|${t}`;
     let entry = live.get(sessionId);
-    if (!entry || entry.key !== key) entry = { key, parts: n ? normalizeV2(stmt.ofSession.all(sessionId)).parts : [] };
+    if (entry?.key !== key) entry = { key, parts: n ? normalizeV2(stmt.ofSession.all(sessionId)).parts : [] };
     live.delete(sessionId);
     live.set(sessionId, entry);
     while (live.size > V2_LIVE_SESSIONS) live.delete(live.keys().next().value);
@@ -205,7 +205,8 @@ function standInFor1x(db) {
   const missing = Object.keys(REQUIRED).filter(table => !has(table));
   if (!missing.length) return;
   db.exec('pragma temp_store = memory');
-  for (const table of missing) db.exec(`create temp table ${table} (${REQUIRED[table].map(column => `${column}${column.startsWith('time_') ? ' integer' : ' text'}`).join(', ')})`);
+  const columnOf = column => (column.startsWith('time_') ? `${column} integer` : `${column} text`);
+  for (const table of missing) db.exec(`create temp table ${table} (${REQUIRED[table].map(columnOf).join(', ')})`);
 }
 
 export function openDb(dataDir) {

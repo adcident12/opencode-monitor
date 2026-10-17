@@ -7,7 +7,7 @@
 // background-flagged call, and sharing distinctive words with that command. Its children
 // (the node behind an npm, say) come along, since they are what actually holds the port.
 import { execFile } from 'node:child_process';
-import { NETSTAT, POWERSHELL } from './programs.mjs';
+import { LSOF, NETSTAT, POWERSHELL, PS } from './programs.mjs';
 import { fields, trimEndOf, trimStartOf } from './text.mjs';
 
 const START_WINDOW_MS = 60_000;
@@ -169,8 +169,8 @@ async function readProcessTable() {
     return { processes: parseWindowsProcesses(procs), ports: parseNetstat(net) };
   }
   const [procs, net] = await Promise.all([
-    run('ps', ['-A', '-o', 'pid=,ppid=,etime=,args=']),
-    run('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pn']).catch(() => ''),
+    run(PS, ['-A', '-o', 'pid=,ppid=,etime=,args=']),
+    run(LSOF, ['-nP', '-iTCP', '-sTCP:LISTEN', '-F', 'pn']).catch(() => ''),
   ]);
   return { processes: parsePs(procs, now), ports: parseLsof(net) };
 }
