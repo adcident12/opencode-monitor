@@ -10,7 +10,7 @@ test('a model server is asked for its health address, whatever its baseURL ends 
   assert.equal(healthUrl('http://127.0.0.1:11435/v1/'), 'http://127.0.0.1:11435/v1/health');
 });
 
-test('up: any answer below 500, with no key sent and the list of models never asked for', async () => {
+test('up: any answer below 500, with no key sent, the list of models never asked for, and settings asked once', async () => {
   const asked = [];
   const answers = { '/up/health': 200, '/nokey/health': 401, '/none/health': 404, '/loading/health': 503 };
   const server = createServer((req, res) => {
@@ -30,7 +30,10 @@ test('up: any answer below 500, with no key sent and the list of models never as
     await environment.refresh();
     const models = Object.fromEntries(environment.view(new Map(), []).models.map(m => [m.name, m.ok]));
     assert.deepEqual(models, { up: true, nokey: true, none: true, loading: false });
-    assert.deepEqual(asked.map(a => a[0]).sort(), ['/loading/health', '/nokey/health', '/none/health', '/up/health']);
+    // Settings of the servers that are up; each refused, so none is asked again.
+    await environment.refresh();
+    assert.deepEqual(asked.map(a => a[0]).sort(), ['/loading/health', '/loading/health', '/nokey/health', '/nokey/health', '/nokey/props', '/none/health', '/none/health', '/none/props', '/up/health', '/up/health', '/up/props']);
+    assert.ok(!asked.some(a => /models/.test(a[0])));
     assert.ok(asked.every(a => a[1] === null));
   } finally {
     server.close();

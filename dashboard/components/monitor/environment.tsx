@@ -25,13 +25,24 @@ export function Environment({ environment }: Readonly<{ environment: Snapshot["e
     note: checkedNote(item),
     tip: item.target,
   })
+  // A model server: up or down, and where it runs something other than OpenCode thinks.
+  const modelServer = (item: CheckedTarget) => {
+    const base = checked(item)
+    const s = item.settings
+    const loaded = s?.status === "ok" ? t("env.server.loaded", { model: s.model ?? s.file ?? "?", ctx: s.nCtx ?? "?", slots: s.slots ?? "?" }) : null
+    const tip = [item.target, loaded, s && s.status !== "ok" && t(`env.server.${s.status}`, { provider: item.name })].filter(Boolean).join(" · ")
+    const wrong = item.mismatches?.[0]
+    if (!wrong || !item.ok) return { ...base, tip }
+    const note = wrong.kind === "model" ? t("env.server.otherModel", { asked: wrong.asked, loaded: wrong.loaded }) : t("env.server.smallerContext", { server: wrong.server, opencode: wrong.opencode })
+    return { ...base, tone: "bad" as const, note, tip }
+  }
   const mcpNote = (m: NonNullable<Snapshot["environment"]>["mcp"][number]) => {
     if (m.status === "failed") return t(`env.mcp.${m.kind}`)
     return m.status === "ok" ? "" : t("env.mcp.unknown")
   }
 
   const groups = [
-    { label: t("env.model"), items: environment.models.map(checked) },
+    { label: t("env.model"), items: environment.models.map(modelServer) },
     {
       label: t("env.mcp"),
       items: environment.mcp

@@ -80,6 +80,13 @@
   "hint.new_session": "Consider starting a new session.",
 
   "env.model": "Model server",
+  "env.server.loaded": "Loaded: {model}, context {ctx}, {slots} slots",
+  "env.server.otherModel": "serves {loaded}, OpenCode asks for {asked}",
+  "env.server.smallerContext": "context {server}, OpenCode takes it as {opencode}",
+  "env.server.needs_key": "Its settings need its key: modelServerKeys.{provider} in config.json",
+  "env.server.unauthorized": "The key in modelServerKeys.{provider} was refused",
+  "env.server.key_problem": "modelServerKeys.{provider}: the key could not be read",
+  "env.server.unavailable": "No llama.cpp settings to read (/props)",
   "env.mcp": "MCP",
   "env.services": "Services",
   "env.unreachable": "unreachable",

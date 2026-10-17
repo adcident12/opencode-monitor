@@ -104,6 +104,10 @@ export interface CheckedTarget {
   status?: number | null
   ms?: number | null
   error?: "unreachable" | "timeout" | null
+  /** A model server's own settings (llama.cpp's /props), when it was asked. */
+  settings?: { status: "ok" | "needs_key" | "unauthorized" | "unavailable" | "key_problem"; problem: string | null; model?: string | null; file?: string | null; nCtx?: number | null; slots?: number | null }
+  /** Where OpenCode and the server disagree, for the models sessions ask it for now. */
+  mismatches?: ({ kind: "model"; asked: string; loaded: string } | { kind: "context"; model: string; opencode: number; server: number })[]
 }
 
 export interface McpServer {

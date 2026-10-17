@@ -80,6 +80,13 @@
   "hint.new_session": "ควรเริ่ม session ใหม่",
 
   "env.model": "Model server",
+  "env.server.loaded": "โหลดอยู่: {model}, context {ctx}, {slots} slot",
+  "env.server.otherModel": "รัน {loaded} อยู่ แต่ OpenCode ขอ {asked}",
+  "env.server.smallerContext": "context {server} แต่ OpenCode คิดว่าเป็น {opencode}",
+  "env.server.needs_key": "ต้องใช้รหัสของ server เพื่ออ่านการตั้งค่า: modelServerKeys.{provider} ใน config.json",
+  "env.server.unauthorized": "รหัสใน modelServerKeys.{provider} ถูกปฏิเสธ",
+  "env.server.key_problem": "modelServerKeys.{provider}: อ่านรหัสไม่ได้",
+  "env.server.unavailable": "ไม่มีการตั้งค่าแบบ llama.cpp ให้อ่าน (/props)",
   "env.mcp": "MCP",
   "env.services": "Service",
   "env.unreachable": "ติดต่อไม่ได้",

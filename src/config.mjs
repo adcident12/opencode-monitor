@@ -70,6 +70,9 @@ export const DEFAULTS = {
   opencodeApi: { enabled: true, command: 'opencode' },
   redact: { enabled: true, extraPatterns: [] },
   environment: { checkSeconds: 15, modelServers: 'local' },
+  // Where the key of a model server is, by OpenCode provider id, to read its settings
+  // (llama.cpp's /props): "{env:NAME}" or "{file:path}", never the key itself.
+  modelServerKeys: {},
   services: [],
   work: { git: true, processes: true, protectedBranches: ['main', 'master'] },
   review: { ignoreRules: [] },
@@ -170,6 +173,9 @@ function validate(cfg) {
   for (const key of ['from', 'to']) {
     const h = cfg.overnight[key];
     if (!Number.isInteger(h) || h < 0 || h > 23) throw new UserError(`overnight.${key} must be an hour, 0 to 23.`);
+  }
+  if (!isPlainObject(cfg.modelServerKeys) || Object.values(cfg.modelServerKeys).some(v => typeof v !== 'string' || !/^\{(env|file):.+\}$/.test(v))) {
+    throw new UserError('modelServerKeys maps a provider id to "{env:NAME}" or "{file:path}", where its key is; never the key itself.');
   }
   if (cfg.overnight.from === cfg.overnight.to) throw new UserError('overnight.from and overnight.to must differ.');
   if (typeof cfg.notify.overnight.enabled !== 'boolean') throw new UserError('notify.overnight.enabled must be true or false.');

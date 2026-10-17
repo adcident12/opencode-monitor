@@ -164,7 +164,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     // config.json can name a window the monitor could not read; OpenCode's own value wins
     // for the compaction point, because that is the one OpenCode compacts by.
     const limit = cfg.contextLimit.models[key] ?? cfg.contextLimit.models[model] ?? opencodeLimit ?? cfg.contextLimit.default;
-    return { model: model ?? null, limit: limit ?? null, autoCompact: settings.auto !== false, compactAt: compactionPoint(opencodeLimit ?? limit ?? null, reserve, settings) };
+    return { provider: provider ?? null, model: model ?? null, limit: limit ?? null, autoCompact: settings.auto !== false, compactAt: compactionPoint(opencodeLimit ?? limit ?? null, reserve, settings) };
   }
 
   const shortPath = (file, root) => {
@@ -288,7 +288,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
     const lastId = messages.at(-1)?.id;
     if (probe.running !== false && parts.some(p => p.v2 && p.message_id === lastId && (p.status === 'running' || p.status === 'pending'))) runningV2.add(session.id);
     const derived = deriveState({ session, parts, messages, asks, now, thresholds: cfg.thresholds, opencodeRunning: probe.running, evictions: log.evictions?.() ?? [] });
-    const { model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
+    const { provider, model, limit, compactAt, autoCompact } = contextLimitFor(session, messages);
     const health = deriveHealth({ session, parts, now, thresholds: cfg.thresholds, contextLimit: limit, compactAt, autoCompact });
     // OpenCode 2 keeps no todo table: its plan is the latest todowrite call.
     const table = db.todos(session.id);
@@ -301,6 +301,7 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
       project: show(basename(session.directory ?? '') || session.directory, 80),
       directory: show(session.directory, 200),
       model,
+      provider,
       version: session.version ?? null,
       createdAt: session.time_created,
       updatedAt: Math.max(session.time_updated, maxUpdated),
@@ -359,7 +360,10 @@ export function createMonitor({ db, log, cfg, redact, modelLimits, modelReserves
       // The OpenCode in use now: as its log says when it started. Without a log, the version
       // that created the newest session, which is older for a session carried on.
       const opencodeVersion = log.opencodeVersion?.() ?? rows.find(r => r.version)?.version ?? previous.opencodeVersion;
-      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers) ?? null, opencodeVersion };
+      // The models OpenCode asks each model server for now: of the sessions working.
+      const asked = new Map();
+      for (const s of sessions) if (s.state === 'working' && s.provider && s.model) asked.set(s.provider, [...(asked.get(s.provider) ?? []), s.model]);
+      previous = { sessions, environment: environment?.view(mcpUseOf(serverOf), projectServers, asked) ?? null, opencodeVersion };
       return { ...base, stale: false, ...previous };
     } catch (err) {
       // Usually a brief lock while OpenCode writes. Keep showing the last good data, marked stale.
