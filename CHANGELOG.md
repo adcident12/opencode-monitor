@@ -3,6 +3,26 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.9.0 - 2026-10-17
+
+What the model server is doing, and which model really answered.
+
+- **What the model is doing while a session waits on it.** The session's card says what the
+  llama.cpp server is doing for it, read from its slots every three seconds while it waits:
+  reading the prompt (how many tokens so far, how fast), writing (how many, how fast), or
+  not working on any request for a minute, which is the server, not the agent. llama.cpp does
+  not say how long a prompt is until it has read it all, so no share and no time left is
+  given: they would be guesses. With two sessions waiting on one server nothing is shown,
+  since which slot serves which is not known.
+- **Which model really answered.** The monitor keeps which model each server had loaded and
+  when (`data/served.jsonl`), and Stats says how many replies OpenCode named after another
+  model than the one loaded (`servedAs`), with a "Worth knowing" sentence from ten on. The
+  figures stay under the names OpenCode recorded; only a server started with `--alias` is
+  compared, and only while the monitor was running.
+- **MCP.** `opencode_overnight` answers "what happened while I was away" for the latest night
+  or one up to six back, and `opencode_settings` says what each model server really runs and
+  where OpenCode thinks otherwise. The MCP process reads the history without ever writing it.
+
 ## 11.8.0 - 2026-10-17
 
 While you were away, and what the model server really runs.
