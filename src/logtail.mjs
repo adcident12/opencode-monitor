@@ -44,7 +44,9 @@ export function parseMcpConnectLine(line) {
   const directory = unquote(DIRECTORY.exec(line)?.[1]);
   if (!directory) return null;
   const ok = m[3] === 'mcp connected';
-  return { t, run: m[2], name: m[4], directory, ok, error: ok ? null : String(unquote(STATUS_ERROR.exec(line)?.[1]) ?? '').slice(0, 200) };
+  // How many tools it offered: none is a server the agent cannot use.
+  const tools = ok ? Number(/ tools=(\d+)/.exec(line)?.[1] ?? Number.NaN) : Number.NaN;
+  return { t, run: m[2], name: m[4], directory, ok, tools: Number.isNaN(tools) ? null : tools, error: ok ? null : String(unquote(STATUS_ERROR.exec(line)?.[1]) ?? '').slice(0, 200) };
 }
 
 // OpenCode 2 puts a project away after an hour without activity. A question or a permission
@@ -264,6 +266,21 @@ export function createLogTail(path) {
     opencodeVersion: () => version,
     /** OpenCode 2: each server and folder whose latest connection failed, in a run still going. */
     mcpDisconnected: () => [...connections.values()].filter(c => !c.ok && live.has(c.run)),
+    /**
+     * OpenCode 2: each server's latest working connection in a run still going, with the most
+     * tools any folder got (a server can offer tools in one project and none in another).
+     */
+    mcpConnected: () => {
+      const latest = new Map();
+      for (const c of connections.values()) {
+        if (!c.ok || !live.has(c.run)) continue;
+        const known = latest.get(c.name);
+        const tools = Math.max(known?.tools ?? -1, c.tools ?? -1);
+        const newer = !known || c.t > known.t ? c : known;
+        latest.set(c.name, { ...newer, tools: tools < 0 ? null : tools });
+      }
+      return latest;
+    },
     runEnds: () => runEnds,
     mcpFailures: () => mcpFailures,
     mcpEvents: () => mcpMarked,

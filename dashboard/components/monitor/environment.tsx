@@ -38,7 +38,14 @@ export function Environment({ environment }: Readonly<{ environment: Snapshot["e
   }
   const mcpNote = (m: NonNullable<Snapshot["environment"]>["mcp"][number]) => {
     if (m.status === "failed") return t(`env.mcp.${m.kind}`)
-    return m.status === "ok" ? "" : t("env.mcp.unknown")
+    if (m.status !== "ok") return t("env.mcp.unknown")
+    if (m.lastOkAt != null || m.connectedAt == null) return ""
+    return t(m.tools === 0 ? "env.mcp.no_tools" : "env.mcp.connected")
+  }
+
+  const mcpTip = (m: NonNullable<Snapshot["environment"]>["mcp"][number]) => {
+    if (m.status !== "ok" || m.lastOkAt != null) return t(`env.mcp.tip.${m.status}`)
+    return m.tools === 0 ? t("env.mcp.tip.no_tools") : t("env.mcp.tip.connected", { tools: m.tools ?? "?" })
   }
 
   const groups = [
@@ -50,9 +57,10 @@ export function Environment({ environment }: Readonly<{ environment: Snapshot["e
         .map(m => ({
           key: m.name,
           name: m.name,
-          tone: MCP_TONE[m.status],
+          // Connected but given no tools here: not a failure, not a working server either.
+          tone: m.status === "ok" && m.lastOkAt == null && m.tools === 0 ? ("unknown" as const) : MCP_TONE[m.status],
           note: mcpNote(m),
-          tip: t(`env.mcp.tip.${m.status}`),
+          tip: mcpTip(m),
         })),
     },
     { label: t("env.services"), items: environment.services.map(checked) },

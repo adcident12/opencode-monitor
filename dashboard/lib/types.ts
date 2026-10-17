@@ -119,6 +119,10 @@ export interface McpServer {
   kind: "unavailable" | "closed" | null
   failedAt: number | null
   lastOkAt: number | null
+  /** OpenCode 2: when it connected the server, while no tool of it has been used. */
+  connectedAt?: number | null
+  /** OpenCode 2: how many tools the server offered when it connected. */
+  tools?: number | null
 }
 
 export interface Snapshot {

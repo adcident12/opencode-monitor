@@ -24,7 +24,7 @@ const PROPS_MS = 5 * 60_000;
  * @param {Set<string>} input.liveRuns  OpenCode runs still going (logtail's liveRuns)
  * @param {Map<string, {okAt: number|null, connErrAt: number|null}>} input.use  per server
  */
-export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning }) {
+export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning, connected = new Map() }) {
   const names = new Map(servers.map(s => [s.name, s]));
   // A server from a config we could not read is unknown to us until it fails.
   for (const [name, failure] of failures) if (!names.has(name) && liveRuns.has(failure.run)) names.set(name, { name, type: 'local', enabled: true, scope: 'project' });
@@ -38,12 +38,16 @@ export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning })
       logged && liveRuns.has(logged.run) && !worksSince(logged.t) ? { t: logged.t, kind: logged.kind } : null,
       connErrAt != null && !worksSince(connErrAt) ? { t: connErrAt, kind: 'closed' } : null,
     ].filter(Boolean).sort((a, b) => b.t - a.t);
-    const failure = candidates[0] ?? null;
+    // OpenCode 2 says when it connected a server, and with how many tools: a connection after
+    // a failure is the server back. Some offer tools only in a project they were set up for
+    // (graft: none in a folder it has not indexed), so a connection with none is not a failure.
+    const link = connected.get(server.name) ?? null;
+    const failure = candidates[0] && !(link?.t > candidates[0].t) ? candidates[0] : null;
     let status;
     if (!server.enabled) status = 'disabled';
     else if (opencodeRunning === false) status = 'unknown';
     else if (failure) status = 'failed';
-    else status = lastOkAt ? 'ok' : 'unknown';
+    else status = lastOkAt || link ? 'ok' : 'unknown';
     return {
       name: server.name,
       type: server.type,
@@ -52,6 +56,9 @@ export function mcpStatus({ servers, failures, liveRuns, use, opencodeRunning })
       kind: status === 'failed' ? failure.kind : null,
       failedAt: status === 'failed' ? failure.t : null,
       lastOkAt,
+      connectedAt: status === 'ok' ? (link?.t ?? null) : null,
+      // The most any folder of a running OpenCode was given: 0 only when none got any.
+      tools: link?.tools ?? null,
     };
   });
 }
@@ -193,6 +200,7 @@ export function createEnvironment({ cfg, opencode, log, probe }) {
         liveRuns: log.liveRuns(),
         use: mcpUse,
         opencodeRunning: probe.running,
+        connected: log.mcpConnected?.() ?? new Map(),
       }),
     };
   }
