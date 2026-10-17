@@ -462,6 +462,8 @@ The version is the one in `package.json`. It is printed when the monitor starts,
 
 Work on a version happens on a branch named after it (`v6`), and `main` is moved to it when it is done. The released commit is tagged `v6.0.0`.
 
+`npm run release -- 11.10.0` checks a release before it is made: the branch is the version's own (`v11.10`), nothing is left uncommitted, CHANGELOG.md has an entry for it dated today, and the tests pass. With `--yes` it then makes it: the version in `package.json`, a "Release 11.10.0" commit tagged `v11.10.0`, `main` moved to it, everything pushed, and a GitHub release (with `gh`) from the changelog entry.
+
 ## Contributing
 
 This project does not accept code contributions. Pull requests are closed without review, whatever their quality, and feature requests are not taken; bug reports are welcome as issues, with the output of `node server.mjs --doctor`. The reasons, and what you are free to do with the code, are in [CONTRIBUTING.md](CONTRIBUTING.md).

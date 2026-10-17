@@ -14,6 +14,7 @@
     "sample": "node server.mjs --sample",
     "test": "node --test \"test/*.test.mjs\"",
     "verify": "node scripts/verify.mjs",
+    "release": "node scripts/release.mjs",
     "sonar": "node scripts/sonar.mjs"
   }
 }
