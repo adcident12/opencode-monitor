@@ -3,6 +3,29 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.12.0 - 2026-10-17
+
+What is happening now for an assistant, loops and lost cache on the replay, and a correction.
+
+- **opencode_now.** What the Now tab shows, for an assistant: every session of the last day,
+  most urgent first, with what it waits on, the call it runs, its plan, its context and room
+  before compaction, whether it is going round in circles, and the servers it depends on.
+  At `/mcp` it is the monitor's own reading; `mcp.mjs` reads the sessions as the page does.
+- **Replay marks.** Above each row of the timeline, a band where it went round in circles and
+  a dot where its model read again what its server had cached; both are listed under What
+  happened, a lost cache with its cause.
+- **Kinds of notification not switched on.** A `notify.on` set in `config.json` is kept as
+  it is when a version adds a kind, so This machine and `--doctor` say which kinds are on by
+  default and not in yours (`"loop"`, `"budget"`). Never switched on by the monitor.
+- **Budget notifications survive a restart.** What was told is kept in `data/budget.json`: a
+  budget already spent when the monitor starts is told if it was not before, and never twice.
+- **Correction to 11.11.** The calls an OpenCode 2 `execute` script makes were each counted as
+  a call of the agent, so one script that called a failing tool 256 times read as the agent
+  failing 257 times in a row. Each tool in a script now counts once; a script that loops by
+  itself is told by Stats as a script that looped. On a month of real sessions the loops found
+  are a page wait and a page script that each failed four times in a row, and plans that stood
+  still for over an hour of work.
+
 ## 11.11.0 - 2026-10-17
 
 Why the prompt cache was lost, an agent going round in circles, and what it cost.
