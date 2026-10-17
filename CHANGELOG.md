@@ -3,6 +3,29 @@
 What each version added, newest first. The version that is running is shown next to the title
 on the page and printed at startup.
 
+## 11.10.0 - 2026-10-17
+
+Prompts read again, a model server that stops, and a README true to the system.
+
+- **Prompts read again from the start.** While a session waits on a llama.cpp server, the
+  monitor sees in its slots when a request finished reading its prompt. Each read of 8,192
+  tokens or more is kept in `data/reads.jsonl` (when, how many tokens, how long it was seen
+  reading), and Stats sums them (`longReads`), with a "Worth knowing" sentence from ten minutes
+  in a period. The first live run caught one of 99,442 tokens that kept a session waiting two
+  minutes before its first word.
+- **Told when the model server works on nothing.** `"server_idle"` in `notify.on`, on by
+  default: a session waits on its llama.cpp server and the server has worked on no request
+  for a minute, so it may have dropped this one. Told once, until it works again. A
+  `notify.on` already set in `config.json` needs it added.
+- **verify does not call a moment a bug.** A figure that differs while OpenCode is writing is
+  counted again from the start, once, and only that count is reported; a session still
+  working is not compared across two of the monitor's answers.
+- **npm run release.** A release is checked before it is made (the branch, nothing
+  uncommitted, a changelog entry dated today, the tests), then made with `--yes`.
+- **README.** Contents, a summary of the features, Getting started, each tab in the order of
+  the page, every setting the monitor reads, the files it writes, Troubleshooting, and a
+  Development section; and made true to the system where it had fallen behind.
+
 ## 11.9.0 - 2026-10-17
 
 What the model server is doing, and which model really answered.
