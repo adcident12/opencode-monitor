@@ -141,6 +141,19 @@ export function createHistory({ file, retentionDays, enabled = true, now = Date.
         .sort(newestFirst);
       return { events: matching.slice(0, size), more: Math.max(0, matching.length - size), truncated: dropped > 0 };
     },
+    /**
+     * What happened in [from, to]: the changes in it, oldest first, and each session's latest
+     * change before it (its state when the stretch began).
+     */
+    between: (from, to) => {
+      const before = new Map();
+      const inside = [];
+      for (const e of events) {
+        if (e.t < from) before.set(e.id, e);
+        else if (e.t <= to) inside.push(e);
+      }
+      return { before, events: inside };
+    },
     /** Every session that has an entry, most recently changed first. */
     sessions: () => {
       const seen = new Map();

@@ -74,6 +74,8 @@ export const DEFAULTS = {
   work: { git: true, processes: true, protectedBranches: ['main', 'master'] },
   review: { ignoreRules: [] },
   history: { enabled: true, file: 'data/history.jsonl', retentionDays: 30 },
+  // The hours you are away, local time: the night the overnight report covers.
+  overnight: { from: 22, to: 8 },
   notify: {
     on: ['waiting', 'stuck', 'error', 'dropped'],
     environment: true,
@@ -82,6 +84,8 @@ export const DEFAULTS = {
     discord: { webhookUrl: '', mention: '', includeDetail: false },
     // The week's takeaways, to Discord. weekday: 0 Sunday .. 6 Saturday; hour: local time.
     weekly: { enabled: false, weekday: 1, hour: 9 },
+    // The overnight report, to Discord, when the night ends (overnight.to).
+    overnight: { enabled: false },
   },
 };
 
@@ -163,6 +167,12 @@ function validate(cfg) {
   const { weekday, hour } = cfg.notify.weekly;
   if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) throw new UserError('notify.weekly.weekday must be 0 (Sunday) to 6 (Saturday).');
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new UserError('notify.weekly.hour must be 0 to 23.');
+  for (const key of ['from', 'to']) {
+    const h = cfg.overnight[key];
+    if (!Number.isInteger(h) || h < 0 || h > 23) throw new UserError(`overnight.${key} must be an hour, 0 to 23.`);
+  }
+  if (cfg.overnight.from === cfg.overnight.to) throw new UserError('overnight.from and overnight.to must differ.');
+  if (typeof cfg.notify.overnight.enabled !== 'boolean') throw new UserError('notify.overnight.enabled must be true or false.');
 }
 
 export function loadConfig(args = {}, env = process.env) {

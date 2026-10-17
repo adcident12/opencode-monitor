@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react"
 import type { Bridge } from "./bridge"
 import type { Replay } from "./replay"
-import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, SetupReport, Snapshot, Stats, Tasks } from "./types"
+import type { ConfigChange, HistoryEvent, HistoryPage, SessionChoice, Overnight, SetupReport, Snapshot, Stats, Tasks } from "./types"
 
 /** Snapshots pushed by the monitor over server-sent events. */
 export function useSnapshot() {
@@ -266,6 +266,27 @@ export function useStats(days: number, session: string | null, split: string | n
   }, [days, session, split, key, enabled])
   // Figures for another range or session are not shown as if they were for this one.
   return { stats: state.key === key ? state.stats : null, failed: state.failed }
+}
+
+/** The latest night's report. Read again each minute while shown; null until loaded or when it fails. */
+export function useOvernight(enabled: boolean) {
+  const [report, setReport] = useState<Overnight | null>(null)
+  useEffect(() => {
+    if (!enabled) return
+    let live = true
+    const load = () =>
+      fetch("/api/overnight")
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+        .then(value => live && setReport(value))
+        .catch(() => {})
+    load()
+    const timer = setInterval(load, 60_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [enabled])
+  return report
 }
 
 /** Every session of a period by project, with its plan. Read again each minute while shown. */

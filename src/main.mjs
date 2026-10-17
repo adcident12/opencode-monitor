@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { createConfigWatch, shownChanges } from './config-changes.mjs';
 import { createDigest } from './digest.mjs';
+import { createOvernight } from './overnight.mjs';
 import { createReplaySource } from './replay-source.mjs';
 import { createBridgeSource } from './replay-bridge.mjs';
 import { createStatic } from './static.mjs';
@@ -218,6 +219,8 @@ export async function main(argv) {
   let liveStates = new Map(); // session id -> its state on the Now tab, from the latest reading
   const redactTasks = createRedactor(cfg.redact);
   const tasks = createTasksSource({ db, show: (text, max) => clip(redactTasks(String(text ?? '')), max), liveState: id => liveStates.get(id) ?? null });
+  // Not for --sample, as the weekly summary: fake sessions have no business in a real channel.
+  const overnight = createOvernight({ cfg, history, tasks, send: args.sample ? null : notify.send, t: loadTranslator(cfg.lang), stateFile: kept('overnight.json') });
   const clients = new Set();
   await probe.refresh();
   const lookup = createStatic(ROOT);
@@ -231,6 +234,7 @@ export async function main(argv) {
     liveStates = new Map(snap.sessions.map(s => [s.id, s.state]));
     configWatch.check(snap.now);
     digest?.check(snap.now);
+    overnight.check(snap.now);
     if (!snap.stale) {
       notify(snap.sessions, snap.now);
       if (cfg.notify.environment && snap.environment?.checkedAt) notify.environment(snap.environment, snap.now);
@@ -286,6 +290,11 @@ export async function main(argv) {
     '/api/tasks': {
       body: query => JSON.stringify(tasks(TASK_DAYS.includes(Number(query.get('days'))) ? Number(query.get('days')) : 7)),
       unavailable: ['Tasks failed', 'The list of tasks is not available right now.'],
+    },
+    // The latest night: what each session did while you were away, and how it stopped.
+    '/api/overnight': {
+      body: () => JSON.stringify(overnight.report()),
+      unavailable: ['Overnight report failed', 'The overnight report is not available right now.'],
     },
     '/api/config-changes': {
       body: query => {

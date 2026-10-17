@@ -67,6 +67,10 @@
     "retentionDays": 30
   },
 
+  "overnight": {
+    "from": 22,
+    "to": 8
+  },
   "notify": {
     "on": ["waiting", "stuck", "error", "dropped"],
     "environment": true,
@@ -81,6 +85,9 @@
       "enabled": false,
       "weekday": 1,
       "hour": 9
+    },
+    "overnight": {
+      "enabled": false
     }
   }
 }

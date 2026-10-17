@@ -12,6 +12,7 @@ import { useTasks } from "@/lib/live"
 import type { State, TaskEnd, TaskSession, Tasks as TasksData } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Hint } from "./hint"
+import { Overnight } from "./overnight"
 import { ReplayLink } from "./replay-link"
 import { Chapter, H3, SUB, TAB } from "./section"
 import { StateBadge } from "./state"
@@ -32,9 +33,9 @@ export function Tasks() {
 
   return (
     <div className={TAB}>
+      <Overnight />
       <Chapter
         id="tasks"
-        first
         title={t("tasks.title")}
         note={t("tasks.note")}
         action={

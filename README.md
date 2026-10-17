@@ -226,6 +226,8 @@ With many sessions going, it is easy to lose track of what you set the agent to 
 
 The plan is the agent's own todo list: OpenCode 1.x keeps it in its database, OpenCode 2 only in the agent's latest `todowrite` call, and both are read. On the **Now** tab, a finished session whose plan was left part done shows how far it got.
 
+At the top of the tab, **While you were away** reports the latest night (`overnight.from` to `overnight.to`, 22:00 to 08:00 by default): each session that ran, how long it worked and waited for you, and how it stood at the end with why (waiting for a permission, an error from the model server, OpenCode stopped waiting); and above them, how long nothing ran at all while a session needed you. It is read from the monitor's record of each change of state, so it covers only the hours the monitor was running, and is empty when `history.enabled` is off.
+
 ## History
 
 The **History** tab lists every change of state, newest first: when a session started waiting, how long it had been working before that, what it was running when it got stuck. Above the list, **What each session took** ranks the sessions of the last 30 days by agent working time, with time spent waiting for you, compactions, and tokens, subagents included and taken from OpenCode's own records. Click a session to follow it in the list below. "Download as CSV" saves that table; in Stats, "Download days as CSV" saves the figures per day. The files are built in the page from what it already shows, with titles that look like spreadsheet formulas escaped.
@@ -330,6 +332,8 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `notify.weekly.enabled` | `false` | Send the week's summary to Discord (see below) |
 | `notify.weekly.weekday` | 1 | The day it is sent: 0 Sunday to 6 Saturday |
 | `notify.weekly.hour` | 9 | The hour it is sent, 0 to 23, local time |
+| `overnight.from`, `overnight.to` | 22, 8 | The hours you are away, local time: the night "While you were away" covers |
+| `notify.overnight.enabled` | `false` | Send the night's report to Discord when it ends (see below) |
 
 ### Discord
 
@@ -338,6 +342,8 @@ In Discord: channel settings → Integrations → Webhooks → New Webhook → C
 By default a Discord message carries only the state, the project folder name, the session title, and how long it has lasted. Command text stays on your machine unless you turn on `includeDetail`.
 
 **Weekly summary.** With `notify.weekly.enabled`, the monitor sends one message a week to the same webhook: the last seven days in a line (sessions, time the agent worked, time it waited for you) and the "Worth knowing" sentences from Stats. It is off by default, goes to Discord only (a desktop pop-up cannot hold it), and needs the monitor to be running at that hour or within the day after; a summary is never sent late or twice. It names models, tools and MCP servers; a permission's pattern, which can hold a path, is left out unless `includeDetail` is on. `--test-notify` sends this week's summary too when it is switched on, so you can see it before Monday.
+
+**Overnight report.** With `notify.overnight.enabled`, the monitor sends "While you were away" to the same webhook once the night ends (`overnight.to`): how many sessions ran, how long the agent worked, how long nothing ran while a session needed you, and a line for each session that needs you or stopped with its plan part done, with why and when. It is off by default, Discord only, and sent once; a monitor started later in the day still sends the morning's. An error's text, which can hold a path, is left out unless `includeDetail` is on.
 
 ## Where the data comes from
 
@@ -400,7 +406,12 @@ src/history.mjs         record of state changes (data/history.jsonl)
 src/takeaways.mjs       the rules behind "Worth knowing" (pure)
 src/config-changes.mjs  notices a changed OpenCode setting (data/config-changes.jsonl)
 src/digest.mjs          the weekly summary to Discord
-src/mcp-server.mjs      the MCP protocol and its five tools (pure); mcp-main.mjs wires them to the data
+src/overnight.mjs       "While you were away": the night's sessions from the history, and its Discord report
+src/tasks.mjs           the Tasks tab: every session by project, how it ended, and its plan
+src/compare.mjs         the same figures before and after a moment, per hour of agent time (pure)
+src/recent.mjs          the figures since the newest change of the config or the model, for takeaways
+src/mcp-server.mjs      the MCP protocol and its tools (pure); mcp-main.mjs wires them to the data
+src/mcp-http.mjs        the MCP tools over HTTP at /mcp, for another machine of the network
 src/replay.mjs          one session, as what each agent was doing from moment to moment (pure); replay-source.mjs reads it
 dashboard/lib/replay.ts playing it back: skipped silences, the state at a moment (pure)
 docs/screenshots/       the pictures in this README, of --sample data

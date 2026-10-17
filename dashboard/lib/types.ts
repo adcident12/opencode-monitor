@@ -397,3 +397,30 @@ export interface Tasks {
   open: number
   projects: { project: string; directory: string; lastAt: number; open: number; sessions: TaskSession[] }[]
 }
+
+/** One session of the night: how it stood at the end, and since when. */
+export interface OvernightSession {
+  id: string
+  title: string
+  project: string
+  state: State
+  since: number
+  reason: string | null
+  permission: string | null
+  error: string | null
+  limitMs: number | null
+  workedMs: number
+  waitedMs: number
+  plan: { done: number; total: number } | null
+  left: number
+  unfinished: boolean
+}
+
+export interface Overnight {
+  from: number
+  to: number
+  going: boolean
+  recorded: boolean
+  sessions: OvernightSession[]
+  totals: { sessions: number; finished: number; unfinished: number; working: number; workedMs: number; waitedMs: number; stillMs: number; longestStill: { from: number; to: number; ms: number } | null }
+}

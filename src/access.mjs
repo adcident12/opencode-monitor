@@ -12,9 +12,12 @@ const YEAR = 365 * 24 * 60 * 60;
 /** Did the request come from this machine itself? */
 export const isLoopback = address => /^(?:(?:::ffff:)?127.0.0.1|::1)$/.test(String(address));
 
-/** This machine's addresses on its networks: IPv4, not the loopback one. */
+/**
+ * This machine's addresses on its networks: IPv4, not the loopback one, and not a link-local
+ * 169.254.x.x, which an adapter gives itself when no network answered it: no one reaches that.
+ */
 export function lanAddresses(interfaces = networkInterfaces()) {
-  return Object.values(interfaces).flat().filter(a => a?.family === 'IPv4' && !a.internal).map(a => a.address);
+  return Object.values(interfaces).flat().filter(a => a?.family === 'IPv4' && !a.internal && !a.address.startsWith('169.254.')).map(a => a.address);
 }
 
 /** The key kept in `file`, made on first use: 32 characters no one could guess. */
