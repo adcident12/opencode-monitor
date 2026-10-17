@@ -116,3 +116,15 @@ test('a takeaway from three loops, or one long one, named by the worst', () => {
   assert.equal(of([ep('failing', { tool: 'a', times: 4 }), ep('repeating', { tools: ['b'], times: 9 }), ep('plan_stalled', { workMs: 3_600_000 })]).id, 'loops_repeating');
   assert.equal(of([ep('plan_stalled', { workMs: 3 * 3_600_000 })]).vars.hours, 3);
 });
+
+test('an OpenCode 2 script is one turn: each tool in it counts once, failed when all its calls failed', () => {
+  const inScript = (script, tool, status) => call(tool, '{"function":"x"}', { script, status });
+  // One script that called the same failing tool 30 times: the script's loop, not the agent's.
+  assert.equal(loopsOf(times(30, () => inScript('s1', 'evaluate_script', 'error'))).episodes.length, 0);
+  // A tool that fails script after script is the agent trying again and again.
+  const scripts = times(4, (_, i) => [inScript(`w${i}`, 'wait_for', 'error'), inScript(`w${i}`, 'take_snapshot', 'completed')]).flat();
+  assert.deepEqual(loopsOf(scripts).episodes.map(e => [e.kind, e.tool, e.times]), [['failing', 'wait_for', 4]]);
+  // A script where the tool worked once is not a failure of it.
+  const mixed = times(4, (_, i) => [inScript(`m${i}`, 'wait_for', 'error'), inScript(`m${i}`, 'wait_for', 'completed')]).flat();
+  assert.equal(loopsOf(mixed).episodes.length, 0);
+});

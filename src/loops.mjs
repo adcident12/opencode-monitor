@@ -6,7 +6,8 @@
 // The limits were set against a month of real sessions on this machine (54 sessions, 9,789
 // calls). A file read again after an edit, or a page snapshot taken up to seven times in a
 // row while it loads, is how agents work and is not told; each limit is past what ordinary
-// work there reached. What they caught there: one script failing 257 times back to back.
+// work there reached. What they caught there: a tool that failed four times in a row, twice,
+// and plans that stood still for over an hour of work.
 
 export const LIMITS = {
   // The same call this many times back to back.
@@ -65,12 +66,36 @@ function repetitionAt(keys, i, limits) {
 }
 
 /**
+ * An OpenCode 2 `execute` script that called tools is one turn of the agent's, however many
+ * calls it made: each tool in it counts once, failed when every call of it there failed. A
+ * script that looped is the script's doing (Stats says so as script_loop), not the agent going
+ * round in circles; a tool that fails script after script still is.
+ */
+function oneCallPerScript(calls) {
+  const seen = new Map(); // "script|tool" -> [its first call, all failed so far]
+  for (const c of calls) {
+    if (!c.script) continue;
+    const key = `${c.script}|${c.tool}`;
+    const s = seen.get(key);
+    if (s) s[1] &&= c.status === 'error';
+    else seen.set(key, [c, c.status === 'error']);
+  }
+  if (!seen.size) return calls;
+  return calls.flatMap(c => {
+    if (!c.script) return [c];
+    const [first, failed] = seen.get(`${c.script}|${c.tool}`);
+    return c === first ? [{ ...c, status: failed ? 'error' : 'completed' }] : [];
+  });
+}
+
+/**
  * @param {object[]} calls  one session's finished tool calls, oldest first: tool, input,
  *   input_len, status, error, started or time_created, id, and for todowrite its todos
  * @returns {{ episodes: object[], now: object|null }} every episode, oldest first; `now`
  *   the one still going on at the last call, if any
  */
 export function loopsOf(calls, limits = LIMITS) {
+  calls = oneCallPerScript(calls);
   const episodes = [];
   const trackers = [repetitionTracker(calls, limits, episodes), failureTracker(limits, episodes), planTracker(limits, episodes)];
   calls.forEach((call, i) => {
