@@ -105,6 +105,32 @@ describe("Tokens in Stats", () => {
   })
 })
 
+describe("Prompt cache lost in Stats", () => {
+  const english = () => readFileSync(join(__dirname, "..", "..", "..", "i18n", "en.json"), "utf8")
+  const withDrops = (cacheDrops: StatsData["cacheDrops"]) =>
+    vi.stubGlobal("fetch", async (url: string) => (url.startsWith("/api/stats") ? Response.json(figures({ cacheDrops })) : new Response(english())))
+
+  it("lists the causes, what is worth looking into first, and the time each took", async () => {
+    withDrops({
+      checked: 500, count: 12, tokens: 2_000_000, unexpected: { count: 3, tokens: 400_000, ms: 0 },
+      byCause: { compaction: { count: 9, tokens: 1_600_000, ms: 3_000_000 }, new_turn: { count: 3, tokens: 400_000, ms: 0 } },
+    })
+    renderStats()
+    expect(await screen.findByText("12 times the model read again 2.0M tokens its server had cached, out of 500 requests that could have reused it")).toBeInTheDocument()
+    const rows = within(screen.getByRole("columnheader", { name: "When it happened" }).closest("table")!).getAllByRole("row").slice(1)
+    expect(rows.map(r => within(r).getByRole("rowheader").firstChild?.textContent)).toEqual(["At a new turn", "After a compaction"])
+    expect(rows[0]).toHaveTextContent("–")
+    expect(rows[1]).toHaveTextContent("50m")
+  })
+
+  it("is left out when nothing was lost", async () => {
+    withDrops({ checked: 500, count: 0, tokens: 0, unexpected: { count: 0, tokens: 0, ms: 0 }, byCause: {} })
+    renderStats()
+    await screen.findByRole("heading", { name: "Where the time went" })
+    expect(screen.queryByText("When it happened")).not.toBeInTheDocument()
+  })
+})
+
 describe("Takeaways in Stats", () => {
   it("is left out when no rule held", async () => {
     renderStats()

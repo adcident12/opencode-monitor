@@ -65,6 +65,13 @@ const RULES = [
     if (!r || r.count < 3 || r.ms < 10 * 60_000) return null;
     return { id: 'long_reads', tone: 'note', vars: { n: r.count, minutes: Math.round(r.ms / 60_000), tokens: Math.round(r.tokens / 1000) }, anchor: 'stats-model' };
   },
+  // The model read again what its server had cached: by the cause that cost most.
+  s => {
+    const d = s.cacheDrops;
+    if (!d || d.unexpected.count < 3 || d.unexpected.tokens < 200_000) return null;
+    const [cause, top] = Object.entries(d.byCause).filter(([c]) => c !== 'compaction' && c !== 'model_changed').sort((a, b) => b[1].tokens - a[1].tokens)[0];
+    return { id: `cache_lost_${cause}`, tone: 'act', vars: { n: top.count, tokens: Math.round(top.tokens / 1000), minutes: Math.round(top.ms / 60_000) }, anchor: 'stats-model' };
+  },
   // Summarising took a real share of the agent's time.
   s => {
     const { compactingMs, activeMs, compactions } = s.totals;

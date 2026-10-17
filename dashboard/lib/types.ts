@@ -283,8 +283,18 @@ export interface Takeaway {
   since?: number
 }
 
+/** Prompt cache a model server had and lost, by why (see src/cache-drops.mjs). */
+export interface CacheDrops {
+  checked: number
+  count: number
+  tokens: number
+  unexpected: { count: number; tokens: number; ms: number }
+  byCause: Record<string, { count: number; tokens: number; ms: number }>
+}
+
 export interface Stats {
   range: { from: number; to: number; days: number }
+  cacheDrops?: CacheDrops
   session: SessionChoice | null
   /** Top-level sessions in the range with what each cost, whatever session is selected. */
   sessions: (SessionChoice & { toolCalls: number; lastAt: number; activeMs: number; waitMs: number; compactions: number; tokens: number; cost: number })[]

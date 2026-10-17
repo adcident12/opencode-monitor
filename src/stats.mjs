@@ -5,6 +5,7 @@ import { askIsFor } from './state.mjs';
 import { computeMcpStats } from './mcp.mjs';
 import { servedAsOf } from './served.mjs';
 import { longReadsOf } from './reads.mjs';
+import { cacheDropsOf } from './cache-drops.mjs';
 import { agentsOf, fileKey, filesOf, inProject, permissionsOf, plansOf, timeSplit, turnsOf } from './work.mjs';
 
 const ASK_MATCH_MS = 2000;
@@ -619,6 +620,7 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     rereads: [...reads.values()].filter(n => n >= 3).length,
   };
   const sentTotal = usage.input + usage.cacheRead + usage.cacheWrite;
+  const speed = computeSpeed({ requests: timed, keys, show, outputs });
 
   const effort = effortPerSession(ctx, { messages, compactions, prompts: allPrompts });
   // A path inside the session's own project is shown from the project root.
@@ -650,11 +652,13 @@ export function computeStats({ sessions, tools, messages, compactions, asks, rep
     // Only for one session: a context window belongs to a session, not to a period.
     context: sessionId ? contextOfSession({ sessionId, own, compactions, tools, from, contextLimit, compactAt, directory: sessionById.get(sessionId)?.directory, version: sessionById.get(sessionId)?.version ?? null }) : null,
     work,
-    speed: computeSpeed({ requests: timed, keys, show, outputs }),
+    speed,
     // Replies OpenCode named after one model while the server had another loaded.
     servedAs: servedAsOf(messages, servedAt, { from, to: now, inScope }),
     // Prompts the model server read again, most of them, while a session waited.
     longReads: longReadsOf(longReads(from, now, inScope)),
+    // Prompt cache the server had and lost, by why, from OpenCode's own token counts.
+    cacheDrops: cacheDropsOf(messages, { from, to: now, inScope, readTps: model => speed.models.find(m => m.model === model)?.readTps ?? null }),
     usage: {
       ...usage,
       // Share of what was sent that the model server could reuse from its cache.

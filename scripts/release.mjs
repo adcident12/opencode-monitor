@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { branchOf, uncommittedOf, notesOf } from './release-check.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const windows = process.platform === 'win32';
@@ -30,26 +31,21 @@ const fail = message => {
 
 const [version, ...rest] = process.argv.slice(2);
 const yes = rest.includes('--yes');
-if (!/^\d+\.\d+\.\d+$/.test(version ?? '')) fail('give the version: npm run release -- 11.10.0 [--yes]');
-const [major, minor] = version.split('.');
+const versionBranch = branchOf(version);
+if (!versionBranch) fail('give the version: npm run release -- 11.10.0 [--yes]');
 
 // 1. The branch, and nothing uncommitted.
 const branch = git('branch', '--show-current');
-if (branch !== `v${major}.${minor}`) fail(`this is ${branch}; ${version} is released from v${major}.${minor}.`);
+if (branch !== versionBranch) fail(`this is ${branch}; ${version} is released from ${versionBranch}.`);
 if (git('tag', '--list', `v${version}`)) fail(`v${version} is already tagged.`);
-const dirty = git('status', '--porcelain').split('\n').filter(Boolean);
-const outsidePage = dirty.filter(line => !line.slice(3).startsWith('public/'));
+const porcelain = git('status', '--porcelain');
+const outsidePage = uncommittedOf(porcelain);
 if (outsidePage.length) fail(`commit or stash these first:\n${outsidePage.join('\n')}`);
 
 // 2. The changelog entry, dated today.
 const today = new Date().toLocaleDateString('sv-SE');
-const changelog = readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8');
-const heading = `## ${version} - ${today}`;
-const start = changelog.indexOf(`${heading}\n`);
-if (start < 0) fail(`CHANGELOG.md has no "${heading}".`);
-const after = changelog.indexOf('\n## ', start + heading.length);
-const notes = changelog.slice(start + heading.length, after < 0 ? undefined : after).trim();
-if (!notes) fail(`the ${version} entry of CHANGELOG.md is empty.`);
+const { notes, problem } = notesOf(readFileSync(join(ROOT, 'CHANGELOG.md'), 'utf8'), version, today);
+if (problem) fail(problem);
 
 // 3. The tests.
 console.log('release: running the tests...');
@@ -62,7 +58,7 @@ if (!yes) {
 }
 
 // 4. The release commit and tag. The built page differs only in its build id: put back.
-if (dirty.length) git('checkout', '--', 'public');
+if (porcelain) git('checkout', '--', 'public');
 const pkgPath = join(ROOT, 'package.json');
 const pkg = readFileSync(pkgPath, 'utf8');
 writeFileSync(pkgPath, pkg.replace(/"version": "[^"]+"/, `"version": "${version}"`));

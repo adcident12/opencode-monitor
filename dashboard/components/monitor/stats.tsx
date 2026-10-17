@@ -789,7 +789,49 @@ function Usage({ stats }: Readonly<{ stats: StatsData }>) {
           {t("stats.usageStartNote")}
         </p>
       )}
+      <CacheLost drops={stats.cacheDrops} />
     </section>
+  )
+}
+
+// Most worth looking into first; what compaction or a new model does anyway, last.
+const CAUSES = ["new_turn", "prefix_changed", "other_session", "pause", "unexplained", "compaction", "model_changed"]
+
+/** Prompt cache the server had and lost, by why: what made the model read again what it held. */
+function CacheLost({ drops }: Readonly<{ drops: StatsData["cacheDrops"] }>) {
+  const { t } = useI18n()
+  if (!drops?.count) return null
+  const rows = CAUSES.filter(c => drops.byCause[c])
+  return (
+    <div className="space-y-2">
+      <p className="max-w-prose text-sm font-medium">{t("stats.cacheLost", { n: drops.count, tokens: compact(drops.tokens), checked: drops.checked })}</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b">
+              <th scope="col" className={TH}>{t("stats.cacheLostCause")}</th>
+              <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.cacheLostTimes")}</th>
+              <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.cacheLostTokens")}</th>
+              <th scope="col" className={cn(TH, "text-right whitespace-nowrap")}>{t("stats.cacheLostTime")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.map(c => (
+              <tr key={c}>
+                <th scope="row" className="py-2 pr-3 text-left font-normal">
+                  {t(`stats.cacheCause.${c}`)}
+                  <span className="block text-xs text-muted-foreground">{t(`stats.cacheCause.${c}.note`)}</span>
+                </th>
+                <td className="py-2 pr-3 text-right font-medium tabular-nums whitespace-nowrap">{drops.byCause[c].count}</td>
+                <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap text-muted-foreground">{compact(drops.byCause[c].tokens)}</td>
+                <td className="py-2 text-right tabular-nums whitespace-nowrap text-muted-foreground">{drops.byCause[c].ms ? duration(drops.byCause[c].ms) : "–"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="max-w-prose text-xs text-muted-foreground">{t("stats.cacheLostNote")}</p>
+    </div>
   )
 }
 
