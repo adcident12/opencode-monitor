@@ -222,3 +222,28 @@ test('--test-notify sends one of each kind that is switched on, through the real
   ]);
   assert.deepEqual(await testNotify({ ...cfg, desktop: false, discord: { webhookUrl: '' } }, k => k), [['desktop', 'off in config'], ['Discord', 'no webhookUrl in config']]);
 });
+
+test('a model server working on nothing while a session waits is told once, and again only after it worked', () => {
+  const sent = [];
+  const make = on => createNotifier(
+    { on, repeatMinutes: 30, desktop: true, discord: { webhookUrl: '', mention: '', includeDetail: false } },
+    (key, vars = {}) => `${key}${vars.t ? ` ${vars.t}` : ''}`,
+    { desktop: (title, body) => sent.push(`${title} | ${body}`), discord: () => {} },
+  );
+  const session = progress => ({ id: 's1', parentId: null, state: 'working', reason: 'thinking', since: 0, project: 'shop', title: 'Checkout', health: { hints: [] }, modelProgress: progress });
+  const idle = { phase: 'idle', idleMs: 90_000 };
+  const notify = make(['server_idle']);
+  notify([session(null)], 1);
+  notify([session(idle)], 2);
+  notify([session(idle)], 3);
+  notify([session({ phase: 'writing', written: 10, rate: null })], 4);
+  notify([session(idle)], 5);
+  assert.equal(sent.length, 2);
+  assert.match(sent[0], /^notify\.server_idle \| shop — Checkout · notify\.server_idle\.body/);
+  // Not asked for: nothing.
+  sent.length = 0;
+  const quiet = make([]);
+  quiet([session(null)], 1);
+  quiet([session(idle)], 2);
+  assert.equal(sent.length, 0);
+});

@@ -330,7 +330,7 @@ Copy `config.example.json` to `config.json` and edit it. `config.json` is git-ig
 | `history.retentionDays` | 30 | How long state changes are kept in `data/history.jsonl` |
 | `opencodeApi.enabled` | true | OpenCode 2 only: run `opencode api` to see a permission prompt that is waiting (see Where the data comes from) |
 | `opencodeApi.command` | `opencode` | The command that starts OpenCode on this machine |
-| `notify.on` | `["waiting","stuck","error","dropped"]` | What triggers a notification. `"error"`: the last reply failed and stayed failed for a minute (the model server down, or refusing the request); one OpenCode retries by itself within that minute is not told. `"dropped"`: OpenCode 2 gave up on a question or permission prompt nobody answered (it puts a project away after an hour without activity) and the session stopped. Add `"compact_soon"` to be told once when a session is about to be compacted |
+| `notify.on` | `["waiting","stuck","error","dropped","server_idle"]` | What triggers a notification. `"server_idle"`: a session waits on its llama.cpp server and the server has worked on no request for a minute (it may have dropped this one), told once until it works again. `"error"`: the last reply failed and stayed failed for a minute (the model server down, or refusing the request); one OpenCode retries by itself within that minute is not told. `"dropped"`: OpenCode 2 gave up on a question or permission prompt nobody answered (it puts a project away after an hour without activity) and the session stopped. Add `"compact_soon"` to be told once when a session is about to be compacted |
 | `notify.repeatMinutes` | 30 | Remind again while the state lasts; 0 turns reminders off |
 | `notify.desktop` | `true` | Desktop notification |
 | `notify.discord.webhookUrl` | `""` | Discord webhook; also settable as `OPENCODE_MONITOR_DISCORD_WEBHOOK` |
@@ -388,6 +388,7 @@ By default a Discord message carries only the state, the project folder name, th
 - Between checking `.git/HEAD` and opening it there is a short window in which a process racing the monitor could swap it for a link. Node offers no way to close that window completely; what is read is only ever interpreted as a branch name.
 - A session whose OpenCode window crashed looks stuck until OpenCode is closed entirely or the session falls out of the lookback window.
 - Redaction is pattern-based: known token formats, passwords in URLs, and values of names such as `TOKEN`, `KEY`, `PASSWORD`. A secret with no recognisable shape will not be caught.
+- What a model server is doing for a session is read from its slots, and llama.cpp does not say which client a slot serves. It is shown only when one session of this machine waits on that server; if another computer uses the same server at that moment, the card can show that computer's request.
 - View only. There are no controls that act on the agent.
 
 ## Layout

@@ -330,7 +330,7 @@ claude mcp add --transport http opencode-monitor http://192.168.0.100:4317/mcp -
 | `history.retentionDays` | 30 | เก็บการเปลี่ยนสถานะไว้ใน `data/history.jsonl` นานเท่าไร |
 | `opencodeApi.enabled` | true | เฉพาะ OpenCode 2: รัน `opencode api` เพื่อดูคำขออนุญาตที่กำลังรออยู่ (ดู ข้อมูลมาจากไหน) |
 | `opencodeApi.command` | `opencode` | คำสั่งที่ใช้เรียก OpenCode บนเครื่องนี้ |
-| `notify.on` | `["waiting","stuck","error","dropped"]` | สิ่งที่ทำให้แจ้งเตือน `"error"`: คำตอบล่าสุดล้มและยังล้มอยู่ครบหนึ่งนาที (model server ดับ หรือปฏิเสธ request) ถ้า OpenCode ลองใหม่เองสำเร็จภายในหนึ่งนาทีจะไม่แจ้ง `"dropped"`: OpenCode 2 เลิกรอคำถามหรือคำขออนุญาตที่ไม่มีใครตอบ (มันเก็บโปรเจกต์เมื่อไม่มีความเคลื่อนไหวครบหนึ่งชั่วโมง) และ session หยุด เพิ่ม `"compact_soon"` เพื่อให้แจ้งหนึ่งครั้งเมื่อ session ใกล้จะถูก compact |
+| `notify.on` | `["waiting","stuck","error","dropped","server_idle"]` | สิ่งที่ทำให้แจ้งเตือน `"server_idle"`: session รอ server ของ llama.cpp อยู่ แต่ server ไม่ได้ทำงานกับ request ใดเลยครบหนึ่งนาที (อาจทำ request นี้หลุดไป) แจ้งครั้งเดียวจนกว่าจะกลับมาทำงาน `"error"`: คำตอบล่าสุดล้มและยังล้มอยู่ครบหนึ่งนาที (model server ดับ หรือปฏิเสธ request) ถ้า OpenCode ลองใหม่เองสำเร็จภายในหนึ่งนาทีจะไม่แจ้ง `"dropped"`: OpenCode 2 เลิกรอคำถามหรือคำขออนุญาตที่ไม่มีใครตอบ (มันเก็บโปรเจกต์เมื่อไม่มีความเคลื่อนไหวครบหนึ่งชั่วโมง) และ session หยุด เพิ่ม `"compact_soon"` เพื่อให้แจ้งหนึ่งครั้งเมื่อ session ใกล้จะถูก compact |
 | `notify.repeatMinutes` | 30 | เตือนซ้ำขณะที่สถานะยังอยู่ ใส่ 0 เพื่อปิดการเตือนซ้ำ |
 | `notify.desktop` | `true` | การแจ้งเตือนบน desktop |
 | `notify.discord.webhookUrl` | `""` | Discord webhook ตั้งผ่าน `OPENCODE_MONITOR_DISCORD_WEBHOOK` ได้ด้วย |
@@ -388,6 +388,7 @@ claude mcp add --transport http opencode-monitor http://192.168.0.100:4317/mcp -
 - ระหว่างการตรวจ `.git/HEAD` กับการเปิดมัน มีช่วงสั้นๆ ที่ process ซึ่งแข่งกับ monitor อาจสลับมันเป็น link ได้ Node ไม่มีวิธีปิดช่วงนั้นได้สนิท สิ่งที่อ่านมาจะถูกตีความเป็นชื่อ branch เท่านั้น
 - session ที่หน้าต่าง OpenCode ของมัน crash จะดูเหมือนค้าง จนกว่า OpenCode จะถูกปิดทั้งหมด หรือ session หลุดออกจากช่วงที่มองย้อนหลัง
 - การปิดบังอาศัยรูปแบบ: รูปแบบ token ที่รู้จัก รหัสผ่านใน URL และค่าของชื่ออย่าง `TOKEN`, `KEY`, `PASSWORD` secret ที่ไม่มีรูปร่างให้จำได้จะไม่ถูกจับ
+- สิ่งที่ model server กำลังทำให้ session อ่านจาก slot ของมัน และ llama.cpp ไม่บอกว่า slot ทำงานให้ client ไหน จึงแสดงเฉพาะเมื่อมี session เดียวของเครื่องนี้รอ server นั้นอยู่ ถ้ามีคอมพิวเตอร์เครื่องอื่นใช้ server เดียวกันในเวลานั้น การ์ดอาจแสดง request ของเครื่องนั้นได้
 - ดูได้อย่างเดียว ไม่มีปุ่มควบคุมใดที่สั่งการ agent
 
 ## โครงสร้างไฟล์

@@ -80,7 +80,7 @@ export const DEFAULTS = {
   // The hours you are away, local time: the night the overnight report covers.
   overnight: { from: 22, to: 8 },
   notify: {
-    on: ['waiting', 'stuck', 'error', 'dropped'],
+    on: ['waiting', 'stuck', 'error', 'dropped', 'server_idle'],
     environment: true,
     repeatMinutes: 30,
     desktop: true,
