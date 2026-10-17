@@ -51,6 +51,13 @@ const renderSetup = () =>
   )
 
 describe("This machine", () => {
+  it("says which kinds of notification are on by default and not switched on here", async () => {
+    body = report({ notify: { ...report().notify, notOn: ["loop", "budget"] } })
+    renderSetup()
+    expect(await screen.findByText('On by default, not in your notify.on: "loop", "budget". Add them to config.json to be told of them too.')).toBeInTheDocument()
+  })
+
+
   it("shows each model's own compaction point, for a machine unlike the author's", async () => {
     renderSetup()
     const row = (await screen.findByText("ollama/small-coder")).closest("tr")!

@@ -99,7 +99,11 @@ export function Setup({ active }: Readonly<{ active: boolean }>) {
       <Section id="setup-notify" title={t("setup.notify")}>
         <Row label={t("setup.desktop")} ok={report.notify.desktop} value={t(report.notify.desktop ? "setup.yes" : "setup.no")} />
         <Row label={t("setup.discord")} ok={report.notify.discord} value={t(report.notify.discord ? "setup.discordSet" : "setup.no")} />
-        <Row label={t("setup.notifyOn")} value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")} />
+        <Row
+          label={t("setup.notifyOn")}
+          value={report.notify.on.length ? report.notify.on.map(s => t(`setup.on.${s}`)).join(", ") : t("setup.none")}
+          note={report.notify.notOn?.length ? t("setup.notOn", { kinds: report.notify.notOn.map(k => `"${k}"`).join(", ") }) : undefined}
+        />
         <Row label={t("setup.weekly")} value={weeklyText(report.notify, t, lang)} />
         {report.budget && <Row label={t("setup.budget")} value={budgetText(report.budget, t)} />}
       </Section>

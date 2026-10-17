@@ -239,6 +239,8 @@ export interface SetupReport {
     desktop: boolean
     discord: boolean
     on: string[]
+    /** On by default, and not in this notify.on. */
+    notOn?: string[]
     repeatMinutes: number
     /** What was sent since the monitor started, newest first. Each channel: "sent", "off", "sending" or "failed (...)". */
     recent: { t: number; kind: string; title: string; subject: string; desktop: string; discord: string }[]

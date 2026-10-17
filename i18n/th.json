@@ -253,6 +253,7 @@
   "setup.discord": "Discord",
   "setup.discordSet": "ตั้ง webhook ไว้แล้ว",
   "setup.notifyOn": "ส่งเมื่อ session",
+  "setup.notOn": "เปิดเป็นค่าเริ่มต้นแต่ไม่อยู่ใน notify.on ของคุณ: {kinds} เพิ่มใน config.json ถ้าต้องการให้แจ้งเรื่องเหล่านี้ด้วย",
   "setup.weekly": "สรุปรายสัปดาห์",
   "setup.weeklyAt": "{day} เวลา {hour}:00 ส่งไป Discord",
   "setup.weeklyNoHook": "เปิดไว้ แต่ยังไม่ได้ตั้ง Discord webhook จึงไม่มีการส่ง",

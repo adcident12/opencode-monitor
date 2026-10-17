@@ -7,7 +7,7 @@
 // "set", never shown.
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { TESTED_OPENCODE, VERSION, isUntestedOpencode } from './config.mjs';
+import { DEFAULTS, TESTED_OPENCODE, VERSION, isUntestedOpencode } from './config.mjs';
 import { compactionPoint, outputTokenMaxFrom } from './opencode-config.mjs';
 
 const MODEL_DAYS = 30;
@@ -97,6 +97,9 @@ export function buildSetupReport({ cfg, opencode, db, pending = null, opencodeVe
       // Whether one is set. The URL itself is a password and never leaves the config.
       discord: Boolean(cfg.notify.discord.webhookUrl),
       on: [...cfg.notify.on],
+      // On by default and not in this notify.on: left out on purpose, or come in a version since
+      // it was written. Said, never changed.
+      notOn: DEFAULTS.notify.on.filter(kind => !cfg.notify.on.includes(kind)),
       repeatMinutes: cfg.notify.repeatMinutes,
       // The week's takeaways, to Discord only: nothing is sent without a webhook.
       weekly: { enabled: Boolean(cfg.notify.weekly?.enabled), weekday: cfg.notify.weekly?.weekday ?? 1, hour: cfg.notify.weekly?.hour ?? 9 },
@@ -171,6 +174,7 @@ export function formatSetupReport(report, t, lang = 'en') {
   row('setup.desktop', yes(t, notify.desktop));
   row('setup.discord', yes(t, notify.discord));
   row('setup.notifyOn', notify.on.join(', ') || t('setup.none'));
+  if (notify.notOn?.length) lines.push(`    ${t('setup.notOn', { kinds: notify.notOn.map(k => `"${k}"`).join(', ') })}`);
   row('setup.weekly', weeklyText(notify, t, lang));
 
   head('setup.history');

@@ -253,6 +253,7 @@
   "setup.discord": "Discord",
   "setup.discordSet": "a webhook is set",
   "setup.notifyOn": "Sent when a session is",
+  "setup.notOn": "On by default, not in your notify.on: {kinds}. Add them to config.json to be told of them too.",
   "setup.weekly": "Weekly summary",
   "setup.weeklyAt": "{day} at {hour}:00, to Discord",
   "setup.weeklyNoHook": "On, but no Discord webhook is set, so nothing is sent",

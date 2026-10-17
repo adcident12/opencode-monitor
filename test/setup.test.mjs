@@ -84,3 +84,14 @@ test('--doctor lists each model with its window and where it is compacted, or sa
   assert.ok(text.includes('other/mystery: Context 64k, Compacts at 32k'), text);
   assert.ok(text.includes('other/nolimit: limit unknown'), text);
 });
+
+test('a kind of notification on by default and not in notify.on is said, never switched on', () => {
+  const cfg = machine();
+  assert.deepEqual(buildSetupReport({ cfg, opencode: opencode(), db: null, now: NOW }).notify.notOn, []);
+  cfg.notify.on = ['waiting', 'stuck', 'error', 'dropped', 'compact_soon', 'server_idle'];
+  const report = buildSetupReport({ cfg, opencode: opencode(), db: null, now: NOW });
+  assert.deepEqual(report.notify.notOn, ['loop', 'budget']);
+  assert.deepEqual(cfg.notify.on, ['waiting', 'stuck', 'error', 'dropped', 'compact_soon', 'server_idle']);
+  const text = formatSetupReport(report, (key, vars = {}) => `${key}${vars.kinds ? ' ' + vars.kinds : ''}`);
+  assert.match(text, /setup\.notOn "loop", "budget"/);
+});
