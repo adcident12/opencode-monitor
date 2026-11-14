@@ -2,11 +2,33 @@
   "port": 4317,
   "lan": true,
   "pollMs": 5000,
-  "notify": { "desktop": false },
-  "history": { "file": "/data/history/history.jsonl", "retentionDays": 180 },
+  "notify": {
+    "desktop": false
+  },
+  "history": {
+    "file": "/data/history/history.jsonl",
+    "retentionDays": 180
+  },
   "central": {
     "dir": "/data/central",
-    "hosts": ["<hub LAN address>:4317"],
-    "influx": { "url": "http://<influxdb host>:8086", "org": "<org>", "bucket": "opencode", "token": "<write-only token for bucket opencode>" }
+    "hosts": [
+      "<hub LAN address>:4317"
+    ],
+    "influx": {
+      "url": "http://<influxdb host>:8086",
+      "org": "<org>",
+      "bucket": "opencode",
+      "token": "<write-only token for bucket opencode>"
+    },
+    "llama": {
+      "stroller": "http://<model server>:4570",
+      "influx": {
+        "url": "http://<influxdb host>:8086",
+        "org": "<org>",
+        "bucket": "<bucket with the llamacpp measurement>",
+        "token": "<read-only token for that bucket>"
+      },
+      "usageUrl": null
+    }
   }
 }

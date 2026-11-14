@@ -159,6 +159,47 @@ influx auth create --org <org> --write-bucket <bucket id> --description "opencod
 
 จุดข้อมูลเริ่มเขียนตั้งแต่ hub มีค่า `influx` ครั้งแรก batch ที่รับไปก่อนหน้านั้นจะไม่ถูกเขียนย้อนหลัง
 
+### 6. MCP สำหรับ Claude (ไม่บังคับ)
+
+hub มี MCP server แบบอ่านอย่างเดียว 2 ตัว แต่ละตัวเปิดได้ด้วย read key เท่านั้น (token ของเครื่อง access key หรือ header ของ proxy เปิดไม่ได้):
+
+| ที่อยู่ | ตอบอะไร |
+| --- | --- |
+| `/mcp` | เครื่องมือเดิมของ monitor สำหรับทุกเครื่อง (`machine` เลือกเครื่องเดียว ถ้าไม่ใส่จะตอบทุกเครื่องแยกกัน) และ `opencode_versions` ส่วน `opencode_compare` ที่ไม่ใส่ `at` จะใช้การเปลี่ยนเวอร์ชัน OpenCode หรือการเปลี่ยนของ llama.cpp ครั้งล่าสุด |
+| `/mcp-llama` | `llama_now`, `llama_changes`, `llama_stats`, `llama_compare`, `llama_callers` (ขั้นที่ 7) |
+
+สร้าง read key ใน container ค่าจะแสดงครั้งเดียว และเก็บไว้แค่ hash (`read-keys.json`) ถ้าสร้างซ้ำด้วยชื่อเดิม key เก่าจะใช้ไม่ได้ทันที
+
+```sh
+docker compose run --rm central --central-read-key claude
+```
+
+บนเครื่องที่ใช้ Claude Code (เจ้าของวาง key เอง ไม่ส่งผ่านแชต):
+
+```sh
+claude mcp add --transport http opencode-central https://<hub address>/mcp --header "Authorization: Bearer <read key>"
+claude mcp add --transport http llama-central https://<hub address>/mcp-llama --header "Authorization: Bearer <read key>"
+```
+
+ถ้าอยู่หลัง reverse proxy ให้ส่ง `/mcp` และ `/mcp-llama` ต่อไปที่ hub โดยไม่ผ่าน login ของ proxy และไม่ใส่ header ลับของ proxy เพราะ read key ทำหน้าที่ login ของสองที่นี้แล้ว
+
+### 7. ฝั่ง llama.cpp (ไม่บังคับ)
+
+ถ้ามี Llama Stroller คุม llama.cpp อยู่ hub จะเก็บว่าเซิร์ฟเวอร์รันอะไร การเปลี่ยนและการรีสตาร์ตทุกครั้ง และตัวเลขรายชั่วโมง เพิ่มใน `central` แล้ว `docker compose restart`:
+
+```json
+"llama": {
+  "stroller": "http://<model server>:4570",
+  "influx": { "url": "http://<influxdb host>:8086", "org": "<org>", "bucket": "<bucket with the llamacpp measurement>", "token": "<read-only token for that bucket>" },
+  "usageUrl": null
+}
+```
+
+- hub ถาม Stroller แค่ `GET /api/status` และ `GET /api/profiles` นาทีละครั้ง path และไฟล์ key ในโปรไฟล์จะถูกตัดเหลือชื่อไฟล์หรือตัดทิ้ง
+- `influx`: counter ของ llama.cpp ตามชื่อที่ prometheus input ของ Telegraf ตั้ง (`llamacpp:prompt_tokens_total`, …) hub ถามย้อนหลัง 7 วันครั้งเดียว จากนั้นถามแต่ละชั่วโมงที่ครบแล้วครั้งเดียว และเก็บข้อมูลรายชั่วโมงไว้เอง 180 วัน (`data/central/llama/`)
+- `usageUrl`: หน้าที่ตอบ `{ d1, callers: [...] }` สำหรับ `llama_callers` ถ้าเป็น `null` เครื่องมือนั้นจะไม่มีข้อมูล
+- ยังไม่ได้อ่าน build ของ llama.cpp (ต้องใช้ API key ของเซิร์ฟเวอร์)
+
 <a id="agent"></a>
 
 ## ติดตั้งตัวส่ง
@@ -226,9 +267,9 @@ task เริ่มอัตโนมัติใช้ชื่อเดีย
 
 ## ข้อจำกัด
 
-- **ขั้นที่ 1 ใช้ในวง LAN:** การเข้าถึงจากอินเทอร์เน็ต (reverse proxy ที่ถอด TLS ที่บ้าน พร้อม login ของตัวเอง) อยู่ในแผน ยังไม่ได้สร้าง
-- **hub ยังไม่มี MCP:** MCP บนแต่ละเครื่อง (`mcp.mjs`) ยังตอบเฉพาะเครื่องนั้น
-- **hub ยังไม่เก็บตัวเลขของเซิร์ฟเวอร์โมเดล (llama.cpp)**
+- **เข้าจากอินเทอร์เน็ต:** วาง hub ไว้หลัง reverse proxy ที่ถอด TLS ที่บ้านและมี login ของตัวเอง (`central.proxy` ดูโมเดลความปลอดภัย)
+- **Replay รายงานการตั้งค่า และทุกอย่างที่ต้องใช้ข้อความ ไม่มีบน hub:** เปิด monitor บนเครื่องนั้นเอง
+- **ตัวเลขของ llama.cpp เป็นรายชั่วโมง:** ยังไม่ได้อ่าน build ของ llama.cpp
 - **เครื่องที่อยู่ต่างประเทศหลังตัวกรองประเทศ หรือออฟไลน์:** แค่รอในคิว ไม่มีอะไรหายตราบที่ไม่เกินเพดานคิว
 - **ลบ session ใน OpenCode:** ไม่ได้ลบบน hub จะหมดอายุเองหลัง 180 วัน
 

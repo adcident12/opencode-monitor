@@ -156,6 +156,47 @@ Points (time = when it happened, in ns):
 
 Points start when the hub first has `influx`; batches it took before are not written again.
 
+### 6. MCP for Claude (optional)
+
+The hub answers two read-only MCP servers, each opened only by a read key (not by a machine's token, the access key or the proxy's header):
+
+| Address | What it answers |
+| --- | --- |
+| `/mcp` | The monitor's own tools for every machine (`machine` picks one; left out, every machine side by side), plus `opencode_versions`. `opencode_compare` without `at` takes the newest OpenCode version or llama.cpp change. |
+| `/mcp-llama` | `llama_now`, `llama_changes`, `llama_stats`, `llama_compare`, `llama_callers` (step 7). |
+
+Make a read key in the container; it is shown once, only its hash is kept (`read-keys.json`). Making one again under the same name revokes the old one.
+
+```sh
+docker compose run --rm central --central-read-key claude
+```
+
+On the machine where Claude Code runs (the owner pastes the key, it does not go through a chat):
+
+```sh
+claude mcp add --transport http opencode-central https://<hub address>/mcp --header "Authorization: Bearer <read key>"
+claude mcp add --transport http llama-central https://<hub address>/mcp-llama --header "Authorization: Bearer <read key>"
+```
+
+Behind a reverse proxy, pass `/mcp` and `/mcp-llama` to the hub without the proxy's login and without its secret header: the read key is their login.
+
+### 7. The llama.cpp side (optional)
+
+With Llama Stroller in front of llama.cpp, the hub keeps what the server runs, every change and restart, and its figures per hour. Add to `central`, then `docker compose restart`:
+
+```json
+"llama": {
+  "stroller": "http://<model server>:4570",
+  "influx": { "url": "http://<influxdb host>:8086", "org": "<org>", "bucket": "<bucket with the llamacpp measurement>", "token": "<read-only token for that bucket>" },
+  "usageUrl": null
+}
+```
+
+- Stroller is asked only `GET /api/status` and `GET /api/profiles`, once a minute. Paths and key files in the profiles are cut to a file name or left out.
+- `influx`: the llama.cpp counters as Telegraf's prometheus input names them (`llamacpp:prompt_tokens_total`, …). The hub asks 7 days back once, then each complete hour once; it keeps the hours itself for 180 days (`data/central/llama/`).
+- `usageUrl`: a page that answers `{ d1, callers: [...] }` for `llama_callers`; `null` leaves that tool empty.
+- The build of llama.cpp is not read yet (it needs the server's API key).
+
 <a id="agent"></a>
 
 ## Install an agent
@@ -219,9 +260,9 @@ This page is written so that Claude Code on another machine can do the setup. Ru
 
 ## Limits
 
-- Phase 1: the hub is meant for a local network. Reaching it from the internet (a reverse proxy that ends TLS at home, with its own login) is planned, not built.
-- The hub has no MCP endpoint yet; MCP on each machine (`mcp.mjs`) still answers for that machine alone.
-- Model server figures (llama.cpp) are not collected by the hub yet.
+- From the internet, put the hub behind a reverse proxy that ends TLS at home and logs people in (`central.proxy`, Security model).
+- Replay, the setup report and anything that needs text are not on the hub: open the monitor on the machine itself.
+- llama.cpp figures are per hour; the build of llama.cpp is not read yet.
 - A machine abroad behind a country filter, or offline, just queues; nothing is lost under the queue's cap.
 - Deleting a session in OpenCode does not delete it on the hub; it ages out after 180 days.
 
