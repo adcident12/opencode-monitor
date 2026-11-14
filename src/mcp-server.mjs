@@ -212,7 +212,7 @@ export function buildTools({ stats, opencode, cfg, t, configChanges, redact, out
  * The protocol, one message in and at most one out.
  * @returns {(message: object) => object|null}  null for a notification, which gets no reply
  */
-export function createMcpServer({ tools, version = '0' }) {
+export function createMcpServer({ tools, version = '0', name = 'opencode-monitor', instructions = INSTRUCTIONS }) {
   const byName = new Map(tools.map(tool => [tool.name, tool]));
   const fail = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
@@ -221,8 +221,8 @@ export function createMcpServer({ tools, version = '0' }) {
       // The client's version when we speak it, else our newest; the client decides if that will do.
       protocolVersion: PROTOCOLS.includes(params?.protocolVersion) ? params.protocolVersion : PROTOCOLS[0],
       capabilities: { tools: {} },
-      serverInfo: { name: 'opencode-monitor', version },
-      instructions: INSTRUCTIONS,
+      serverInfo: { name, version },
+      instructions,
     }),
     ping: () => ({}),
     'tools/list': () => ({

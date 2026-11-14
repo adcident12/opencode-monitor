@@ -21,6 +21,7 @@ import { createCentralStore } from './store.mjs';
 import { createRemoteSources } from './facts.mjs';
 import { initHubKeys, readTokens, readReadKeys, matchToken } from './tokens.mjs';
 import { createMcpServer } from '../mcp-server.mjs';
+import { buildCentralTools, CENTRAL_INSTRUCTIONS } from './mcp-tools.mjs';
 import { answerMcp } from '../mcp-http.mjs';
 import { handleIngest } from './ingest.mjs';
 import { stripContent } from './view.mjs';
@@ -47,6 +48,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
   const store = createCentralStore({ dir: join(dir, 'machines') });
   // The key figures to the home's InfluxDB (spec 5.3.1), when central.influx is set.
   const influx = cfg.central.influx?.url ? createInfluxExport(cfg.central.influx) : null;
+  let llama = null; // the llama.cpp side (llama.mjs), when central.llama is set
   const folder = dirPath => (typeof dirPath === 'string' ? dirPath.split('/').filter(Boolean).pop() ?? null : null);
   const lookupFor = (machine, batch) => {
     const sessionsIn = new Map([...(batch.rows?.session ?? []), ...(batch.rows?.session_v2 ?? [])].map(s => [s.id, s.directory]));
@@ -126,6 +128,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
         const c = contextFor(name);
         useSettings(c, store.facts(name));
         const snap = c.monitor();
+        c.lastSnap = snap;
         if (influx) influxChanges(name, c, snap);
         c.live = new Map(snap.sessions.map(s => [s.id, s.state]));
         if (!snap.stale) c.history.record(snap.sessions, snap.now);
@@ -149,7 +152,20 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
     '/api/config-changes': { body: () => '[]' },
   });
 
-  const mcpOpencode = createMcpServer({ tools: [], version: VERSION ?? '0' });
+  const mcpOpencode = createMcpServer({
+    name: 'opencode-central',
+    version: VERSION ?? '0',
+    instructions: CENTRAL_INSTRUCTIONS,
+    tools: buildCentralTools({
+      machines: names,
+      contextOf: name => {
+        const c = contextFor(name);
+        return { stats: c.stats, tasks: c.tasks, overnight: c.overnight, costs: c.costs, snapshot: () => c.lastSnap ?? c.monitor(), facts: store.facts(name), versions: () => store.versions(name) };
+      },
+      llamaEvents: () => llama?.events(0) ?? [],
+      redact,
+    }),
+  });
   const mcpLlama = createMcpServer({ tools: [], version: VERSION ?? '0' });
 
   const lookup = createStatic(ROOT);

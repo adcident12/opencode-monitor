@@ -77,3 +77,13 @@ test('--central-read-key <name> is an option', async () => {
   const { parseArgs } = await import('../src/config.mjs');
   assert.deepEqual(parseArgs(['--central-read-key', 'claude']), { centralReadKey: 'claude' });
 });
+
+test('/mcp answers the OpenCode tools for the machines the hub has', () => withHub(async ({ post, readKey }) => {
+  const auth = { authorization: `Bearer ${readKey}` };
+  const list = await (await post('/mcp', auth, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
+  const names = list.result.tools.map(t => t.name);
+  assert.ok(names.includes('opencode_versions') && names.includes('opencode_stats') && !names.includes('opencode_config_changes'));
+  for (const t of list.result.tools) assert.equal(t.annotations.readOnlyHint, true);
+  const call = await (await post('/mcp', auth, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'opencode_versions', arguments: {} } })).json();
+  assert.equal(JSON.parse(call.result.content[0].text).machine, 'alpha');
+}));
