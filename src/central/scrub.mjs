@@ -117,7 +117,7 @@ function v2Data(ctx, type) {
 }
 
 /** '/<machine>/<last folder of the path>', whatever the separators. */
-function pseudoDir(dir, machine) {
+export function pseudoDir(dir, machine) {
   const last = String(dir ?? '').split(/[\\/]+/).filter(Boolean).pop() ?? '';
   return `/${machine}/${last}`;
 }
