@@ -98,3 +98,13 @@ test('the store lists the versions of the top-level sessions', () => {
     assert.deepEqual(store.versions('alpha'), [{ version: '1.0.0', firstAt: NOW - 9 * H, lastAt: NOW - 8 * H, sessions: 2 }, { version: '1.1.0', firstAt: NOW - 2 * H, lastAt: NOW - 2 * H, sessions: 1 }]);
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('review: a session in both tables (OpenCode 2 writes session and session_v2) counts once', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-ver2-'));
+  const store = createCentralStore({ dir });
+  const s = (id, t) => ({ id, parent_id: null, directory: '/a/x', title: 't', time_created: t, time_updated: t, version: '2.0.29' });
+  store.apply({ machine: 'alpha', seq: 1, rows: { session: [s('a', NOW - 2 * H), s('b', NOW - H)], session_v2: [s('a', NOW - 2 * H)] }, facts: null });
+  try {
+    assert.equal(store.versions('alpha')[0].sessions, 2);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});

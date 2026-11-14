@@ -121,10 +121,10 @@ export function createCentralStore({ dir }) {
     /** The folder openDb() reads for this machine. */
     dataDirOf(name) { check(name); return join(dir, name); },
     facts(name) { const f = meta(conn(name), 'facts'); return f ? JSON.parse(f) : null; },
-    /** Each OpenCode version that wrote a top-level session, oldest first: when its first and last one began, how many. */
+    /** Each OpenCode version that wrote a top-level session (counted once when it is in both tables), oldest first: when its first and last one began, how many. */
     versions(name) {
-      return conn(name).db.prepare(`select version, min(time_created) as firstAt, max(time_created) as lastAt, count(*) as sessions
-        from (select version, time_created from session where parent_id is null union all select version, time_created from session_v2 where parent_id is null)
+      return conn(name).db.prepare(`select version, min(time_created) as firstAt, max(time_created) as lastAt, count(distinct id) as sessions
+        from (select id, version, time_created from session where parent_id is null union all select id, version, time_created from session_v2 where parent_id is null)
         where version is not null and version != '' group by version order by firstAt`).all().map(r => ({ version: r.version, firstAt: Number(r.firstAt), lastAt: Number(r.lastAt), sessions: Number(r.sessions) }));
     },
     getMeta: (name, k) => meta(conn(name), k),
