@@ -1,0 +1,22 @@
+# OpenCode Central hub on .52. First run (prints once; keep them for the machines' configs, never in git):
+#   docker compose run --rm central --central-init
+#   docker compose run --rm central --central-token poppy
+# Then: docker compose up -d
+services:
+  central:
+    build: { context: ../.., dockerfile: Dockerfile.central }
+    image: opencode-central:local
+    container_name: opencode-central
+    restart: always
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    volumes:
+      - ./data:/data
+    ports:
+      - "4317:4317"
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }

@@ -1,0 +1,13 @@
+# OpenCode Central hub (node server.mjs --central). No dependencies to install: the server uses Node's built-ins
+# only and the page comes pre-built in public/. Config and data live in /data (a volume).
+FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
+WORKDIR /app
+COPY package.json server.mjs mcp.mjs ./
+COPY src ./src
+COPY i18n ./i18n
+COPY public ./public
+USER node
+EXPOSE 4317
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:4317/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["node", "server.mjs", "--config", "/data/config.json"]
+CMD ["--central"]

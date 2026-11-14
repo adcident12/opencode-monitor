@@ -1,0 +1,12 @@
+{
+  "port": 4317,
+  "lan": true,
+  "pollMs": 5000,
+  "notify": { "desktop": false },
+  "history": { "file": "/data/history/history.jsonl", "retentionDays": 180 },
+  "central": {
+    "dir": "/data/central",
+    "hosts": ["192.168.0.52:4317"],
+    "influx": { "url": "http://192.168.0.50:8086", "org": "<org>", "bucket": "opencode", "token": "<write-only token for bucket opencode>" }
+  }
+}
