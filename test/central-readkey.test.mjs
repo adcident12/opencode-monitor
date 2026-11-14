@@ -14,7 +14,7 @@ import { DEFAULTS } from '../src/config.mjs';
 const SECRET = 'p'.repeat(40);
 const INIT = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } };
 
-async function withHub(fn) {
+async function withHub(fn, central2 = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'ocm-rk-'));
   const central = join(dir, 'central');
   const store = createCentralStore({ dir: join(central, 'machines') });
@@ -25,7 +25,7 @@ async function withHub(fn) {
   const readKey = issueReadKey(central, 'claude');
   const cfg = structuredClone(DEFAULTS);
   Object.assign(cfg, { port: 0, pollMs: 200, dataDir: dir, opencodeConfigDir: dir });
-  cfg.central = { ...cfg.central, dir: central, proxy: { header: 'x-ocm-proxy', secret: SECRET } };
+  cfg.central = { ...cfg.central, dir: central, proxy: { header: 'x-ocm-proxy', secret: SECRET }, ...central2 };
   cfg.history = { ...cfg.history, file: join(dir, 'data', 'history.jsonl') };
   cfg.notify = { ...cfg.notify, desktop: false };
   const hub = await startHub(cfg);
@@ -87,3 +87,28 @@ test('/mcp answers the OpenCode tools for the machines the hub has', () => withH
   const call = await (await post('/mcp', auth, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'opencode_versions', arguments: {} } })).json();
   assert.equal(JSON.parse(call.result.content[0].text).machine, 'alpha');
 }));
+
+test('/mcp-llama answers from Llama Stroller when central.llama is set; without it, tools say it is not set', async () => {
+  const { createServer } = await import('node:http');
+  const stroller = createServer((req, res) => {
+    if (req.method !== 'GET') { res.writeHead(405).end(); return; }
+    if (req.url === '/api/status') res.end(JSON.stringify({ running: true, healthy: true, profile: 'qwen', startedAt: '2026-11-14T03:00:00Z', gpu: [] }));
+    else if (req.url === '/api/profiles') res.end(JSON.stringify({ profiles: [{ name: 'qwen', model: 'a/b.gguf', ctxSize: 4096, extraArgs: '--api-key-file C:\k.txt' }] }));
+    else res.writeHead(404).end();
+  });
+  await new Promise(r => stroller.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${stroller.address().port}`;
+  const call = (post, key, name) => post('/mcp-llama', { authorization: `Bearer ${key}` }, { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: {} } }).then(r => r.json()).then(b => JSON.parse(b.result.content[0].text));
+  try {
+    await withHub(async ({ post, readKey }) => {
+      assert.match((await call(post, readKey, 'llama_now')).error, /not set/);
+    });
+    await withHub(async ({ post, readKey }) => {
+      await new Promise(r => setTimeout(r, 300));
+      const now = await call(post, readKey, 'llama_now');
+      assert.equal(now.profile, 'qwen');
+      assert.equal(now.settings.model, 'b.gguf');
+      assert.ok(!JSON.stringify(now).includes('k.txt'));
+    }, { llama: { stroller: url, influx: null, usageUrl: null } });
+  } finally { stroller.close(); }
+});

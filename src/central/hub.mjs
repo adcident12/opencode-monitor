@@ -22,6 +22,8 @@ import { createRemoteSources } from './facts.mjs';
 import { initHubKeys, readTokens, readReadKeys, matchToken } from './tokens.mjs';
 import { createMcpServer } from '../mcp-server.mjs';
 import { buildCentralTools, CENTRAL_INSTRUCTIONS } from './mcp-tools.mjs';
+import { createLlamaSource } from './llama.mjs';
+import { buildLlamaTools, LLAMA_INSTRUCTIONS } from './mcp-llama.mjs';
 import { answerMcp } from '../mcp-http.mjs';
 import { handleIngest } from './ingest.mjs';
 import { stripContent } from './view.mjs';
@@ -48,7 +50,11 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
   const store = createCentralStore({ dir: join(dir, 'machines') });
   // The key figures to the home's InfluxDB (spec 5.3.1), when central.influx is set.
   const influx = cfg.central.influx?.url ? createInfluxExport(cfg.central.influx) : null;
-  let llama = null; // the llama.cpp side (llama.mjs), when central.llama is set
+  // The llama.cpp side (llama.mjs), when central.llama is set: polled every minute, read only.
+  const lc = cfg.central.llama;
+  const llama = lc?.stroller ? createLlamaSource({ dir: join(dir, 'llama'), stroller: String(lc.stroller).replace(/\/+$/, ''), influx: lc.influx ?? null, usageUrl: lc.usageUrl ?? null }) : null;
+  const NOT_SET = { error: 'The llama.cpp side is not set on this hub (central.llama).' };
+  const llamaOrNot = llama ?? { now: () => NOT_SET, events: () => [], hourly: () => [], hoursStatus: () => ({ configured: false }), callers: () => NOT_SET };
   const folder = dirPath => (typeof dirPath === 'string' ? dirPath.split('/').filter(Boolean).pop() ?? null : null);
   const lookupFor = (machine, batch) => {
     const sessionsIn = new Map([...(batch.rows?.session ?? []), ...(batch.rows?.session_v2 ?? [])].map(s => [s.id, s.directory]));
@@ -166,7 +172,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
       redact,
     }),
   });
-  const mcpLlama = createMcpServer({ tools: [], version: VERSION ?? '0' });
+  const mcpLlama = createMcpServer({ name: 'llama-central', version: VERSION ?? '0', instructions: LLAMA_INSTRUCTIONS, tools: buildLlamaTools(llamaOrNot) });
 
   const lookup = createStatic(ROOT);
   let access = null;
@@ -230,6 +236,9 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
 
   tick();
   const timer = setInterval(tick, cfg.pollMs);
+  const pollLlama = () => llama?.poll().catch(err => console.warn(`central: llama: ${err?.message ?? err}`));
+  pollLlama();
+  const llamaTimer = llama ? setInterval(pollLlama, Number(lc.everyMs) || 60_000) : null;
   const pruner = setInterval(() => { try { store.prune(); } catch (err) { console.warn(`central: prune: ${err.message}`); } }, PRUNE_EVERY);
   console.log(`opencode-monitor central: listening on port ${port}, machines: ${names().join(', ') || 'none yet'}`);
 
@@ -238,6 +247,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
     close: async () => {
       clearInterval(timer);
       clearInterval(pruner);
+      if (llamaTimer) clearInterval(llamaTimer);
       for (const c of contexts.values()) { for (const res of c.clients) res.end(); c.db.close?.(); }
       server.closeAllConnections?.();
       await new Promise(r => server.close(r));
