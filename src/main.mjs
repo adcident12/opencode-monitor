@@ -221,6 +221,22 @@ export async function main(argv) {
   const cfg = await settingsFor(args);
   const oneOff = ONE_OFF.find(([option]) => args[option]);
   if (oneOff) return oneOff[1](cfg);
+  if (args.centralInit || args.centralToken) {
+    // OpenCode Central hub, one-off: the hub's keys, or a machine's token. Printed once, never kept in clear.
+    const { initHubKeys, issueToken } = await import('./central/tokens.mjs');
+    const dir = resolve(ROOT, cfg.central.dir);
+    if (args.centralInit) {
+      const keys = initHubKeys(dir);
+      console.log(`${keys.created ? 'Made' : 'Already had'} the hub key pair in ${dir}.`);
+      console.log(`public key (put it in each machine's config, central.publicKey): ${keys.publicKey}`);
+    }
+    if (args.centralToken) {
+      const token = issueToken(dir, args.centralToken);
+      console.log(`New token for "${args.centralToken}" (any older one no longer works). Shown once; put it in that machine's central.token:`);
+      console.log(`token: ${token}`);
+    }
+    return undefined;
+  }
   if (args.agent) {
     // OpenCode Central agent: no page, no notifications; runs until stopped (src/central/agent.mjs).
     const { runAgent } = await import('./central/agent.mjs');
