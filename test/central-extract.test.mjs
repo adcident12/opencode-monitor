@@ -171,3 +171,16 @@ test('a todo table that became empty is sent as empty, so the hub drops the old 
     assert.deepEqual(x.next(first.cursor).rows.todo, []);
   } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('the first read starts at `since` (older history is not sent); later reads continue from the cursor', () => {
+  const { dir, path, db } = makeDb({ v2: false });
+  try {
+    seed(db);
+    const ins = db.prepare('insert into part values (?,?,?,?,?,?)');
+    ins.run('old', 'm1', 's1', T - 90 * 86_400_000, T - 90 * 86_400_000, JSON.stringify({ type: 'step-start' }));
+    const x = ex({ dbPath: path, ...ctx, since: T - 30 * 86_400_000 });
+    const r = x.next({});
+    assert.deepEqual(r.rows.part.map(p => p.id), ['p1']);
+    assert.equal(r.rows.session.length, 1);
+  } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});

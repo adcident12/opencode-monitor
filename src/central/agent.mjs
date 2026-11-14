@@ -73,7 +73,9 @@ export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now 
   const probe = createProcessProbe(cfg.processNames, { enabled: cfg.processCheck });
   const git = createGitProbe({ enabled: cfg.work.git });
   const monitor = createMonitor({ db, log, cfg, probe, git, pending, redact: createRedactor(cfg.redact), modelLimits: new Map() });
-  const extractor = createExtractor({ dbPath: join(cfg.dataDir, 'opencode.db'), hmacKey, machine });
+  // The first sync covers the last sinceDays only: the monitor's figures look back 30 days at most.
+  const since = now() - (Number(cfg.central.sinceDays) || 30) * 86_400_000;
+  const extractor = createExtractor({ dbPath: join(cfg.dataDir, 'opencode.db'), hmacKey, machine, since });
   const outbox = createOutbox({ dir: join(dir, 'outbox'), send, now });
 
   let cursor = readJson(cursorFile, {});

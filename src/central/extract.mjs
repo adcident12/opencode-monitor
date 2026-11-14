@@ -13,7 +13,8 @@ const BUSY = /locked|busy/i;
  *   cursor: per table { t, id, caught } (keyset position; caught = read to the end last time), todo: { h }.
  */
 // 3 MB of rows: sealed and base64-encoded (x1.34) it stays under the hub's 5 MB per request.
-export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000, maxBytes = 3 * 2 ** 20 }) {
+// since: the first read of a table starts there (ms); older history is never sent. null: everything.
+export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000, maxBytes = 3 * 2 ** 20, since = null }) {
   const ctx = { hmacKey, machine };
   let db = null;
   let layout = null; // table -> time column, or null for a table without one (todo)
@@ -44,7 +45,8 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
   }
 
   function readTable(table, col, cur, budget, marks) {
-    const start = !cur ? null : cur.caught && overlapMs > 0 ? { t: cur.t - overlapMs, id: '' } : { t: cur.t, id: cur.id };
+    const first = Number.isFinite(since) ? { t: since, id: '' } : null;
+    const start = !cur ? first : cur.caught && overlapMs > 0 ? { t: cur.t - overlapMs, id: '' } : { t: cur.t, id: cur.id };
     const sql = start
       ? `select * from ${table} where ${col} > ? or (${col} = ? and id > ?) order by ${col}, id`
       : `select * from ${table} order by ${col}, id`;
