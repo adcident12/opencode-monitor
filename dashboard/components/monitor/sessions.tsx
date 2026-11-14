@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { Code, Health, Hints, Output, Review, Steps, Todos, Work } from "./details"
 import { STATE_STYLE, StateBadge } from "./state"
 import { Hint } from "./hint"
+import { useCentral } from "@/lib/central"
 
 function useReason() {
   const { t } = useI18n()
@@ -31,6 +32,7 @@ function Project({ session }: Readonly<{ session: Session }>) {
 /** Jumps to this session's own figures and record of state changes. */
 function SessionLinks({ session, history, footer = false }: Readonly<{ session: Session; history: boolean; footer?: boolean }>) {
   const { t } = useI18n()
+  const central = useCentral()
   const link = "inline-flex items-center gap-1 rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
   // A subagent has no entries of its own; its parent's cover it.
   const id = session.parentId ?? session.id
@@ -46,10 +48,12 @@ function SessionLinks({ session, history, footer = false }: Readonly<{ session: 
           {t("links.history")}
         </a>
       )}
-      <a href={`#replay/${id}`} className={link}>
-        <RotateCcwIcon aria-hidden className="size-3.5" />
-        {t("links.replay")}
-      </a>
+      {!central && (
+        <a href={`#replay/${id}`} className={link}>
+          <RotateCcwIcon aria-hidden className="size-3.5" />
+          {t("links.replay")}
+        </a>
+      )}
     </nav>
   )
 }

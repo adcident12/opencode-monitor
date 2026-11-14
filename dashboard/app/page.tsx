@@ -17,6 +17,7 @@ import { Stats } from "@/components/monitor/stats"
 import { Tasks } from "@/components/monitor/tasks"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CentralProvider } from "@/lib/central"
 import { childrenOf, groupByUrgency } from "@/lib/format"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -89,6 +90,7 @@ export default function Page() {
       )}
       <Environment environment={snapshot?.environment ?? null} />
 
+      <CentralProvider value={!!snapshot?.central}>
       <Tabs value={tab} onValueChange={value => changeTab(value as Tab)} className="gap-6">
         {/* Full-contrast labels with icons, so the other views are seen at a glance. */}
         <TabsList className="h-10 max-w-full gap-1 overflow-x-auto p-1">
@@ -200,6 +202,7 @@ export default function Page() {
 
         <TabsContent value="stats">{tab === "stats" && <Stats session={session} onSession={changeSession} />}</TabsContent>
       </Tabs>
+      </CentralProvider>
     </div>
   )
 }

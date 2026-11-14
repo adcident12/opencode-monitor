@@ -76,3 +76,11 @@ test('the stand-in log has every method the monitor calls on a log', () => {
   for (const m of ['poll', 'asks', 'replies', 'evictions', 'opencodeVersion', 'mcpDisconnected', 'mcpConnected', 'runEnds', 'mcpFailures', 'mcpEvents', 'firstAt', 'lastRun', 'liveRuns'])
     assert.ok(LOG_METHODS.includes(m), m);
 });
+
+test('OpenCode\'s model limits and compaction settings travel as numbers and names only', () => {
+  const f = collectFacts({ log: fakeLog, probe: { running: true }, pending: fakePending, git: fakeGit, directories: [], machine: 'poppy', hmacKey,
+    opencode: { limits: new Map([['llama/qwen', 131072]]), reserves: new Map([['llama/qwen', { output: 8192, input: null, apiKey: S }]]),
+      compaction: { auto: true, reserved: 20000, prompt: S }, outputTokenMax: 32000, model: 'llama/qwen', mcp: [{ name: 'x', command: S }] } });
+  assert.deepEqual(f.opencode, { limits: [['llama/qwen', 131072]], reserves: [['llama/qwen', { output: 8192, input: null }]], compaction: { auto: true, reserved: 20000 }, outputTokenMax: 32000, model: 'llama/qwen' });
+  assert.doesNotMatch(JSON.stringify(f), /SECRET/);
+});

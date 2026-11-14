@@ -13,6 +13,7 @@ import { createProcessProbe } from '../process.mjs';
 import { createGitProbe } from '../git.mjs';
 import { createMonitor } from '../monitor.mjs';
 import { createRedactor } from '../redact.mjs';
+import { loadOpencodeConfig, outputTokenMaxFrom } from '../opencode-config.mjs';
 import { createExtractor } from './extract.mjs';
 import { collectFacts } from './facts.mjs';
 import { createOutbox } from './outbox.mjs';
@@ -87,7 +88,9 @@ export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now 
       monitor(); // asks OpenCode 2 about open prompts for the sessions with a call running
       const dirs = monitor.directories();
       await git.refresh(dirs);
-      const facts = collectFacts({ log, probe, pending, git, directories: dirs, machine, now: now() });
+      let opencode = null;
+      try { opencode = { ...loadOpencodeConfig(cfg.opencodeConfigDir), outputTokenMax: outputTokenMaxFrom() }; } catch { opencode = null; }
+      const facts = collectFacts({ log, probe, pending, git, directories: dirs, machine, opencode, now: now() });
       const factsKey = JSON.stringify({ ...facts, at: 0 });
       const changedFacts = factsKey !== lastFacts;
       for (let i = 0; i < 20; i++) {

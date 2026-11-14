@@ -24,15 +24,33 @@ function entry(o, machine) {
   return out;
 }
 
+const numOrNull = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** OpenCode's model limits and compaction settings: model names and numbers, nothing else of its config. */
+function opencodeFacts(o) {
+  if (!o) return null;
+  const compaction = {};
+  if (typeof o.compaction?.auto === 'boolean') compaction.auto = o.compaction.auto;
+  if (numOrNull(o.compaction?.reserved) !== null) compaction.reserved = o.compaction.reserved;
+  return {
+    limits: o.limits instanceof Map ? [...o.limits].filter(([k, v]) => typeof k === 'string' && numOrNull(v) !== null).map(([k, v]) => [k.slice(0, 200), v]) : [],
+    reserves: o.reserves instanceof Map ? [...o.reserves].filter(([k]) => typeof k === 'string').map(([k, v]) => [k.slice(0, 200), { output: numOrNull(v?.output), input: numOrNull(v?.input) }]) : [],
+    compaction,
+    outputTokenMax: numOrNull(o.outputTokenMax),
+    model: typeof o.model === 'string' ? o.model.slice(0, 200) : null,
+  };
+}
+
 const list = (v, machine) => (Array.isArray(v) ? v.map(e => entry(e, machine)).filter(Boolean) : []);
 const pairs = (m, f = x => x) => (m instanceof Map ? [...m].map(([k, v]) => [String(k), f(v)]) : []);
 const call = (o, m, fallback) => (typeof o?.[m] === 'function' ? o[m]() : fallback);
 
 /**
- * @param {{ log, probe, pending, git, directories: string[], machine: string, hmacKey?: Buffer, os?: string, now?: number }} o
+ * @param {{ log, probe, pending, git, directories: string[], machine: string, opencode?: object, hmacKey?: Buffer, os?: string, now?: number }} o
+ *   opencode: loadOpencodeConfig() output plus outputTokenMax; only model limits and compaction numbers are kept.
  *   directories: the real project folders of recent sessions, whose branches are looked up here.
  */
-export function collectFacts({ log, probe, pending, git, directories = [], machine, os = process.platform, now = Date.now() }) {
+export function collectFacts({ log, probe, pending, git, directories = [], machine, opencode = null, os = process.platform, now = Date.now() }) {
   const branches = {};
   for (const dir of directories) {
     const b = git?.get?.(dir);
@@ -58,6 +76,7 @@ export function collectFacts({ log, probe, pending, git, directories = [], machi
     },
     pending: { asks: list(call(pending, 'asks', []), machine), replies: pairs(call(pending, 'replies', null)) },
     branches,
+    opencode: opencodeFacts(opencode),
   };
 }
 

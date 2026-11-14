@@ -110,3 +110,18 @@ test('a database locked by a writer: null, no throw, and it works on the next cy
     assert.equal(x.next({}).rows.session.length, 1);
   } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a table with times but no id (OpenCode\'s todo): sent whole when it changes, not by keyset', () => {
+  const { dir, path, db } = makeDb({ v1: false, v2: false });
+  try {
+    db.exec('create table session (id text primary key, parent_id text, directory text, title text, time_created int, time_updated int); create table todo (session_id text, content text, status text, priority text, position int, time_created int, time_updated int);');
+    db.prepare('insert into todo values (?,?,?,?,?,?,?)').run('s1', 'SECRET', 'pending', 'high', 0, T, T);
+    const x = ex({ dbPath: path, ...ctx });
+    const first = x.next({});
+    assert.equal(first.rows.todo.length, 1);
+    assert.doesNotMatch(JSON.stringify(first.rows.todo), /SECRET/);
+    assert.equal(x.next(first.cursor).rows.todo, undefined, 'unchanged: not again');
+    db.prepare('update todo set status = ?, time_updated = ?').run('completed', T + 5);
+    assert.equal(x.next(first.cursor).rows.todo[0].status, 'completed');
+  } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});

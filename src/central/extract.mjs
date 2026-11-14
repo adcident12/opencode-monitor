@@ -30,7 +30,9 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
       for (const t of TABLES) {
         const cols = new Set(conn.prepare(`pragma table_info(${t})`).all().map(c => c.name));
         if (!cols.size) continue;
-        found[t] = cols.has('time_updated') ? 'time_updated' : cols.has('time_created') ? 'time_created' : null;
+        // Read by position only with an id to order by; a table without one (OpenCode's todo) is read whole.
+        const time = cols.has('time_updated') ? 'time_updated' : cols.has('time_created') ? 'time_created' : null;
+        found[t] = cols.has('id') ? time : null;
       }
       db = conn;
       layout = found;

@@ -52,16 +52,32 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
     const history = createHistory({ ...cfg.history, file: join(store.dataDirOf(name), 'history.jsonl') });
     const tasks = createTasksSource({ db, show, liveState: id => live.get(id) ?? null });
     c = {
-      db, live, history, tasks,
-      monitor: createMonitor({ db, log, cfg, redact, modelLimits: new Map(), probe, git, pending }),
-      stats: createStatsSource({ db, log, cfg, redact }),
+      db, live, history, tasks, log, probe, pending, git,
       costs: createCostSource({ db, cfg, show }),
       overnight: createOvernight({ cfg, history, tasks }),
       latest: '{}',
       clients: new Set(),
+      settingsKey: null,
     };
+    useSettings(c, store.facts(name));
     contexts.set(name, c);
     return c;
+  }
+
+  /** The monitor and stats of a machine, with the model limits and compaction settings its OpenCode uses. */
+  function useSettings(c, facts) {
+    const o = facts?.opencode ?? null;
+    const key = JSON.stringify(o);
+    if (key === c.settingsKey) return;
+    c.settingsKey = key;
+    const settings = {
+      modelLimits: new Map(o?.limits ?? []),
+      modelReserves: new Map(o?.reserves ?? []),
+      compactionSettings: o?.compaction ?? {},
+      outputTokenMax: o?.outputTokenMax ?? null,
+    };
+    c.monitor = createMonitor({ db: c.db, log: c.log, cfg, redact, probe: c.probe, git: c.git, pending: c.pending, ...settings });
+    c.stats = createStatsSource({ db: c.db, log: c.log, cfg, redact, ...settings });
   }
 
   const names = () => store.machines().map(m => m.name);
@@ -71,6 +87,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
     for (const name of all) {
       try {
         const c = contextFor(name);
+        useSettings(c, store.facts(name));
         const snap = c.monitor();
         c.live = new Map(snap.sessions.map(s => [s.id, s.state]));
         if (!snap.stale) c.history.record(snap.sessions, snap.now);

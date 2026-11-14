@@ -1,11 +1,13 @@
 "use client"
 
 import { RotateCcwIcon } from "lucide-react"
+import { useCentral } from "@/lib/central"
 import { useI18n } from "@/lib/i18n"
 
 /** Plays this session back in the Replay tab. */
 export function ReplayLink({ id }: Readonly<{ id: string }>) {
   const { t } = useI18n()
+  if (useCentral()) return null
   return (
     <a
       href={`#replay/${id}`}

@@ -19,7 +19,7 @@ async function withHub(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'ocm-hub-'));
   const central = join(dir, 'central');
   const store = createCentralStore({ dir: join(central, 'machines') });
-  store.apply({ machine: 'alpha', seq: 1, rows: { session: [sess('sa', 'alpha work', '/alpha/shop')], message: [msg('ma', 'sa')] }, facts: { running: true, opencodeVersion: '1.18.35' } });
+  store.apply({ machine: 'alpha', seq: 1, rows: { session: [sess('sa', 'alpha work', '/alpha/shop')], message: [msg('ma', 'sa')] }, facts: { running: true, opencodeVersion: '1.18.35', opencode: { limits: [['llama/qwen', 131072]], reserves: [], compaction: {}, outputTokenMax: null, model: 'llama/qwen' } } });
   store.apply({ machine: 'beta', seq: 1, rows: { session: [sess('sb', 'beta work', '/beta/web')], message: [msg('mb', 'sb')] }, facts: null });
   store.close();
   const keys = initHubKeys(central);
@@ -73,4 +73,9 @@ test('a sealed batch through /ingest shows up on the next reading', () => withHu
   await new Promise(r => setTimeout(r, 500));
   const a = await (await get('/api/state?machine=alpha')).json();
   assert.ok(a.sessions.some(s => s.title === 'second job'));
+}));
+
+test("the machine's model limits reach its sessions (context against the limit)", () => withHub(async ({ get }) => {
+  const a = await (await get('/api/state?machine=alpha')).json();
+  assert.equal(a.sessions[0].health.contextLimit, 131072);
 }));
