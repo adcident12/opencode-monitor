@@ -142,7 +142,7 @@ test('hourly figures: 7 days back on the first poll, then only the hours not yet
   w.now += 60 * 60_000; // the next hour is complete
   await s.poll();
   assert.equal(w.queries.length, 2);
-  assert.equal(Date.parse(w.queries[1].start), hourStart);
+  assert.equal(Date.parse(w.queries[1].start), hourStart - 2 * H, 'the newest two hours are asked once more');
   const rows = s.hourly(hourStart - 2 * H, hourStart + H);
   assert.deepEqual(rows.map(r => r.t), [hourStart - 2 * H, hourStart - H, hourStart]);
   assert.deepEqual([rows[0].prompt, rows[0].prompt_s, rows[0].gen, rows[0].gen_s], [1000, 2, 100, 4]);
@@ -184,4 +184,52 @@ test('the events file has no paths or keys', () => withSource(async ({ dir, w, m
   const text = readFileSync(file, 'utf8');
   assert.ok(text.includes('x.gguf'));
   for (const bad of ['C:\\\\', 'key.txt', 'secrets']) assert.ok(!text.includes(bad), bad);
+}));
+
+test('review: an hour is settled only 10 minutes after it ends, and the last two are asked again', () => withSource(async ({ w, make }) => {
+  const s = make();
+  w.now = Date.parse('2026-11-14T11:05:00Z');
+  await s.poll();
+  assert.equal(new Date(Date.parse(w.queries[0].stop)).toISOString(), '2026-11-14T10:00:00.000Z', '10-11 is not settled at 11:05');
+  w.now = Date.parse('2026-11-14T11:12:00Z');
+  await s.poll();
+  assert.equal(w.queries.length, 2);
+  assert.equal(w.queries[1].start, '2026-11-14T08:00:00.000Z');
+  assert.equal(w.queries[1].stop, '2026-11-14T11:00:00.000Z');
+}));
+
+test('review: an error table from InfluxDB is a failure, not an empty hour', () => {
+  assert.throws(() => parseFluxCsv(',error,reference\r\n,some flux error,\r\n'), /InfluxDB/);
+  assert.deepEqual(parseFluxCsv('\r\n'), []);
+});
+
+test('review: a settings change saved with a restart, or while stopped, keeps what changed', () => withSource(async ({ w, make }) => {
+  const s = make();
+  await s.poll();
+  w.now += 60_000; w.profiles = [{ ...PROFILE, ctxSize: 65536 }]; w.status = { ...w.status, startedAt: '2026-11-14T10:21:00.000Z' };
+  await s.poll();
+  w.now += 60_000; w.status = { running: false, gpu: [] };
+  await s.poll();
+  w.now += 60_000; w.profiles = [{ ...PROFILE, ctxSize: 32768 }];
+  await s.poll();
+  w.now += 60_000; w.status = { ...fakeWorld().status, startedAt: '2026-11-14T10:25:00.000Z' };
+  await s.poll();
+  const ev = s.events(0);
+  assert.deepEqual(ev.map(e => e.kind), ['seen', 'restart', 'stopped', 'started']);
+  assert.deepEqual(ev[1].changes, [{ key: 'ctxSize', from: 131072, to: 65536 }]);
+  assert.deepEqual(ev[3].changes, [{ key: 'ctxSize', from: 65536, to: 32768 }]);
+}));
+
+test('review: tokens, secrets and addresses among the flags are left out', () => {
+  const p = sanitizeProfile({ name: 'x', extraArgs: '--hf-token hf_abc -hft hf_def --host 192.168.0.53 --port 11435 --path C:\web --ssl-key-file k.pem --alias ok' });
+  assert.deepEqual(p.args, { '--alias': 'ok' });
+});
+
+test('review: a malformed Stroller answer still lets the hours and the callers be read', () => withSource(async ({ w, make }) => {
+  const s = make();
+  w.profiles = 'nope';
+  w.status = { running: true, profile: 'qwen-mtp', gpu: 'nope' };
+  await s.poll();
+  assert.equal(w.queries.length, 1);
+  assert.ok(s.callers());
 }));

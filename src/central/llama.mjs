@@ -14,6 +14,8 @@ const DAY = 86_400_000;
 const BACKFILL = 7 * DAY;
 const KEEP = 180 * DAY;
 const USAGE_EVERY = 5 * 60_000;
+const SETTLE = 10 * 60_000; // an hour counts as complete 10 minutes after it ends (Telegraf flushes late)
+const AGAIN = 2;            // and the newest complete hours are asked once more each new hour (late points)
 
 // InfluxDB field → hour-row key. Counters are summed per hour, gauges are the hour's highest.
 const COUNTERS = {
@@ -38,7 +40,8 @@ export function sanitizeProfile(p) {
     const next = words[i + 1];
     const hasValue = next != null && (!next.startsWith('-') || /^-\d/.test(next));
     if (hasValue) i++;
-    if (/^--?api-key/i.test(w)) continue;
+    // Keys, tokens and secrets (--api-key-file, --hf-token/-hft, --ssl-key-file …) and addresses are left out.
+    if (/key|token|secret|pass|auth|^-hft$/i.test(w) || /^--(host|port|path)$/.test(w)) continue;
     args[w] = hasValue ? (looksLikePath(next) ? base(next) : next) : true;
   }
   const out = { name: String(p.name ?? '').slice(0, 80), model: p.model ? base(p.model) : null };
@@ -55,7 +58,12 @@ export function parseFluxCsv(text) {
   for (const line of String(text).split(/\r?\n/)) {
     if (!line.trim()) { cols = null; continue; }
     const cells = line.split(',');
-    if (!cols) { cols = { time: cells.indexOf('_time'), field: cells.indexOf('_field'), value: cells.indexOf('_value') }; continue; }
+    if (!cols) {
+      cols = { time: cells.indexOf('_time'), field: cells.indexOf('_field'), value: cells.indexOf('_value') };
+      // A Flux error can arrive inside a 200 as an "error" table: a failure, not an empty hour.
+      if (cells.includes('error') || cols.time < 0 || cols.field < 0 || cols.value < 0) throw new Error(`InfluxDB answered with an error table: ${String(text).slice(0, 160).replace(/\s+/g, ' ')}`);
+      continue;
+    }
     const value = Number(cells[cols.value]);
     const time = Date.parse(cells[cols.time]);
     if (Number.isFinite(value) && Number.isFinite(time)) out.push({ time, field: cells[cols.field], value });
@@ -140,34 +148,41 @@ export function createLlamaSource({ dir, stroller, influx = null, usageUrl = nul
       current = { at: now(), error: `Llama Stroller is not reachable (${String(err?.message ?? err).slice(0, 80)}).` };
       return;
     }
-    const list = (profiles?.profiles ?? []).map(sanitizeProfile).filter(Boolean);
+    const list = (Array.isArray(profiles?.profiles) ? profiles.profiles : []).map(sanitizeProfile).filter(Boolean);
     const running = status?.running === true;
     const profile = running ? String(status.profile ?? '') || null : null;
     const settings = list.find(p => p.name === profile) ?? null;
     const startedAt = running && status.startedAt ? Date.parse(status.startedAt) || null : null;
     current = {
       at: now(), running, healthy: status?.healthy === true, loading: status?.loading === true, profile, startedAt,
-      gpu: (status?.gpu ?? []).map(g => ({ index: g.index, name: g.name, memTotalMiB: g.memTotalMiB, memUsedMiB: g.memUsedMiB, utilPct: g.utilPct, tempC: g.tempC })),
+      gpu: (Array.isArray(status?.gpu) ? status.gpu : []).map(g => ({ index: g.index, name: g.name, memTotalMiB: g.memTotalMiB, memUsedMiB: g.memUsedMiB, utilPct: g.utilPct, tempC: g.tempC })),
       settings, profiles: list.map(p => p.name),
     };
     const t = now();
     const was = state;
+    // The settings each profile last ran with, kept while stopped too: an edit made while stopped or saved with a
+    // restart is told with the restart or start that follows it.
+    const known = { ...(was?.settingsByProfile ?? {}) };
+    const before = profile ? (known[profile] ?? null) : null;
+    const diff = before && settings ? changesOf(before, settings) : [];
+    const withChanges = e => (diff.length ? { ...e, changes: diff } : e);
     if (!was || !('running' in was)) record({ t, kind: 'seen', profile, running });
     else if (was.running && !running) record({ t, kind: 'stopped', profile: was.profile });
-    else if (!was.running && running) record({ t, kind: 'started', profile });
+    else if (!was.running && running) record(withChanges({ t, kind: 'started', profile }));
     else if (running && was.profile !== profile) record({ t, kind: 'profile', profile, from: was.profile, to: profile, changes: changesOf(was.settings, settings) });
-    else if (running && was.startedAt !== startedAt) record({ t, kind: 'restart', profile });
-    else if (running && JSON.stringify(flatten(was.settings)) !== JSON.stringify(flatten(settings))) record({ t, kind: 'settings', profile, changes: changesOf(was.settings, settings) });
-    state = { ...(was ?? {}), running, profile, startedAt, settings };
+    else if (running && was.startedAt !== startedAt) record(withChanges({ t, kind: 'restart', profile }));
+    else if (running && diff.length) record({ t, kind: 'settings', profile, changes: diff });
+    if (running && settings) known[profile] = settings; // what the profile ran with
+    state = { ...(was ?? {}), running, profile, startedAt, settings, settingsByProfile: known };
     saveState();
   }
 
   async function pollHours() {
     if (!influx?.url || !influx.token) return;
-    const lastHour = Math.floor(now() / H) * H; // the hour going on now is not complete
-    const newest = Math.max(state?.doneUntil ?? -Infinity, ...[...hours.keys()].map(t => t + H));
-    const from = Math.max(Number.isFinite(newest) ? newest : -Infinity, lastHour - BACKFILL);
-    if (from >= lastHour) return;
+    const lastHour = Math.floor((now() - SETTLE) / H) * H; // the end of the newest settled hour
+    const done = state?.doneUntil ?? null;
+    if (done != null && done >= lastHour) return;
+    const from = Math.max(done != null ? done - AGAIN * H : -Infinity, lastHour - BACKFILL);
     const res = await fetch(`${influx.url.replace(/\/+$/, '')}/api/v2/query?org=${encodeURIComponent(influx.org)}`, {
       method: 'POST',
       headers: { Authorization: `Token ${influx.token}`, 'Content-Type': 'application/vnd.flux', Accept: 'application/csv' },
@@ -204,7 +219,7 @@ export function createLlamaSource({ dir, stroller, influx = null, usageUrl = nul
   let hoursError = null;
   return {
     async poll() {
-      await pollStroller();
+      try { await pollStroller(); } catch (err) { current = { at: now(), error: `Llama Stroller answered something unexpected (${String(err?.message ?? err).slice(0, 80)}).` }; }
       try { await pollHours(); hoursError = null; } catch (err) { hoursError = String(err?.message ?? err).slice(0, 120); }
       await pollUsage();
       if (events.length && events[0].t < keepFrom()) { events = events.filter(e => e.t >= keepFrom()); writeLines(eventsFile, events); }
@@ -215,5 +230,6 @@ export function createLlamaSource({ dir, stroller, influx = null, usageUrl = nul
     hourly: (from, to) => [...hours.values()].filter(r => r.t >= from && r.t < to).sort((a, b) => a.t - b.t),
     hoursStatus: () => ({ configured: Boolean(influx?.url && influx?.token), error: hoursError, until: state?.doneUntil ?? null }),
     callers: () => usage,
+    usageConfigured: () => Boolean(usageUrl),
   };
 }

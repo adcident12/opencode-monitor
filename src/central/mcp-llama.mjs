@@ -45,7 +45,13 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
   const noHours = () => {
     const st = source.hoursStatus();
     if (!st.configured) return { error: 'The hub has no InfluxDB read token for llama.cpp figures yet (central.llama.influx).' };
+    if (st.until == null) return { error: `No llama.cpp figures have been read from InfluxDB yet${st.error ? `: ${st.error}` : '.'}` };
     return null;
+  };
+  // How fresh the hours are, and the last error when reading them failed (the figures may then be stale).
+  const freshness = () => {
+    const st = source.hoursStatus();
+    return { figuresUntil: iso(st.until), ...(st.error ? { warning: `Reading new hours failed: ${st.error}` } : {}) };
   };
   const window = (from, to) => ({ from: iso(from), to: iso(to), ...statsOf(source.hourly(from, to)) });
 
@@ -83,7 +89,7 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
         const end = to ? Date.parse(to) : now();
         const start = from ? Date.parse(from) : end - (Number.isInteger(hours) ? hours : 24) * H;
         if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return { error: 'from must be before to (ISO dates).' };
-        return { ...window(start, end), note: NOTE };
+        return { ...window(start, end), ...freshness(), note: NOTE };
       },
     },
     {
@@ -110,7 +116,7 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
         const cut = Math.floor(moment / H) * H;
         const before = window(cut - span, cut);
         const after = window(cut + H, Math.min(cut + H + span, now()));
-        return { ...(event ? { event } : { at: iso(moment) }), before, after, reliable: before.workHours >= 1 && after.workHours >= 1, note: NOTE };
+        return { ...(event ? { event } : { at: iso(moment) }), before, after, reliable: before.workHours >= 1 && after.workHours >= 1, ...freshness(), note: NOTE };
       },
     },
     {
@@ -118,6 +124,7 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
       description: 'Who used the server in the last 24 hours, as the home\'s usage page counts it: each caller (Ares chat, OpenCode from outside, MyPay receipts, the security agent, …) with requests, tokens in and out, average wait and share; and the day\'s totals.',
       inputSchema: { type: 'object', properties: {} },
       run: () => {
+        if (source.usageConfigured && !source.usageConfigured()) return { error: 'No usage page is set on this hub (central.llama.usageUrl).' };
         const u = source.callers();
         if (!u) return { error: 'Not read yet.' };
         return { ...u, at: iso(u.at) };

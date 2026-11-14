@@ -77,3 +77,18 @@ test('llama_now, llama_changes, llama_callers answer from the cache; none can ch
   assert.equal(t.llama_callers.run({}).callers[0].caller, 'ares');
   for (const name of Object.keys(t)) assert.match(name, /^llama_(now|changes|stats|compare|callers)$/);
 });
+
+test('review: InfluxDB failing or never read is said, not shown as an idle server', () => {
+  const failing = { ...fakeSource({ hours: [hour(NOW - 2 * H)] }), hoursStatus: () => ({ configured: true, error: 'InfluxDB answered 401', until: NOW - 3 * H }) };
+  const r = toolsOf(failing).llama_stats.run({});
+  assert.match(r.warning, /401/);
+  assert.equal(r.figuresUntil, new Date(NOW - 3 * H).toISOString());
+  const never = { ...fakeSource(), hoursStatus: () => ({ configured: true, error: 'InfluxDB answered 401', until: null }) };
+  assert.match(toolsOf(never).llama_stats.run({}).error, /401/);
+  assert.match(toolsOf(never).llama_compare.run({ at: new Date(NOW - 5 * H).toISOString() }).error, /401/);
+});
+
+test('review: callers with no usage page set says so', () => {
+  const t = toolsOf({ ...fakeSource(), callers: () => null, usageConfigured: () => false });
+  assert.match(t.llama_callers.run({}).error, /usageUrl/);
+});

@@ -44,3 +44,15 @@ test('no stream to open, nothing but JSON, nothing too large, and no web page fr
     assert.equal((await post(url, { jsonrpc: '2.0', id: 1, method: 'ping' }, { origin: 'http://127.0.0.1:4317' })).status, 200);
   });
 });
+
+test('review: a client that drops while sending gets no crash', async () => {
+  const { answerMcp } = await import('../src/mcp-http.mjs');
+  const { EventEmitter } = await import('node:events');
+  const req = new EventEmitter();
+  Object.assign(req, { method: 'POST', headers: {} });
+  const res = { status: null, writeHead(s) { this.status = s; return this; }, end() { return this; } };
+  const done = answerMcp(req, res, () => null, new Set());
+  req.emit('error', Object.assign(new Error('aborted'), { code: 'ECONNRESET' }));
+  await done;
+  assert.equal(res.status, 400);
+});

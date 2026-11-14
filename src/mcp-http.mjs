@@ -40,7 +40,14 @@ export async function answerMcp(req, res, handle, origins) {
     res.writeHead(405, { ...JSON_HEADERS, allow: 'POST' }).end();
     return;
   }
-  const text = await readBody(req);
+  let text;
+  try {
+    text = await readBody(req);
+  } catch {
+    // The client went away while sending: nothing to answer, and nothing to crash on.
+    res.writeHead(400, JSON_HEADERS).end();
+    return;
+  }
   if (text == null) {
     res.writeHead(413, JSON_HEADERS).end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Request too large.' } }));
     return;
