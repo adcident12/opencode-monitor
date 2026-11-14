@@ -84,3 +84,9 @@ test('OpenCode\'s model limits and compaction settings travel as numbers and nam
   assert.deepEqual(f.opencode, { limits: [['llama/qwen', 131072]], reserves: [['llama/qwen', { output: 8192, input: null }]], compaction: { auto: true, reserved: 20000 }, outputTokenMax: 32000, model: 'llama/qwen' });
   assert.doesNotMatch(JSON.stringify(f), /SECRET/);
 });
+
+test('a question OpenCode 2 dropped keeps its droppedAt, so the hub does not show it as waiting', () => {
+  const f = collectFacts({ log: fakeLog, probe: { running: true }, git: fakeGit, directories: [], machine: 'poppy', hmacKey,
+    pending: { asks: () => [{ t: 2, id: 'que_9', kind: 'question', session: 'ses_1', part: 'prt_9', answeredAt: null, droppedAt: 7 }], replies: () => new Map() } });
+  assert.equal(f.pending.asks[0].droppedAt, 7);
+});

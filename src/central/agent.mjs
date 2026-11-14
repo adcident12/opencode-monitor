@@ -98,8 +98,9 @@ export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now 
         const rows = r?.rows ?? {};
         const any = Object.keys(rows).length > 0;
         if (!any && !(changedFacts && i === 0)) break;
-        outbox.put(seq => seal({ machine, seq, sentAt: now(), rows, facts: i === 0 && changedFacts ? facts : null }, publicKey));
-        if (r) { cursor = r.cursor; writeJson(cursorFile, cursor); }
+        outbox.put(seq => seal({ machine, seq, instance: outbox.instance(), sentAt: now(), rows, facts: i === 0 && changedFacts ? facts : null }, publicKey));
+        // Queued: only now do these rows count as sent and the cursor move (a failed put reads them again).
+        if (r) { extractor.acknowledge(r); cursor = r.cursor; writeJson(cursorFile, cursor); }
         if (!r?.more) break;
       }
       lastFacts = factsKey;

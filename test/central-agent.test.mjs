@@ -75,3 +75,21 @@ test('--agent is an option, and starting automatically keeps it', async () => {
   assert.match(autostartCommand({ node: 'node', root: 'C:/m', args: { agent: true } }).args, / --agent$/);
   assert.deepEqual(serverArgs({ agent: true }), ['--agent']);
 });
+
+test('a first sync of a big database: every sealed envelope stays under the hub\'s 5 MB, and carries the instance', async () => {
+  const { dir, cfg } = setup();
+  const db = new DatabaseSync(join(dir, 'opencode.db'));
+  const ins = db.prepare('insert into part values (?,?,?,?,?,?)');
+  for (let i = 0; i < 300; i++) ins.run(`big${i}`, 'm1', 's1', T - 500, T - 500, JSON.stringify({ type: 'tool', tool: 'read', state: { status: 'completed', output: 'x'.repeat(30_000), time: { start: T - 600, end: T - 500 } } }));
+  db.close();
+  const sizes = [];
+  const ids = new Set();
+  const agent = runAgent(cfg, { timer: false, send: async env => { sizes.push(Buffer.byteLength(JSON.stringify(env))); const b = openSealed(env, keys.privateKey); ids.add(b.instance); return { ok: true, seq: b.seq }; } });
+  try {
+    await agent.cycle();
+    assert.ok(sizes.length >= 2, `${sizes.length} batches`);
+    assert.ok(Math.max(...sizes) < 5 * 2 ** 20, `largest ${Math.max(...sizes)} bytes`);
+    assert.equal(ids.size, 1);
+    assert.match([...ids][0], /^[0-9a-f]{16}$/);
+  } finally { agent.stop(); rmSync(dir, { recursive: true, force: true }); }
+});

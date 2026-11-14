@@ -86,3 +86,9 @@ test('prune also reaches machines this process has not opened yet (a restarted h
     b.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a new agent instance (reinstalled machine) starts its seq again and is applied', () => withStore(store => {
+  store.apply({ ...batch(5, { session: [sess('s1', NOW)] }), instance: 'aaaaaaaaaaaaaaaa' });
+  assert.deepEqual(store.apply({ ...batch(1, { session: [sess('s2', NOW)] }), instance: 'bbbbbbbbbbbbbbbb' }), { seq: 1, applied: true });
+  assert.deepEqual(store.apply({ ...batch(1, { session: [sess('s3', NOW)] }), instance: 'bbbbbbbbbbbbbbbb' }), { seq: 1, applied: false });
+}));

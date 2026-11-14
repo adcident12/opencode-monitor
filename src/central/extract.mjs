@@ -12,7 +12,8 @@ const BUSY = /locked|busy/i;
  * @returns {{ next(cursor: object): { rows: Record<string, object[]>, cursor: object, more: boolean } | null }}
  *   cursor: per table { t, id, caught } (keyset position; caught = read to the end last time), todo: { h }.
  */
-export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000, maxBytes = 2 * 2 ** 20 }) {
+// 3 MB of rows: sealed and base64-encoded (x1.34) it stays under the hub's 5 MB per request.
+export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000, maxBytes = 3 * 2 ** 20 }) {
   const ctx = { hmacKey, machine };
   let db = null;
   let layout = null; // table -> time column, or null for a table without one (todo)
@@ -42,7 +43,7 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
     }
   }
 
-  function readTable(table, col, cur, budget) {
+  function readTable(table, col, cur, budget, marks) {
     const start = !cur ? null : cur.caught && overlapMs > 0 ? { t: cur.t - overlapMs, id: '' } : { t: cur.t, id: cur.id };
     const sql = start
       ? `select * from ${table} where ${col} > ? or (${col} = ? and id > ?) order by ${col}, id`
@@ -55,11 +56,11 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
       const key = `${table}:${r.id}`;
       if (seen.get(key) === r[col]) { last = r; continue; }
       const s = scrubRow(table, r, ctx);
-      const size = JSON.stringify(s).length;
+      const size = Buffer.byteLength(JSON.stringify(s)); // bytes: the filler is 2 bytes in UTF-8
       if (rows.length && budget.left - size < 0) { more = true; break; } // r waits for the next batch
       budget.left -= size;
       rows.push(s);
-      seen.set(key, r[col]);
+      marks.push([key, r[col]]); // remembered only once the caller has queued the batch (acknowledge)
       last = r;
     }
     const cursor = last ? { t: last[col], id: last.id, caught: !more } : (cur ? { ...cur, caught: true } : null);
@@ -78,22 +79,27 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
         open();
         const out = { rows: {}, cursor: { ...cursor }, more: false };
         const budget = { left: maxBytes };
+        const marks = [];
         for (const table of TABLES) {
           if (!Object.hasOwn(layout, table)) continue;
           const col = layout[table];
-          const r = col ? readTable(table, col, cursor[table], budget) : readWhole(table, cursor[table]);
+          const r = col ? readTable(table, col, cursor[table], budget, marks) : readWhole(table, cursor[table]);
           if (r.rows.length) out.rows[table] = r.rows;
           if (r.cursor) out.cursor[table] = r.cursor;
           if (r.more) { out.more = true; break; }
         }
-        // forget what has fallen out of every table's overlap
-        const oldest = Math.min(...Object.values(out.cursor).filter(c => typeof c?.t === 'number').map(c => c.t)) - overlapMs;
-        for (const [k, t] of seen) if (t < oldest) seen.delete(k);
+        Object.defineProperty(out, 'marks', { value: marks, enumerable: false });
         return out;
       } catch (err) {
         if (BUSY.test(String(err?.message))) return null;
         throw err;
       }
+    },
+    /** The batch from next() is queued: its rows count as sent from now on (and what left the overlap is forgotten). */
+    acknowledge(r) {
+      for (const [k, t] of r?.marks ?? []) seen.set(k, t);
+      const times = Object.values(r?.cursor ?? {}).filter(c => typeof c?.t === 'number').map(c => c.t);
+      if (times.length) { const oldest = Math.min(...times) - overlapMs; for (const [k, t] of seen) if (t < oldest) seen.delete(k); }
     },
     close() { db?.close(); db = null; },
   };

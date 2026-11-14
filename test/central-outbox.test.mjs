@@ -2,7 +2,7 @@
 // restarting, or the queue filling up never loses a batch silently and never stops the agent.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createOutbox } from '../src/central/outbox.mjs';
@@ -78,5 +78,41 @@ test('a hub answer that is not ok keeps the batch', async () => {
     ob.put(env);
     const r = await ob.flush();
     assert.deepEqual([r.sent, r.kept], [0, 1]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a batch the hub refuses for good (400, 413) is set aside, and the queue moves on', async () => {
+  const dir = tmp();
+  try {
+    const sent = [];
+    const ob = createOutbox({ dir, send: async e => { if (e.seq === 1) return { ok: false, status: 413 }; sent.push(e.seq); return { ok: true, seq: e.seq }; } });
+    ob.put(env); ob.put(env);
+    const r = await ob.flush();
+    assert.deepEqual(sent, [2]);
+    assert.equal(r.rejected, 1);
+    assert.equal(readdirSync(join(dir, 'rejected')).length, 1);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a 401 (token being replaced) is not "for good": the batch waits', async () => {
+  const dir = tmp();
+  try {
+    const ob = createOutbox({ dir, send: async () => ({ ok: false, status: 401 }) });
+    ob.put(env);
+    const r = await ob.flush();
+    assert.deepEqual([r.sent, r.kept, r.rejected], [0, 1, 0]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('every batch carries the queue\'s instance id; a lost or unreadable seq file starts a new instance', () => {
+  const dir = tmp();
+  try {
+    const a = createOutbox({ dir, send: async () => ({ ok: true }) });
+    const id1 = a.instance();
+    assert.match(id1, /^[0-9a-f]{16}$/);
+    assert.equal(createOutbox({ dir, send: async () => ({ ok: true }) }).instance(), id1, 'same queue, same instance');
+    writeFileSync(join(dir, 'seq'), 'garbage');
+    const c = createOutbox({ dir, send: async () => ({ ok: true }) });
+    assert.notEqual(c.instance(), id1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

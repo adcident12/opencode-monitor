@@ -83,7 +83,10 @@ export function createCentralStore({ dir }) {
       const c = conn(batch?.machine);
       const seq = Number(batch.seq);
       if (!Number.isInteger(seq) || seq < 1) throw new Error('seq refused');
-      const last = Number(meta(c, 'last_seq') ?? 0);
+      // A new agent instance (its queue lost or rebuilt) counts from 1 again: forget the old high-water mark.
+      const instance = typeof batch.instance === 'string' && /^[0-9a-f]{16}$/.test(batch.instance) ? batch.instance : null;
+      const fresh = instance !== null && instance !== meta(c, 'instance');
+      const last = fresh ? 0 : Number(meta(c, 'last_seq') ?? 0);
       if (seq <= last) return { seq, applied: false };
       c.db.exec('begin');
       try {
@@ -98,6 +101,7 @@ export function createCentralStore({ dir }) {
         }
         if (batch.facts) c.setMeta.run('facts', JSON.stringify(batch.facts));
         c.setMeta.run('last_seq', String(seq));
+        if (instance) c.setMeta.run('instance', instance);
         c.setMeta.run('last_at', String(Date.now()));
         c.db.exec('commit');
       } catch (err) {

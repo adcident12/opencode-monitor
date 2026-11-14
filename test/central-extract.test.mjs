@@ -65,6 +65,7 @@ test('next read: only what changed, plus what falls inside the overlap', () => {
     // committed late with an older time is not missed); the hub dedupes them.
     const y = ex({ dbPath: path, ...ctx, overlapMs: 20_000 });
     const again = y.next(second.cursor);
+    y.acknowledge(again);
     assert.deepEqual(again.rows.part.map(p => p.id), ['p2']);
     // The same reader does not return them again while unchanged: no traffic every cycle for the last minutes.
     assert.equal(y.next(again.cursor).rows.part, undefined);
@@ -123,5 +124,38 @@ test('a table with times but no id (OpenCode\'s todo): sent whole when it change
     assert.equal(x.next(first.cursor).rows.todo, undefined, 'unchanged: not again');
     db.prepare('update todo set status = ?, time_updated = ?').run('completed', T + 5);
     assert.equal(x.next(first.cursor).rows.todo[0].status, 'completed');
+  } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the batch cap counts bytes (filler is 2 bytes in UTF-8), so a sealed batch stays under the hub limit', () => {
+  const { dir, path, db } = makeDb({ v2: false });
+  try {
+    seed(db);
+    const ins = db.prepare('insert into part values (?,?,?,?,?,?)');
+    for (let i = 0; i < 40; i++) ins.run(`q${i}`, 'm1', 's1', T, T + 10, JSON.stringify({ type: 'text', text: 'a'.repeat(5000) }));
+    const x = ex({ dbPath: path, ...ctx, maxBytes: 50_000 });
+    let cursor = {};
+    for (let i = 0; i < 20; i++) {
+      const r = x.next(cursor);
+      const bytes = Buffer.byteLength(JSON.stringify(r.rows));
+      assert.ok(bytes <= 50_000 + 11_000, `batch of ${bytes} bytes`);
+      x.acknowledge(r);
+      cursor = r.cursor;
+      if (!r.more) break;
+    }
+  } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('rows are only marked as sent once acknowledged: a read that is not queued is read again', () => {
+  const { dir, path, db } = makeDb({ v2: false });
+  try {
+    seed(db);
+    const x = ex({ dbPath: path, ...ctx, overlapMs: 60_000 });
+    const first = x.next({});
+    const again = x.next({}); // not acknowledged (the batch never made it into the queue)
+    assert.equal(again.rows.part?.length, 1, 'still there');
+    x.acknowledge(again);
+    assert.equal(x.next(again.cursor).rows.part, undefined, 'acknowledged: not again');
+    assert.ok(first);
   } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });

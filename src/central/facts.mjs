@@ -9,7 +9,7 @@ import { UNREADABLE } from '../git.mjs';
 export const LOG_METHODS = ['poll', 'asks', 'replies', 'evictions', 'opencodeVersion', 'mcpDisconnected', 'mcpConnected',
   'runEnds', 'mcpFailures', 'mcpEvents', 'firstAt', 'lastRun', 'liveRuns'];
 
-const KEEP = new Set(['t', 'at', 'run', 'id', 'kind', 'permission', 'name', 'ok', 'tools', 'shutdown', 'session', 'part', 'answeredAt']);
+const KEEP = new Set(['t', 'at', 'run', 'id', 'kind', 'permission', 'name', 'ok', 'tools', 'shutdown', 'session', 'part', 'answeredAt', 'droppedAt']);
 const fill = v => (typeof v === 'string' ? FILLER.repeat(Math.min(v.length, MAX_FILL)) : null);
 
 /** One log or prompt entry with only listed, plain values. */
