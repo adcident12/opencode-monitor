@@ -93,6 +93,9 @@ export const DEFAULTS = {
     // The overnight report, to Discord, when the night ends (overnight.to).
     overnight: { enabled: false },
   },
+  // OpenCode Central. Agent: where to send (url, the hub's publicKey) and as whom (machine, token).
+  // Hub: where the per-machine data lives, and the InfluxDB the key figures go to (null: none).
+  central: { url: '', machine: '', token: '', publicKey: '', everyMs: 10_000, dir: 'data/central', influx: null },
 };
 
 const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -109,8 +112,10 @@ function merge(base, extra) {
 const SWITCHES = {
   '--sample': 'sample', '--lan': 'lan', '--access-key': 'accessKey', '--no-notify': 'noNotify', '--assume-running': 'assumeRunning',
   '--test-notify': 'testNotify', '--version': 'version', '-v': 'version', '--doctor': 'doctor', '--help': 'help', '-h': 'help',
+  // OpenCode Central (src/central/): ship this machine's figures, or receive them on the hub.
+  '--agent': 'agent', '--central': 'central', '--central-init': 'centralInit',
 };
-const VALUES = { '--port': ['port', Number], '--data-dir': ['dataDir', String], '--config': ['config', String], '--lang': ['lang', String], '--autostart': ['autostart', String] };
+const VALUES = { '--port': ['port', Number], '--data-dir': ['dataDir', String], '--config': ['config', String], '--lang': ['lang', String], '--autostart': ['autostart', String], '--central-token': ['centralToken', String] };
 
 export function parseArgs(argv) {
   const args = {};

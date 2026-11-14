@@ -16,6 +16,9 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
   const ctx = { hmacKey, machine };
   let db = null;
   let layout = null; // table -> time column, or null for a table without one (todo)
+  // What was already returned inside the overlap: "table:id" -> its time. The overlap re-reads the last
+  // minutes on every cycle; a row seen with the same time is not returned again (a restart sends it once more).
+  const seen = new Map();
 
   function open() {
     if (db) return;
@@ -47,11 +50,14 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
     let last = null;
     let more = false;
     for (const r of start ? stmt.iterate(start.t, start.t, start.id) : stmt.iterate()) {
+      const key = `${table}:${r.id}`;
+      if (seen.get(key) === r[col]) { last = r; continue; }
       const s = scrubRow(table, r, ctx);
       const size = JSON.stringify(s).length;
-      if (rows.length && budget.left - size < 0) { more = true; break; }
+      if (rows.length && budget.left - size < 0) { more = true; break; } // r waits for the next batch
       budget.left -= size;
       rows.push(s);
+      seen.set(key, r[col]);
       last = r;
     }
     const cursor = last ? { t: last[col], id: last.id, caught: !more } : (cur ? { ...cur, caught: true } : null);
@@ -78,6 +84,9 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
           if (r.cursor) out.cursor[table] = r.cursor;
           if (r.more) { out.more = true; break; }
         }
+        // forget what has fallen out of every table's overlap
+        const oldest = Math.min(...Object.values(out.cursor).filter(c => typeof c?.t === 'number').map(c => c.t)) - overlapMs;
+        for (const [k, t] of seen) if (t < oldest) seen.delete(k);
         return out;
       } catch (err) {
         if (BUSY.test(String(err?.message))) return null;

@@ -63,8 +63,11 @@ test('next read: only what changed, plus what falls inside the overlap', () => {
     assert.equal(second.rows.todo, undefined, 'todo unchanged: not sent again');
     // With an overlap, rows written up to that long before the last one seen are read again (a write that
     // committed late with an older time is not missed); the hub dedupes them.
-    const again = ex({ dbPath: path, ...ctx, overlapMs: 20_000 }).next(second.cursor);
+    const y = ex({ dbPath: path, ...ctx, overlapMs: 20_000 });
+    const again = y.next(second.cursor);
     assert.deepEqual(again.rows.part.map(p => p.id), ['p2']);
+    // The same reader does not return them again while unchanged: no traffic every cycle for the last minutes.
+    assert.equal(y.next(again.cursor).rows.part, undefined);
   } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

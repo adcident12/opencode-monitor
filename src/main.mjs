@@ -221,6 +221,13 @@ export async function main(argv) {
   const cfg = await settingsFor(args);
   const oneOff = ONE_OFF.find(([option]) => args[option]);
   if (oneOff) return oneOff[1](cfg);
+  if (args.agent) {
+    // OpenCode Central agent: no page, no notifications; runs until stopped (src/central/agent.mjs).
+    const { runAgent } = await import('./central/agent.mjs');
+    runAgent(cfg);
+    console.log(`opencode-monitor agent: sending this machine's figures as "${cfg.central.machine}" to ${cfg.central.url}`);
+    return undefined;
+  }
 
   const db = openDb(cfg.dataDir);
   // What OpenCode 2 waits for you to allow, asked of OpenCode itself; kept beside the history.
