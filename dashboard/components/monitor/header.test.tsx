@@ -115,3 +115,18 @@ describe("The environment strip", () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe("OpenCode Central: the machine picker", () => {
+  it("is there only on the hub, lists the machines and shows the one picked", async () => {
+    renderHeader(snapshot({ central: { machine: "beta", machines: ["alpha", "beta"] } }))
+    const picker = await screen.findByLabelText("Machine")
+    expect((picker as HTMLSelectElement).value).toBe("beta")
+    expect(within(picker).getAllByRole("option").map(o => o.textContent)).toEqual(["alpha", "beta"])
+  })
+
+  it("is not there on a normal monitor", async () => {
+    renderHeader(snapshot())
+    await screen.findByRole("status")
+    expect(screen.queryByLabelText("Machine")).toBeNull()
+  })
+})

@@ -18,16 +18,16 @@ const session = {
 
 test('state: the content parts of a session are gone, the figures stay', () => {
   const out = stripContent('state', { now: 1, sessions: [session] }).sessions[0];
-  assert.equal(out.current.summary, undefined);
-  assert.equal(out.current.output, undefined);
+  assert.equal(out.current.summary, null);
+  assert.equal(out.current.output, null);
   assert.equal(out.current.tool, 'bash');
-  assert.equal(out.progress.steps[0].text, undefined);
+  assert.equal(out.progress.steps[0].text, null);
   assert.equal(out.progress.steps[0].durationMs, 5);
-  assert.equal(out.work.files.recent, undefined);
+  assert.deepEqual(out.work.files.recent, []);
   assert.equal(out.work.files.count, 2);
   assert.equal(out.work.running, null);
   assert.equal(out.work.git.branch, 'main');
-  assert.deepEqual(out.review.items, []);
+  assert.deepEqual([out.review.items, out.review.total, out.review.counts], [[], 0, {}]);
   assert.equal(out.prompt.detail, null);
   assert.equal(out.prompt.permission, 'bash');
   assert.deepEqual(out.health, session.health);

@@ -151,6 +151,8 @@ export interface Snapshot {
   opencodeTested: string | null
   /** OpenCode is a later minor or major release than that: figures may be off. */
   opencodeUntested: boolean
+  /** OpenCode Central hub: the machine shown and every machine it has; absent on a normal monitor. */
+  central?: { machine: string; machines: string[] }
 }
 
 export interface HistoryEvent {

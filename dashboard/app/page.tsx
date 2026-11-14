@@ -108,20 +108,26 @@ export default function Page() {
               {t("tab.history")}
             </TabsTrigger>
           )}
-          <TabsTrigger value="replay" className={TAB}>
-            <RotateCcwIcon aria-hidden />
-            {t("tab.replay")}
-          </TabsTrigger>
+          {/* The hub keeps no text, so there is nothing to play back (OpenCode Central). */}
+          {!snapshot?.central && (
+            <TabsTrigger value="replay" className={TAB}>
+              <RotateCcwIcon aria-hidden />
+              {t("tab.replay")}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="stats" className={TAB}>
             <ChartColumnIcon aria-hidden />
             {t("tab.stats")}
           </TabsTrigger>
-          <TabsTrigger value="setup" className={TAB}>
-            <SettingsIcon aria-hidden />
-            {t("tab.setup")}
-            {/* Something on this machine is missing: say so from any tab. */}
-            {tab !== "setup" && snapshot?.opencodeUntested && <span className="size-1.5 rounded-full bg-waiting" aria-hidden />}
-          </TabsTrigger>
+          {/* "This machine" is about the machine the monitor runs on: not the hub's to tell. */}
+          {!snapshot?.central && (
+            <TabsTrigger value="setup" className={TAB}>
+              <SettingsIcon aria-hidden />
+              {t("tab.setup")}
+              {/* Something on this machine is missing: say so from any tab. */}
+              {tab !== "setup" && snapshot?.opencodeUntested && <span className="size-1.5 rounded-full bg-waiting" aria-hidden />}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="now" className={TAB_SPACE}>

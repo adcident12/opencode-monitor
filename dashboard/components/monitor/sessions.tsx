@@ -82,8 +82,8 @@ function Current({ session, now }: Readonly<{ session: Session; now: number }>) 
         <span>{current.tool}</span>
         <span className="tabular-nums">{t("time.running", { t: duration(now - current.startedAt) })}</span>
       </div>
-      <Code>{current.summary}</Code>
-      {current.tool === "bash" && (
+      {current.summary && <Code>{current.summary}</Code>}
+      {current.tool === "bash" && current.output !== null && (
         <div className="border-t border-border/70 pt-2">
           <Output output={current.output} now={now} />
         </div>
@@ -154,7 +154,7 @@ export function AttentionCard({ session, subagents, now, history = false }: Read
         {session.state !== "waiting" && session.health.lastError && (
           <div className="space-y-1 rounded-lg bg-error-soft/60 px-3.5 py-2.5">
             <p className="text-sm font-medium text-error">{t("health.lastError", { tool: session.health.lastError.tool })}</p>
-            <Code>{session.health.lastError.text}</Code>
+            {session.health.lastError.text && <Code>{session.health.lastError.text}</Code>}
           </div>
         )}
 

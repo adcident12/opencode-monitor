@@ -14,16 +14,16 @@ function net(v) {
   return v;
 }
 
+// Shaped so the page's own components leave the parts out: an empty review is not drawn, an empty file list
+// leaves only the count, a null output and a null prompt detail are skipped (dashboard guards).
 function session(s) {
   const out = { ...s };
-  if (out.current) { const { summary, output, ...rest } = out.current; out.current = rest; }
-  if (out.progress?.steps) out.progress = { ...out.progress, steps: out.progress.steps.map(({ text, ...rest }) => rest) };
-  if (out.work) {
-    const files = out.work.files ? (({ recent, ...rest }) => rest)(out.work.files) : out.work.files;
-    out.work = { ...out.work, files, running: null };
-  }
-  if (out.review) out.review = { ...out.review, items: [] };
+  if (out.current) out.current = { ...out.current, summary: null, output: null };
+  if (out.progress?.steps) out.progress = { ...out.progress, steps: out.progress.steps.map(st => ({ ...st, text: null })) };
+  if (out.work) out.work = { ...out.work, files: out.work.files ? { ...out.work.files, recent: [] } : out.work.files, running: null };
+  if (out.review) out.review = { ...out.review, counts: {}, total: 0, items: [], more: 0, ignored: 0 };
   if (out.prompt) out.prompt = { ...out.prompt, detail: null };
+  if (out.health?.lastError) out.health = { ...out.health, lastError: { ...out.health.lastError, text: null } };
   return out;
 }
 

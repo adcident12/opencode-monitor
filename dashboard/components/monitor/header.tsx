@@ -22,6 +22,30 @@ function connectionKey(connected: boolean, stale: boolean | undefined) {
 }
 
 /** @param tone  what the sessions are doing, shown as the dot of the mark */
+/** OpenCode Central: which machine the page shows. Kept in a cookie the hub reads for every answer. */
+function MachinePicker({ central }: Readonly<{ central: NonNullable<Snapshot["central"]> }>) {
+  const { t } = useI18n()
+  return (
+    <label className="inline-flex items-center gap-2 text-sm">
+      <span className="text-muted-foreground">{t("central.machine")}</span>
+      <select
+        className="h-8 rounded-md border border-border bg-background px-2 text-sm"
+        value={central.machine}
+        onChange={e => {
+          document.cookie = `ocm_machine=${encodeURIComponent(e.target.value)}; path=/; SameSite=Strict; max-age=31536000`
+          globalThis.location.reload()
+        }}
+      >
+        {central.machines.map(m => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 export function Header({ snapshot, connected, tone }: Readonly<{ snapshot: Snapshot | null; connected: boolean; tone: MarkTone }>) {
   const { t, lang, setLang } = useI18n()
   const live = connected && !snapshot?.stale
@@ -39,6 +63,8 @@ export function Header({ snapshot, connected, tone }: Readonly<{ snapshot: Snaps
           </Hint>
         )}
       </div>
+
+      {snapshot?.central && <MachinePicker central={snapshot.central} />}
 
       <output className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-2">
