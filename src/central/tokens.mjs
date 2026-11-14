@@ -38,6 +38,23 @@ export function issueToken(dir, machine) {
   return token;
 }
 
+// Read keys open the hub's MCP doors (/mcp, /mcp-llama) and nothing else; a machine's token never opens them.
+const NAME = /^[a-z0-9-]{1,32}$/;
+
+/** name -> SHA-256 hex of its read key. */
+export function readReadKeys(dir) {
+  try { return JSON.parse(readFileSync(join(dir, 'read-keys.json'), 'utf8')); } catch { return {}; }
+}
+
+/** A new read key under a name (e.g. "claude"), replacing (revoking) any it had. Returned once; only its hash is kept. */
+export function issueReadKey(dir, name) {
+  if (!NAME.test(String(name ?? ''))) throw new Error('the name must be 1-32 of a-z, 0-9 and -');
+  mkdirSync(dir, { recursive: true });
+  const key = randomBytes(32).toString('base64url');
+  writePrivate(join(dir, 'read-keys.json'), JSON.stringify({ ...readReadKeys(dir), [name]: sha(key).toString('hex') }, null, 2));
+  return key;
+}
+
 /** The machine a presented token belongs to, or null. Compares every entry in constant time. */
 export function matchToken(tokens, presented) {
   if (typeof presented !== 'string' || !presented) return null;

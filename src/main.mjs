@@ -221,9 +221,9 @@ export async function main(argv) {
   const cfg = await settingsFor(args);
   const oneOff = ONE_OFF.find(([option]) => args[option]);
   if (oneOff) return oneOff[1](cfg);
-  if (args.centralInit || args.centralToken) {
+  if (args.centralInit || args.centralToken || args.centralReadKey) {
     // OpenCode Central hub, one-off: the hub's keys, or a machine's token. Printed once, never kept in clear.
-    const { initHubKeys, issueToken } = await import('./central/tokens.mjs');
+    const { initHubKeys, issueToken, issueReadKey } = await import('./central/tokens.mjs');
     const dir = resolve(ROOT, cfg.central.dir);
     if (args.centralInit) {
       const keys = initHubKeys(dir);
@@ -234,6 +234,11 @@ export async function main(argv) {
       const token = issueToken(dir, args.centralToken);
       console.log(`New token for "${args.centralToken}" (any older one no longer works). Shown once; put it in that machine's central.token:`);
       console.log(`token: ${token}`);
+    }
+    if (args.centralReadKey) {
+      const key = issueReadKey(dir, args.centralReadKey);
+      console.log(`New read key "${args.centralReadKey}" for /mcp and /mcp-llama (any older one of that name no longer works). Shown once:`);
+      console.log(`read key: ${key}`);
     }
     return undefined;
   }

@@ -19,13 +19,17 @@ import { clip, createRedactor } from '../redact.mjs';
 import { admit, answerRoute, servePage, accessKeyFile, BASE_HEADERS, JSON_TYPE, HOST, EVERY_INTERFACE } from '../main.mjs';
 import { createCentralStore } from './store.mjs';
 import { createRemoteSources } from './facts.mjs';
-import { initHubKeys, readTokens } from './tokens.mjs';
+import { initHubKeys, readTokens, readReadKeys, matchToken } from './tokens.mjs';
+import { createMcpServer } from '../mcp-server.mjs';
+import { answerMcp } from '../mcp-http.mjs';
 import { handleIngest } from './ingest.mjs';
 import { stripContent } from './view.mjs';
 import { admitVia } from './proxy.mjs';
 import { createInfluxExport, toLines, stateLine, versionLine } from './influx.mjs';
 
 const PRUNE_EVERY = 6 * 3_600_000;
+// The MCP doors take no calls from a web page: Claude Code is not a browser.
+const NO_ORIGINS = new Set();
 
 function cookieMachine(req) {
   const m = /(?:^|;\s*)ocm_machine=([a-z0-9-]{1,32})(?:;|$)/.exec(String(req.headers.cookie ?? ''));
@@ -145,12 +149,26 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
     '/api/config-changes': { body: () => '[]' },
   });
 
+  const mcpOpencode = createMcpServer({ tools: [], version: VERSION ?? '0' });
+  const mcpLlama = createMcpServer({ tools: [], version: VERSION ?? '0' });
+
   const lookup = createStatic(ROOT);
   let access = null;
   const server = createServer(async (req, res) => {
     const path = String(req.url ?? '/').split('?')[0];
     if (path === '/health' && req.method === 'GET') {
       res.writeHead(200, { ...BASE_HEADERS, 'content-type': JSON_TYPE }).end('{"ok":true}');
+      return;
+    }
+    // The MCP doors: a read key and nothing else (not a machine's token, the access key or the proxy's header).
+    if (path === '/mcp' || path === '/mcp-llama') {
+      if (!access.hosts.has(String(req.headers.host).toLowerCase())) { res.writeHead(403).end(); return; }
+      const bearer = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ''))?.[1];
+      if (!matchToken(readReadKeys(dir), bearer)) {
+        res.writeHead(401, { ...BASE_HEADERS, 'content-type': JSON_TYPE, 'www-authenticate': 'Bearer' }).end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'A read key is needed.' } }));
+        return;
+      }
+      await answerMcp(req, res, path === '/mcp' ? mcpOpencode : mcpLlama, NO_ORIGINS);
       return;
     }
     if (path === '/ingest') {

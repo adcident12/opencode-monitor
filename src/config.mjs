@@ -115,7 +115,7 @@ const SWITCHES = {
   // OpenCode Central (src/central/): ship this machine's figures, or receive them on the hub.
   '--agent': 'agent', '--central': 'central', '--central-init': 'centralInit',
 };
-const VALUES = { '--port': ['port', Number], '--data-dir': ['dataDir', String], '--config': ['config', String], '--lang': ['lang', String], '--autostart': ['autostart', String], '--central-token': ['centralToken', String] };
+const VALUES = { '--port': ['port', Number], '--data-dir': ['dataDir', String], '--config': ['config', String], '--lang': ['lang', String], '--autostart': ['autostart', String], '--central-token': ['centralToken', String], '--central-read-key': ['centralReadKey', String] };
 
 export function parseArgs(argv) {
   const args = {};
@@ -158,6 +158,9 @@ OpenCode Central (one hub for several machines; figures only, never text, code o
   --central-init     On the hub: make its key pair once and print the public key, then exit.
   --central-token <machine>
                      On the hub: print a new token for that machine (replacing any old one), then exit.
+  --central-read-key <name>
+                     On the hub: print a new read key for the MCP doors /mcp and /mcp-llama (replacing
+                     any old one of that name), then exit.
 `;
 
 export function defaultDataDir(env = process.env) {
