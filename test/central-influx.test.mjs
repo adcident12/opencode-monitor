@@ -8,11 +8,15 @@ const T = 1_800_000_000_000;
 const sessions = new Map([['s1', '/poppy/shop api'], ['s2', '/poppy/web']]);
 const models = new Map([['m1', { providerID: 'llama', modelID: 'qwen3.6' }]]);
 const lookup = { projectOf: id => sessions.get(id)?.split('/').pop() ?? null, modelOf: id => models.get(id) ?? null };
+// Points carry ns times (the event's ms, nudged inside it by the row id): compare without them, check their ms.
+const noTs = ls => ls.map(l => l.replace(/ \d+$/, ''));
+const msOf = l => Number(BigInt(l.split(' ').pop()) / 1_000_000n);
 const part = (id, data, t = T) => ({ id, message_id: 'm1', session_id: 's1', time_created: t, time_updated: t, data: JSON.stringify(data) });
 
 test('a step-finish is one request: tokens, cache and cost, tagged by machine, project and model', () => {
   const lines = toLines({ rows: { part: [part('p1', { type: 'step-finish', cost: 0.002, tokens: { input: 900, output: 120, reasoning: 30, cache: { read: 700, write: 10 } } })] } }, 'poppy', lookup);
-  assert.deepEqual(lines, [`opencode_request,machine=poppy,project=shop\\ api,provider=llama,model=qwen3.6 tokens_in=900,tokens_out=120,reasoning=30,cache_read=700,cache_write=10,cost=0.002 ${T}`]);
+  assert.deepEqual(noTs(lines), [`opencode_request,machine=poppy,project=shop\\ api,provider=llama,model=qwen3.6 tokens_in=900,tokens_out=120,reasoning=30,cache_read=700,cache_write=10,cost=0.002`]);
+  assert.equal(msOf(lines[0]), T);
 });
 
 test('a finished tool call: its time and status; a running one is not written yet', () => {
@@ -20,12 +24,13 @@ test('a finished tool call: its time and status; a running one is not written ye
     part('p2', { type: 'tool', tool: 'bash', state: { status: 'completed', time: { start: T, end: T + 1500 }, input: { '#': '#abc' } } }),
     part('p3', { type: 'tool', tool: 'read', state: { status: 'running', time: { start: T } } }),
   ] } }, 'poppy', lookup);
-  assert.deepEqual(lines, [`opencode_tool,machine=poppy,project=shop\\ api,tool=bash,status=completed duration_ms=1500 ${T + 1500}`]);
+  assert.deepEqual(noTs(lines), [`opencode_tool,machine=poppy,project=shop\\ api,tool=bash,status=completed duration_ms=1500`]);
+  assert.equal(msOf(lines[0]), T + 1500);
 });
 
 test('a compaction is counted, auto or not', () => {
-  assert.deepEqual(toLines({ rows: { part: [part('p4', { type: 'compaction', auto: true })] } }, 'poppy', lookup),
-    [`opencode_compaction,machine=poppy,project=shop\\ api,auto=true n=1 ${T}`]);
+  assert.deepEqual(noTs(toLines({ rows: { part: [part('p4', { type: 'compaction', auto: true })] } }, 'poppy', lookup)),
+    [`opencode_compaction,machine=poppy,project=shop\\ api,auto=true n=1`]);
 });
 
 test('OpenCode 2: an assistant message is one request, its tool calls are tool points', () => {
@@ -34,10 +39,11 @@ test('OpenCode 2: an assistant message is one request, its tool calls are tool p
     time: { created: T, completed: T + 9000 },
     content: [{ type: 'tool', name: 'shell', time: { created: T + 1000, ran: T + 1200, completed: T + 3200 }, state: { status: 'completed' } }] }) };
   const lines = toLines({ rows: { session_message: [row] } }, 'poppy', lookup);
-  assert.deepEqual(lines, [
-    `opencode_request,machine=poppy,project=web,provider=llama,model=qwen tokens_in=5000,tokens_out=400,reasoning=100,cache_read=4000,cache_write=0,cost=0,duration_ms=9000 ${T}`,
-    `opencode_tool,machine=poppy,project=web,tool=bash,status=completed duration_ms=2000 ${T + 3200}`,
+  assert.deepEqual(noTs(lines), [
+    `opencode_request,machine=poppy,project=web,provider=llama,model=qwen tokens_in=5000,tokens_out=400,reasoning=100,cache_read=4000,cache_write=0,cost=0,duration_ms=9000`,
+    `opencode_tool,machine=poppy,project=web,tool=bash,status=completed duration_ms=2000`,
   ]);
+  assert.deepEqual(lines.map(msOf), [T, T + 3200]);
 });
 
 test('nothing but numbers and names: no title, filler or hash ever in a line', () => {
@@ -57,11 +63,23 @@ test('the export posts the lines with the token, and a failing InfluxDB never th
   const calls = [];
   const ok = createInfluxExport({ url: 'http://influx:8086', org: 'home', bucket: 'opencode', token: 'tok', send: async (url, init) => { calls.push([url, init]); return { ok: true, status: 204 }; } });
   await ok.write(['a x=1 1']);
-  assert.match(calls[0][0], /\/api\/v2\/write\?org=home&bucket=opencode&precision=ms$/);
+  assert.match(calls[0][0], /\/api\/v2\/write\?org=home&bucket=opencode&precision=ns$/);
   assert.equal(calls[0][1].headers.Authorization, 'Token tok');
   assert.equal(calls[0][1].body, 'a x=1 1');
   const bad = createInfluxExport({ url: 'http://influx:8086', org: 'home', bucket: 'opencode', token: 't', send: async () => { throw new Error('down'); } });
   await bad.write(['a x=1 1']);
   await ok.write([]);
   assert.equal(calls.length, 1, 'nothing to write: no request');
+});
+
+test('two calls ending in the same millisecond are two points (time in ns, nudged by the row id)', () => {
+  const end = T + 1500;
+  const lines = toLines({ rows: { part: [
+    part('pa', { type: 'tool', tool: 'bash', state: { status: 'completed', time: { start: T, end } } }),
+    part('pb', { type: 'tool', tool: 'bash', state: { status: 'completed', time: { start: T, end } } }),
+  ] } }, 'poppy', lookup);
+  const times = lines.map(l => l.split(' ').pop());
+  assert.equal(new Set(times).size, 2);
+  for (const t of times) assert.equal(BigInt(t) / 1_000_000n, BigInt(end));
+  assert.deepEqual(toLines({ rows: { part: [part('pa', { type: 'tool', tool: 'bash', state: { status: 'completed', time: { start: T, end } } })] } }, 'poppy', lookup), [lines[0]], 'the same row again: the same point');
 });

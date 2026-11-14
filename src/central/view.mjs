@@ -1,14 +1,15 @@
 // OpenCode Central, hub side: the last gate before the page and the API. The parts of a session that only make
 // sense with text (what a command printed, the files touched, the steps' wording, what a prompt asks, flagged calls)
 // are removed; then any filler or hash still left anywhere — in a field nobody listed — becomes null.
-const CONTENT = /·{3}|^#[0-9a-f]{16}|^f:[0-9a-f]{16}$/;
+// filler (any length when it is all there is, or a run of 3 anywhere), a keyed hash of an input or of a path
+const CONTENT = /^·+$|·{3}|^#[0-9a-f]{16}|^f:[0-9a-f]{16}$/;
 
 function net(v) {
   if (typeof v === 'string') return CONTENT.test(v) ? null : v;
   if (Array.isArray(v)) return v.map(net);
   if (v && typeof v === 'object') {
     const out = {};
-    for (const [k, x] of Object.entries(v)) out[k] = net(x);
+    for (const [k, x] of Object.entries(v)) if (!CONTENT.test(k)) out[k] = net(x);
     return out;
   }
   return v;

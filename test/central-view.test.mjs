@@ -44,3 +44,8 @@ test('anything else: filler and hashes become null wherever they are', () => {
 test('ordinary text with a dot or a hash sign is left alone', () => {
   assert.deepEqual(stripContent('stats', { a: 'v2.0.29', b: '#1 fix', c: 'a·b' }), { a: 'v2.0.29', b: '#1 fix', c: 'a·b' });
 });
+
+test('short filler (a one or two character reply) and keys made of filler or hashes are caught too', () => {
+  assert.deepEqual(stripContent('stats', { a: '·', b: '··', c: 'x · y' }), { a: null, b: null, c: 'x · y' });
+  assert.deepEqual(stripContent('stats', { byFile: { 'f:0123456789abcdef': 3, '···': 1, read: 2 } }), { byFile: { read: 2 } });
+});

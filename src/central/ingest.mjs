@@ -2,6 +2,7 @@
 // for that machine, and the answer is {ok:true, seq} or {ok:false} — never anything from the store, never why.
 import { openSealed } from './seal.mjs';
 import { matchToken } from './tokens.mjs';
+import { contentFree } from './guard.mjs';
 
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
@@ -48,6 +49,8 @@ export async function handleIngest(req, res, { store, tokens, privateKey, maxByt
     return answer(res, 400, { ok: false });
   }
   if (!batch || batch.machine !== machine) return answer(res, 400, { ok: false });
+  // Text that got past the agent's scrub (an old or broken agent) is refused whole, never stored.
+  if (!contentFree(batch)) return answer(res, 400, { ok: false });
   let result;
   try {
     result = store.apply(batch);

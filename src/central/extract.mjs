@@ -70,7 +70,8 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
   function readWhole(table, cur) {
     const rows = db.prepare(`select * from ${table}`).all().map(r => scrubRow(table, r, ctx));
     const h = createHash('sha256').update(JSON.stringify(rows)).digest('hex');
-    return cur?.h === h ? { rows: [], cursor: cur } : { rows, cursor: { h } };
+    // changed: sent even when now empty, so the hub drops a list the machine no longer has
+    return cur?.h === h ? { rows: [], cursor: cur } : { rows, cursor: { h }, changed: true };
   }
 
   return {
@@ -84,7 +85,7 @@ export function createExtractor({ dbPath, hmacKey, machine, overlapMs = 120_000,
           if (!Object.hasOwn(layout, table)) continue;
           const col = layout[table];
           const r = col ? readTable(table, col, cursor[table], budget, marks) : readWhole(table, cursor[table]);
-          if (r.rows.length) out.rows[table] = r.rows;
+          if (r.rows.length || r.changed) out.rows[table] = r.rows;
           if (r.cursor) out.cursor[table] = r.cursor;
           if (r.more) { out.more = true; break; }
         }

@@ -130,3 +130,10 @@ test('todo rows: content becomes filler, status and position kept', () => {
 test('a row whose data is not JSON keeps its columns and gets empty data', () => {
   assert.equal(scrubRow('part', { ...tool({}), data: '{not json' }, ctx).data, '{}');
 });
+
+test('only plain key names survive under tokens and time (a key that is a path is dropped)', () => {
+  const p = { ...textPart(3), data: JSON.stringify({ type: 'step-finish', tokens: { input: 1, 'C:/secret/file.ts': 5, cache: { read: 2 } }, time: { start: 1, '/home/x': 2 } }) };
+  const d = data(scrubRow('part', p, ctx));
+  assert.deepEqual(d.tokens, { input: 1, cache: { read: 2 } });
+  assert.deepEqual(d.time, { start: 1 });
+});

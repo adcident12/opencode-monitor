@@ -14,11 +14,14 @@ const bool = v => (typeof v === 'boolean' ? v : undefined);
 const name = (max = 200) => v => (typeof v === 'string' ? v.slice(0, max) : undefined);
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-/** Only the numbers of an object, at any depth (tokens, time). */
+const PLAIN_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,40}$/;
+
+/** Only the numbers of an object, at any depth (tokens, time), under plain key names (a key that is a path goes). */
 function numbers(v) {
   if (!isObj(v)) return undefined;
   const out = {};
   for (const [k, x] of Object.entries(v)) {
+    if (!PLAIN_KEY.test(k)) continue;
     const kept = typeof x === 'number' ? num(x) : numbers(x);
     if (kept !== undefined) out[k] = kept;
   }

@@ -159,3 +159,15 @@ test('rows are only marked as sent once acknowledged: a read that is not queued 
     assert.ok(first);
   } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a todo table that became empty is sent as empty, so the hub drops the old list', () => {
+  const { dir, path, db } = makeDb({ v2: false });
+  try {
+    seed(db);
+    const x = ex({ dbPath: path, ...ctx });
+    const first = x.next({});
+    x.acknowledge(first);
+    db.exec('delete from todo');
+    assert.deepEqual(x.next(first.cursor).rows.todo, []);
+  } finally { closeAll(); db.close(); rmSync(dir, { recursive: true, force: true }); }
+});

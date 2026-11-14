@@ -110,3 +110,14 @@ test('--central-init prints the public key once made; --central-token prints a t
     assert.equal(lines.join('\n').includes(keys.privateKey.split('.')[1]), false, 'the private key is never printed');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('the hub refuses a batch that still carries text (an old or broken agent): 400, nothing written', () => withHub(async ({ keys, post, store }) => {
+  const leaky = { machine: 'poppy', seq: 1, rows: { part: [{ id: 'p1', message_id: 'm1', session_id: 's1', time_created: 1, time_updated: 1,
+    data: JSON.stringify({ type: 'text', text: 'here is the customer list:\nalice, bob' }) }] }, facts: null };
+  assert.equal((await post(seal(leaky, keys.publicKey))).status, 400);
+  const long = { ...leaky, rows: { part: [{ ...leaky.rows.part[0], data: JSON.stringify({ type: 'text', text: 'x'.repeat(300) }) }] } };
+  assert.equal((await post(seal(long, keys.publicKey))).status, 400);
+  assert.deepEqual(store.machines(), []);
+  const fine = { ...leaky, rows: { part: [{ ...leaky.rows.part[0], data: JSON.stringify({ type: 'text', text: '·'.repeat(300) }) }] } };
+  assert.equal((await post(seal(fine, keys.publicKey))).status, 200);
+}));
