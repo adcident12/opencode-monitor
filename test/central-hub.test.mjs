@@ -79,3 +79,36 @@ test("the machine's model limits reach its sessions (context against the limit)"
   const a = await (await get('/api/state?machine=alpha')).json();
   assert.equal(a.sessions[0].health.contextLimit, 131072);
 }));
+
+test('with central.influx set, an applied batch becomes points in InfluxDB', async () => {
+  const { createServer } = await import('node:http');
+  const got = [];
+  const influx = createServer((req, res) => { let b = ''; req.on('data', c => (b += c)).on('end', () => { got.push({ url: req.url, auth: req.headers.authorization, body: b }); res.writeHead(204).end(); }); });
+  await new Promise(r => influx.listen(0, '127.0.0.1', r));
+  const dir = mkdtempSync(join(tmpdir(), 'ocm-hubinflux-'));
+  const central = join(dir, 'central');
+  const keys = initHubKeys(central);
+  const token = issueToken(central, 'alpha');
+  const cfg = structuredClone(DEFAULTS);
+  Object.assign(cfg, { port: 0, pollMs: 200, dataDir: dir, opencodeConfigDir: dir });
+  cfg.central = { ...cfg.central, dir: central, influx: { url: `http://127.0.0.1:${influx.address().port}`, org: 'home', bucket: 'opencode', token: 'w-tok' } };
+  cfg.history = { ...cfg.history, file: join(dir, 'data', 'history.jsonl') };
+  const hub = await startHub(cfg);
+  try {
+    const rows = { session: [sess('s9', 'job', '/alpha/shop')], message: [msg('m9', 's9')],
+      part: [{ id: 'p9', message_id: 'm9', session_id: 's9', time_created: NOW - 3000, time_updated: NOW - 3000, data: JSON.stringify({ type: 'step-finish', cost: 0, tokens: { input: 70, output: 7, cache: { read: 50, write: 0 } } }) }] };
+    const env = seal({ machine: 'alpha', seq: 1, rows, facts: { running: true, opencodeVersion: '2.0.29' } }, keys.publicKey);
+    await fetch(`http://127.0.0.1:${hub.port}/ingest`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(env) });
+    await new Promise(r => setTimeout(r, 700));
+    const all = got.map(g => g.body).join('\n');
+    assert.match(got[0].url, /bucket=opencode/);
+    assert.equal(got[0].auth, 'Token w-tok');
+    assert.match(all, /^opencode_request,machine=alpha,project=shop,provider=llama,model=qwen tokens_in=70/m);
+    assert.match(all, /^opencode_version,machine=alpha version="2.0.29"/m);
+    assert.doesNotMatch(all, /job/);
+  } finally {
+    await hub.close();
+    await new Promise(r => influx.close(r));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

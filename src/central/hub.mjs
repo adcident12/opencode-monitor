@@ -22,6 +22,7 @@ import { createRemoteSources } from './facts.mjs';
 import { initHubKeys, readTokens } from './tokens.mjs';
 import { handleIngest } from './ingest.mjs';
 import { stripContent } from './view.mjs';
+import { createInfluxExport, toLines, stateLine, versionLine } from './influx.mjs';
 
 const PRUNE_EVERY = 6 * 3_600_000;
 
@@ -39,6 +40,23 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
   const dir = resolve(ROOT, cfg.central.dir);
   const keys = initHubKeys(dir);
   const store = createCentralStore({ dir: join(dir, 'machines') });
+  // The key figures to the home's InfluxDB (spec 5.3.1), when central.influx is set.
+  const influx = cfg.central.influx?.url ? createInfluxExport(cfg.central.influx) : null;
+  const folder = dirPath => (typeof dirPath === 'string' ? dirPath.split('/').filter(Boolean).pop() ?? null : null);
+  const lookupFor = (machine, batch) => {
+    const sessionsIn = new Map([...(batch.rows?.session ?? []), ...(batch.rows?.session_v2 ?? [])].map(s => [s.id, s.directory]));
+    const messagesIn = new Map((batch.rows?.message ?? []).map(m => [m.id, m.data]));
+    return {
+      projectOf: id => folder(sessionsIn.get(id) ?? store.row(machine, 'session', id)?.directory ?? store.row(machine, 'session_v2', id)?.directory),
+      modelOf: id => {
+        try { const d = JSON.parse(messagesIn.get(id) ?? store.row(machine, 'message', id)?.data ?? '{}'); return { providerID: d.providerID, modelID: d.modelID }; } catch { return null; }
+      },
+    };
+  };
+  const applied = (batch, machine) => {
+    if (influx) influx.write(toLines(batch, machine, lookupFor(machine, batch)));
+    onApplied(batch, machine);
+  };
   const redact = createRedactor(cfg.redact);
   const show = (text, max) => clip(redact(String(text ?? '')), max);
   const contexts = new Map(); // machine -> its monitor and sources
@@ -82,6 +100,20 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
 
   const names = () => store.machines().map(m => m.name);
 
+  /** Session state changes and a new OpenCode version, as points (a state's length is known when it ends). */
+  function influxChanges(name, c, snap) {
+    const lines = [];
+    c.since ??= new Map();
+    for (const s of snap.sessions) {
+      const before = c.live.get(s.id);
+      if (before && before !== s.state) lines.push(stateLine(name, folder(s.directory), before, s.state, (snap.now - (c.since.get(s.id) ?? snap.now)) / 1000, snap.now));
+      if (before !== s.state) c.since.set(s.id, snap.now);
+    }
+    const v = store.facts(name)?.opencodeVersion ?? null;
+    if (v && v !== c.version) { lines.push(versionLine(name, v, snap.now)); c.version = v; }
+    if (lines.length) influx.write(lines);
+  }
+
   function tick() {
     const all = names();
     for (const name of all) {
@@ -89,6 +121,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
         const c = contextFor(name);
         useSettings(c, store.facts(name));
         const snap = c.monitor();
+        if (influx) influxChanges(name, c, snap);
         c.live = new Map(snap.sessions.map(s => [s.id, s.state]));
         if (!snap.stale) c.history.record(snap.sessions, snap.now);
         c.latest = JSON.stringify(stripContent('state', { ...snap, historyCount: c.history.count, version: VERSION, central: { machine: name, machines: all } }));
@@ -120,7 +153,7 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
       return;
     }
     if (path === '/ingest') {
-      await handleIngest(req, res, { store, tokens: () => readTokens(dir), privateKey: keys.privateKey, onApplied });
+      await handleIngest(req, res, { store, tokens: () => readTokens(dir), privateKey: keys.privateKey, onApplied: applied });
       return;
     }
     const admitted = admit(req, res, access);
