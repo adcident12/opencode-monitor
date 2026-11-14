@@ -56,16 +56,22 @@ function hmacKeyIn(dir) {
 
 /**
  * @param {object} cfg  loadConfig() output with cfg.central
- * @param {{ send?: Function, timer?: boolean, now?: () => number }} [opts]
+ * @param {{ send?: Function, timer?: boolean, now?: () => number, onSuperseded?: () => void }} [opts]
+ *   onSuperseded: called once when a newer agent took over this machine (default: end the process)
  * @returns {{ cycle(): Promise<void>, stop(): void, queued(): number }}
  */
-export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now = Date.now } = {}) {
+export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now = Date.now, onSuperseded = superseded } = {}) {
   validateAgent(cfg.central);
   const { machine, publicKey, everyMs } = cfg.central;
   const dir = join(dirname(resolve(ROOT, cfg.history.file)), 'agent');
   mkdirSync(dir, { recursive: true });
   const hmacKey = hmacKeyIn(dir);
   const cursorFile = join(dir, 'cursor.json');
+  // The newest agent owns the machine. Stopping the scheduled task on Windows leaves its node child running,
+  // so after a restart the older agent finds someone else's id here and stops before it touches the outbox.
+  const lockFile = join(dir, 'agent.lock');
+  const me = randomBytes(8).toString('hex');
+  writeJson(lockFile, { id: me, pid: process.pid, startedAt: now() });
 
   const db = openDb(cfg.dataDir);
   const pending = db.v2 ? createPending({ ...cfg.opencodeApi, file: join(dir, 'prompts.jsonl'), retentionDays: cfg.history.retentionDays }) : null;
@@ -81,9 +87,16 @@ export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now 
   let cursor = readJson(cursorFile, {});
   let lastFacts = null;
   let busy = false;
+  let stopped = false;
 
   async function cycle() {
-    if (busy) return;
+    if (busy || stopped) return;
+    if (readJson(lockFile, {}).id !== me) {
+      console.error('opencode-monitor agent: a newer agent took over this machine, stopping this one.');
+      api.stop();
+      onSuperseded();
+      return;
+    }
     busy = true;
     try {
       await probe.refresh();
@@ -116,9 +129,12 @@ export function runAgent(cfg, { send = httpSend(cfg.central), timer = true, now 
 
   const handle = timer ? setInterval(cycle, everyMs) : null;
   if (timer) cycle();
-  return {
+  const api = {
     cycle,
     queued: () => outbox.pending(),
-    stop() { if (handle) clearInterval(handle); extractor.close(); db.close?.(); },
+    stop() { if (stopped) return; stopped = true; if (handle) clearInterval(handle); extractor.close(); db.close?.(); },
   };
+  return api;
 }
+
+function superseded() { process.exit(0); }

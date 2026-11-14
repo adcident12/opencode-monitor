@@ -93,3 +93,22 @@ test('a first sync of a big database: every sealed envelope stays under the hub\
     assert.match([...ids][0], /^[0-9a-f]{16}$/);
   } finally { agent.stop(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('a second agent on the same machine takes over: the older one stops before sending anything', async () => {
+  // Stopping the scheduled task on Windows does not end its node child, so a restart leaves two agents
+  // sharing one outbox and one seq; the newest one (the new settings) must be the only one left.
+  const { dir, cfg } = setup();
+  const sentOld = [], sentNew = [];
+  let oldStopped = 0;
+  const older = runAgent(cfg, { timer: false, onSuperseded: () => { oldStopped++; }, send: async env => { sentOld.push(env); return { ok: true, seq: 1 }; } });
+  const newer = runAgent(cfg, { timer: false, onSuperseded: () => assert.fail('the newest agent must keep running'), send: async env => { sentNew.push(openSealed(env, keys.privateKey)); return { ok: true, seq: sentNew.at(-1).seq }; } });
+  try {
+    await older.cycle();
+    assert.equal(oldStopped, 1, 'the older agent saw it was replaced');
+    assert.equal(sentOld.length, 0, 'and sent nothing');
+    await older.cycle();
+    assert.equal(oldStopped, 1, 'stopped once only');
+    await newer.cycle();
+    assert.equal(sentNew.length, 1);
+  } finally { older.stop(); newer.stop(); rmSync(dir, { recursive: true, force: true }); }
+});
