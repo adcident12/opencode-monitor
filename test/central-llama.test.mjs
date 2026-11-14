@@ -233,3 +233,24 @@ test('review: a malformed Stroller answer still lets the hours and the callers b
   assert.equal(w.queries.length, 1);
   assert.ok(s.callers());
 }));
+
+test('a new llama.cpp build (from Stroller) is its own event, with from and to; nothing else from that field', () => withSource(async ({ w, make }) => {
+  const s = make();
+  w.status = { ...w.status, build: { number: 9949, commit: '049326a00', path: 'C:\\llama\\bin' } };
+  await s.poll();
+  assert.deepEqual(s.now().build, { number: 9949, commit: '049326a00' });
+  w.now += 60_000; w.status = { ...w.status, build: { number: 9960, commit: 'abcdef123' }, startedAt: '2026-11-14T10:30:00.000Z' };
+  await s.poll();
+  w.now += 60_000; w.status = { ...w.status, startedAt: '2026-11-14T10:31:00.000Z' };
+  await s.poll();
+  const ev = s.events(0);
+  assert.deepEqual(ev.map(e => e.kind), ['seen', 'build', 'restart']);
+  assert.deepEqual([ev[1].from, ev[1].to], ['9949 (049326a00)', '9960 (abcdef123)']);
+}));
+
+test('a build field that is not a number and a short hex is not kept', () => withSource(async ({ w, make }) => {
+  const s = make();
+  w.status = { ...w.status, build: { number: 'C:\\x', commit: 'not hex!' } };
+  await s.poll();
+  assert.equal(s.now().build, null);
+}));

@@ -198,7 +198,7 @@ claude mcp add --transport http llama-central https://<hub address>/mcp-llama --
 - hub ถาม Stroller แค่ `GET /api/status` และ `GET /api/profiles` นาทีละครั้ง path และไฟล์ key ในโปรไฟล์จะถูกตัดเหลือชื่อไฟล์หรือตัดทิ้ง
 - `influx`: counter ของ llama.cpp ตามชื่อที่ prometheus input ของ Telegraf ตั้ง (`llamacpp:prompt_tokens_total`, …) hub ถามย้อนหลัง 7 วันครั้งเดียว จากนั้นถามแต่ละชั่วโมงที่ครบแล้วครั้งเดียว และเก็บข้อมูลรายชั่วโมงไว้เอง 180 วัน (`data/central/llama/`)
 - `usageUrl`: หน้าที่ตอบ `{ d1, callers: [...] }` สำหรับ `llama_callers` ถ้าเป็น `null` เครื่องมือนั้นจะไม่มีข้อมูล
-- ยังไม่ได้อ่าน build ของ llama.cpp (ต้องใช้ API key ของเซิร์ฟเวอร์)
+- build ของ llama.cpp จะถูกบันทึก (เหตุการณ์ `build`) เมื่อ `/api/status` ของ Stroller ตอบ `build: { number, commit }`
 
 <a id="agent"></a>
 
@@ -269,7 +269,7 @@ task เริ่มอัตโนมัติใช้ชื่อเดีย
 
 - **เข้าจากอินเทอร์เน็ต:** วาง hub ไว้หลัง reverse proxy ที่ถอด TLS ที่บ้านและมี login ของตัวเอง (`central.proxy` ดูโมเดลความปลอดภัย)
 - **Replay รายงานการตั้งค่า และทุกอย่างที่ต้องใช้ข้อความ ไม่มีบน hub:** เปิด monitor บนเครื่องนั้นเอง
-- **ตัวเลขของ llama.cpp เป็นรายชั่วโมง:** ยังไม่ได้อ่าน build ของ llama.cpp
+- **ตัวเลขของ llama.cpp เป็นรายชั่วโมง:** รู้ build ได้เฉพาะเมื่อ Stroller รายงาน
 - **เครื่องที่อยู่ต่างประเทศหลังตัวกรองประเทศ หรือออฟไลน์:** แค่รอในคิว ไม่มีอะไรหายตราบที่ไม่เกินเพดานคิว
 - **ลบ session ใน OpenCode:** ไม่ได้ลบบน hub จะหมดอายุเองหลัง 180 วัน
 

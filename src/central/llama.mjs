@@ -51,6 +51,14 @@ export function sanitizeProfile(p) {
   return out;
 }
 
+/** Stroller's build field → { number, commit } or null (a whole number and a short hex only). */
+export function buildOf(b) {
+  const number = Number.isInteger(b?.number) && b.number > 0 ? b.number : null;
+  const commit = typeof b?.commit === 'string' && /^[0-9a-f]{6,12}$/.test(b.commit) ? b.commit : null;
+  return number || commit ? { number, commit } : null;
+}
+const buildName = b => (b ? `${b.number ?? '?'}${b.commit ? ` (${b.commit})` : ''}` : null);
+
 /** InfluxDB's CSV answer (one or more tables) → [{time, field, value}]. */
 export function parseFluxCsv(text) {
   const out = [];
@@ -153,10 +161,11 @@ export function createLlamaSource({ dir, stroller, influx = null, usageUrl = nul
     const profile = running ? String(status.profile ?? '') || null : null;
     const settings = list.find(p => p.name === profile) ?? null;
     const startedAt = running && status.startedAt ? Date.parse(status.startedAt) || null : null;
+    const build = running ? buildOf(status.build) : null;
     current = {
       at: now(), running, healthy: status?.healthy === true, loading: status?.loading === true, profile, startedAt,
       gpu: (Array.isArray(status?.gpu) ? status.gpu : []).map(g => ({ index: g.index, name: g.name, memTotalMiB: g.memTotalMiB, memUsedMiB: g.memUsedMiB, utilPct: g.utilPct, tempC: g.tempC })),
-      settings, profiles: list.map(p => p.name),
+      build, settings, profiles: list.map(p => p.name),
     };
     const t = now();
     const was = state;
@@ -170,10 +179,11 @@ export function createLlamaSource({ dir, stroller, influx = null, usageUrl = nul
     else if (was.running && !running) record({ t, kind: 'stopped', profile: was.profile });
     else if (!was.running && running) record(withChanges({ t, kind: 'started', profile }));
     else if (running && was.profile !== profile) record({ t, kind: 'profile', profile, from: was.profile, to: profile, changes: changesOf(was.settings, settings) });
+    else if (running && build && was.build && buildName(build) !== buildName(was.build)) record(withChanges({ t, kind: 'build', profile, from: buildName(was.build), to: buildName(build) }));
     else if (running && was.startedAt !== startedAt) record(withChanges({ t, kind: 'restart', profile }));
     else if (running && diff.length) record({ t, kind: 'settings', profile, changes: diff });
     if (running && settings) known[profile] = settings; // what the profile ran with
-    state = { ...(was ?? {}), running, profile, startedAt, settings, settingsByProfile: known };
+    state = { ...(was ?? {}), running, profile, startedAt, settings, settingsByProfile: known, build: build ?? was?.build ?? null };
     saveState();
   }
 

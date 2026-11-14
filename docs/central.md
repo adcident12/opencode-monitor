@@ -195,7 +195,7 @@ With Llama Stroller in front of llama.cpp, the hub keeps what the server runs, e
 - Stroller is asked only `GET /api/status` and `GET /api/profiles`, once a minute. Paths and key files in the profiles are cut to a file name or left out.
 - `influx`: the llama.cpp counters as Telegraf's prometheus input names them (`llamacpp:prompt_tokens_total`, …). The hub asks 7 days back once, then each complete hour once; it keeps the hours itself for 180 days (`data/central/llama/`).
 - `usageUrl`: a page that answers `{ d1, callers: [...] }` for `llama_callers`; `null` leaves that tool empty.
-- The build of llama.cpp is not read yet (it needs the server's API key).
+- The llama.cpp build is recorded (`build` events) when Stroller's `/api/status` reports `build: { number, commit }`.
 
 <a id="agent"></a>
 
@@ -262,7 +262,7 @@ This page is written so that Claude Code on another machine can do the setup. Ru
 
 - From the internet, put the hub behind a reverse proxy that ends TLS at home and logs people in (`central.proxy`, Security model).
 - Replay, the setup report and anything that needs text are not on the hub: open the monitor on the machine itself.
-- llama.cpp figures are per hour; the build of llama.cpp is not read yet.
+- llama.cpp figures are per hour; its build is known only when Stroller reports it.
 - A machine abroad behind a country filter, or offline, just queues; nothing is lost under the queue's cap.
 - Deleting a session in OpenCode does not delete it on the hub; it ages out after 180 days.
 

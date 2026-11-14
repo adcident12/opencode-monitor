@@ -4,7 +4,7 @@
 
 export const LLAMA_INSTRUCTIONS =
   "Figures about the user's llama.cpp model server (the one OpenCode and the home's assistants use): what it runs now (profile, model, settings, GPUs), " +
-  'every change of profile or setting and every restart (the build itself is not read yet), its speed and prompt cache per hour, and who used it. ' +
+  'every change of profile, setting or llama.cpp build and every restart, its speed and prompt cache per hour, and who used it. ' +
   'Everything here is read-only: nothing can start, stop or change the server. ' +
   'To judge a change, llama_changes gives the moments and llama_compare the hours before and after; the OpenCode side (opencode_compare on the other MCP server) takes the same moment as `at`. ' +
   'Propose a setting to the user with the figure it rests on; the user changes it in Llama Stroller.';
@@ -58,7 +58,7 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
   return [
     {
       name: 'llama_now',
-      description: 'What the llama.cpp server runs now, as Llama Stroller reports it: running or not, healthy, the profile and its settings (model file, context size, parallel slots, flash attention, KV cache types, and every extra flag such as --spec-type, --spec-draft-n-max, --reasoning-budget, --ctx-checkpoints, --cache-ram), when it started, the GPUs (memory used of total, use, temperature), and the other profiles there are. Read at most a minute ago.',
+      description: 'What the llama.cpp server runs now, as Llama Stroller reports it: running or not, healthy, the profile and its settings (model file, context size, parallel slots, flash attention, KV cache types, and every extra flag such as --spec-type, --spec-draft-n-max, --reasoning-budget, --ctx-checkpoints, --cache-ram), the llama.cpp build (number and commit, when Stroller reports it), when it started, the GPUs (memory used of total, use, temperature), and the other profiles there are. Read at most a minute ago.',
       inputSchema: { type: 'object', properties: {} },
       run: () => {
         const c = source.now();
@@ -68,7 +68,7 @@ export function buildLlamaTools(source, { now = () => Date.now() } = {}) {
     },
     {
       name: 'llama_changes',
-      description: 'The moments the server changed, newest first: seen (when the hub first looked), started, stopped, restart (same profile), profile (another profile; with the settings that differ), settings (the running profile\'s settings changed; they take effect at its next start). Give one of these moments to llama_compare or opencode_compare as `at`.',
+      description: 'The moments the server changed, newest first: seen (when the hub first looked), started, stopped, restart (same profile), build (a new llama.cpp build, from and to), profile (another profile; with the settings that differ), settings (the running profile\'s settings changed; they take effect at its next start). Give one of these moments to llama_compare or opencode_compare as `at`.',
       inputSchema: { type: 'object', properties: { days: { type: 'integer', minimum: 1, maximum: 180, description: 'How many days back. Default 30.' } } },
       run: ({ days } = {}) => {
         const back = Math.min(180, Math.max(1, Number.isInteger(days) ? days : 30));
