@@ -33,11 +33,11 @@ import { existsSync } from 'node:fs';
 import { buildSetupReport, formatSetupReport } from './setup.mjs';
 
 // The page shows what your agent is doing: this machine only, unless you open it yourself.
-const HOST = '127.0.0.1';
-const EVERY_INTERFACE = '0.0.0.0';
+export const HOST = '127.0.0.1';
+export const EVERY_INTERFACE = '0.0.0.0';
 
 /** Where the access key is kept: beside the history, out of the repository. */
-const accessKeyFile = cfg => join(dirname(resolve(ROOT, cfg.history.file)), 'access-key');
+export const accessKeyFile = cfg => join(dirname(resolve(ROOT, cfg.history.file)), 'access-key');
 
 /** --access-key: the addresses to open on another device, with the key. Printed only when asked. */
 function runAccessKey(cfg) {
@@ -129,11 +129,11 @@ function announce(cfg, db, sample) {
   console.log(`  notifications: ${notifications}`);
 }
 
-const JSON_TYPE = 'application/json; charset=utf-8';
-const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+export const JSON_TYPE = 'application/json; charset=utf-8';
+export const BASE_HEADERS = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
 
 /** A file of the page, or 404. */
-async function servePage(lookup, path, res) {
+export async function servePage(lookup, path, res) {
   const found = await lookup(path).catch(() => null);
   if (!found) {
     res.writeHead(404, BASE_HEADERS).end('Not found');
@@ -151,7 +151,7 @@ async function servePage(lookup, path, res) {
 }
 
 /** An address of the API: its JSON, or for one that has `unavailable`, a 503 when it throws. */
-function answerRoute(route, query, res) {
+export function answerRoute(route, query, res) {
   let body;
   try {
     body = route.body(query);
@@ -168,7 +168,7 @@ function answerRoute(route, query, res) {
  * Who may ask, before anything is answered: the request's URL when it may, else null with the
  * answer already sent (403 under another name or method, 302 to remember a key, 401 to ask).
  */
-function admit(req, res, access) {
+export function admit(req, res, access) {
   // Refuse requests that reached us under another name (DNS rebinding from a web page).
   const toMcp = req.url === '/mcp' || req.url.startsWith('/mcp?');
   if (!access.hosts.has(String(req.headers.host).toLowerCase()) || (req.method !== 'GET' && !toMcp)) {
@@ -236,6 +236,11 @@ export async function main(argv) {
       console.log(`token: ${token}`);
     }
     return undefined;
+  }
+  if (args.central) {
+    // OpenCode Central hub: every machine's figures, one monitor each, behind /ingest (src/central/hub.mjs).
+    const { startHub } = await import('./central/hub.mjs');
+    return startHub(cfg);
   }
   if (args.agent) {
     // OpenCode Central agent: no page, no notifications; runs until stopped (src/central/agent.mjs).
