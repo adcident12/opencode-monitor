@@ -13,6 +13,8 @@
 
 > **ไม่รับ contribution** Pull request จะถูกปิดโดยไม่ตรวจ และไม่รับคำขอฟีเจอร์ รายงาน bug ได้ทาง issue คุณ fork และแก้สำเนาของคุณเองได้อย่างอิสระ (MIT) รายละเอียด: [CONTRIBUTING.md](CONTRIBUTING.md)
 
+> **branch นี้ (`central`) เพิ่ม OpenCode Central:** hub เดียวสำหรับหลายเครื่อง ส่งเฉพาะตัวเลข ไม่มีข้อความ โค้ด หรือ path เลย คืออะไร ทำงานอย่างไร และติดตั้งอย่างไร: [docs/central.md](docs/central.md) (มีฉบับภาษาไทยที่ด้านบนของหน้า)
+
 ## สารบัญ
 
 - [ความสามารถ](#features)

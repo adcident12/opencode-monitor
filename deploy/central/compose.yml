@@ -1,6 +1,6 @@
-# OpenCode Central hub on .52. First run (prints once; keep them for the machines' configs, never in git):
+# OpenCode Central hub (see docs/central.md). First run (each prints once; never put them in git or in a chat):
 #   docker compose run --rm central --central-init
-#   docker compose run --rm central --central-token poppy
+#   docker compose run --rm central --central-token <machine>
 # Then: docker compose up -d
 services:
   central:

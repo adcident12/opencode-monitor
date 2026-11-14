@@ -24,7 +24,7 @@ export const MACHINE = /^[a-z0-9-]{1,32}$/;
 /** Refuses central settings an agent cannot run with, naming the field. */
 export function validateAgent(c) {
   const bad = (k, why) => { throw new UserError(`central.${k} ${why}`); };
-  if (!MACHINE.test(String(c?.machine ?? ''))) bad('machine', 'must be 1-32 of a-z, 0-9 and -, e.g. "poppy".');
+  if (!MACHINE.test(String(c?.machine ?? ''))) bad('machine', 'must be 1-32 of a-z, 0-9 and -, e.g. "laptop".');
   if (!/^https?:\/\/[^\s/]+/.test(String(c?.url ?? ''))) bad('url', 'must be the hub address, e.g. "https://opcm.example".');
   if (!c?.token) bad('token', 'is missing: run --central-token <machine> on the hub.');
   if (!c?.publicKey) bad('publicKey', 'is missing: run --central-init on the hub.');

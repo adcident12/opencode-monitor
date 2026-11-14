@@ -13,6 +13,8 @@ It exists because of things like a permission prompt sitting unanswered for eigh
 
 > **Contributions are not accepted.** Pull requests are closed without review and feature requests are not taken. Bug reports are welcome as issues. You are free to fork and change your own copy (MIT). Details: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+> **This branch (`central`) adds OpenCode Central:** one hub for several machines, figures only, never text, code or paths. What it is, how it works and how to install it: [docs/central.md](docs/central.md).
+
 ## Contents
 
 - [Features](#features)
