@@ -151,6 +151,13 @@ export const HELP = `Usage: node server.mjs [options]
   --doctor           Print what the monitor finds on this machine, and what is missing, then exit.
   --autostart on|off Start the monitor each time you log in, with the options given here
                      (a scheduled task, a launchd agent, or a systemd user unit). Then exit.
+
+OpenCode Central (one hub for several machines; figures only, never text, code or paths):
+  --agent            Send this machine's figures to the hub in config "central" (no page).
+  --central          Run as the hub: receive at /ingest and show every machine.
+  --central-init     On the hub: make its key pair once and print the public key, then exit.
+  --central-token <machine>
+                     On the hub: print a new token for that machine (replacing any old one), then exit.
 `;
 
 export function defaultDataDir(env = process.env) {
