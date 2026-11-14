@@ -48,6 +48,7 @@ Parts of the page that need text are not on the hub: Replay, "This machine", the
 - Machine → hub: each machine has its own token (only a SHA-256 of it is kept on the hub; making a new one revokes the old). `/ingest` is write-only: it answers `{"ok":true,"seq":n}` or `{"ok":false}` and nothing else. Wrong token 401, too big 413, broken or not content-free 400.
 - Every batch is sealed to the hub's key, so a proxy that ends TLS on the way cannot read it.
 - The page and its API need the monitor's access key (`lan: true`), as in the main README. `/health` and the token-checked `/ingest` are the only addresses open without it.
+- Behind a reverse proxy that logs people in itself, set `central.proxy` to `{ "header": "x-ocm-proxy", "secret": "<32+ random characters>" }` and have the proxy set (overwrite) that header on every request it lets through; the hub then admits those without its access key. Put the proxy's address name in `central.hosts`.
 - The hub runs read-only, without Linux capabilities, as a non-root user. Its private key and the token hashes stay in its data volume.
 - Never put a token, the hub's private key, the access key or a filled-in config into git, an issue or a chat.
 

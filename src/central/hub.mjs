@@ -22,6 +22,7 @@ import { createRemoteSources } from './facts.mjs';
 import { initHubKeys, readTokens } from './tokens.mjs';
 import { handleIngest } from './ingest.mjs';
 import { stripContent } from './view.mjs';
+import { admitVia } from './proxy.mjs';
 import { createInfluxExport, toLines, stateLine, versionLine } from './influx.mjs';
 
 const PRUNE_EVERY = 6 * 3_600_000;
@@ -156,7 +157,8 @@ export async function startHub(cfg, { onApplied = () => {} } = {}) {
       await handleIngest(req, res, { store, tokens: () => readTokens(dir), privateKey: keys.privateKey, onApplied: applied });
       return;
     }
-    const admitted = admit(req, res, access);
+    // Behind the login proxy (central.proxy): its secret header stands in for the access key.
+    const admitted = admitVia(req, res, access, cfg.central.proxy ?? null, admit);
     if (!admitted) return;
     const { toMcp, url } = admitted;
     const { pathname, searchParams: query } = url;

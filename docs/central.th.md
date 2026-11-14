@@ -51,6 +51,7 @@ monitor ปกติตอบว่า "OpenCode บนเครื่องน�
   - เสียหายหรือยังมีเนื้อหา: 400
 - **ทุก batch เข้ารหัสด้วยกุญแจของ hub:** proxy ที่ถอด TLS ระหว่างทางจึงอ่านไม่ได้
 - **หน้าเว็บและ API ต้องใช้ access key ของ monitor** (`lan: true`) เหมือนใน README หลัก มีแค่ `/health` และ `/ingest` (ซึ่งตรวจ token อยู่แล้ว) ที่เข้าได้โดยไม่ต้องใช้ key
+- **ถ้าวาง hub หลัง reverse proxy ที่มีระบบ login ของตัวเอง:** ตั้ง `central.proxy` เป็น `{ "header": "x-ocm-proxy", "secret": "<สุ่ม 32 ตัวอักษรขึ้นไป>" }` แล้วให้ proxy ตั้ง (เขียนทับ) header นั้นในทุกคำขอที่ผ่าน login แล้ว hub จะรับคำขอเหล่านั้นโดยไม่ต้องใช้ access key และต้องใส่ชื่อโดเมนของ proxy ไว้ใน `central.hosts` ด้วย
 - **hub รันแบบอ่านอย่างเดียว:** ไม่มีสิทธิ์ (capabilities) ของ Linux และไม่ได้รันด้วย root กุญแจลับและ hash ของ token อยู่ใน volume ข้อมูลของมัน
 - **ห้ามใส่ลงใน git, issue หรือแชตเด็ดขาด:** token, กุญแจลับของ hub, access key และ config ที่กรอกค่าแล้ว
 

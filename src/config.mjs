@@ -95,7 +95,7 @@ export const DEFAULTS = {
   },
   // OpenCode Central. Agent: where to send (url, the hub's publicKey) and as whom (machine, token).
   // Hub: where the per-machine data lives, and the InfluxDB the key figures go to (null: none).
-  central: { url: '', machine: '', token: '', publicKey: '', everyMs: 10_000, sinceDays: 30, dir: 'data/central', influx: null },
+  central: { url: '', machine: '', token: '', publicKey: '', everyMs: 10_000, sinceDays: 30, dir: 'data/central', influx: null, proxy: null },
 };
 
 const isPlainObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
